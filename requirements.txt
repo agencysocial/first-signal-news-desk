@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+sqlalchemy>=2.0
+psycopg[binary]
+feedparser
+rapidfuzz
+jinja2
+apscheduler
+python-dotenv
+python-multipart
+pytest
+httpx
+itsdangerous

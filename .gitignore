@@ -1,0 +1,20 @@
+# Secrets -- .env holds real Supabase service_role key, DB password, and
+# session secret. Must never be committed, private repo or not.
+.env
+
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local dev database (superseded by Supabase Postgres) and its WAL/journal
+# siblings, if present.
+aim_news_desk.db
+aim_news_desk.db-journal
+aim_news_desk.db-wal
+aim_news_desk.db-shm
+
+# Runtime-generated output, not source -- handoff files written by the app,
+# not something that needs version history.
+handoff/
+
+.DS_Store
