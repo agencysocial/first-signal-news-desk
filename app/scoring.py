@@ -1,14 +1,21 @@
 """
-Rules-based scoring only -- no AI calls. Weights are hardcoded constants for
-Phase 1b (promote to a `scoring_settings` table only once AI scoring in
-Phase 3 makes runtime tuning worth the complexity -- see the Phase 1 spec's
-database-tables section).
+Rules-based scoring, now blended with Phase 3 AI content-judgment
+sub-scores when present. Weights are hardcoded constants for Phase 1b
+(promote to a `scoring_settings` table only once AI scoring makes runtime
+tuning worth the complexity -- see the Phase 1 spec's database-tables
+section).
 
-viral_score is explicitly a PRELIMINARY approximation: momentum + source-tier
-mix + recency + source count. The original spec's emotional-strength /
-visual-potential / conversation-potential / novelty sub-scores need AI
-classification and are deferred to Phase 3 -- do not stub them here as fake
-zeros dressed up as real fields.
+viral_score = 0.5 * coverage_component + 0.5 * ai_component, where:
+  - coverage_component (0-100) is the original Phase 1 formula: momentum +
+    source-tier mix + recency + source count -- purely "how is this
+    spreading across the sources we scan", no content judgment at all.
+  - ai_component (0-100) is the average of the 4 Claude-scored dimensions
+    (app/ai_scoring.py): emotional strength, visual potential, conversation
+    potential, novelty -- the "is this the kind of thing people react to"
+    half a rules engine can't compute.
+A cluster that hasn't been AI-scored yet (ai_emotional_strength etc. all
+None) falls back to coverage_component alone, unchanged from before Phase 3
+-- never blocks or degrades scoring while waiting on Claude.
 """
 from datetime import datetime, timezone
 
@@ -49,13 +56,24 @@ def compute_scores(cluster, articles: list) -> tuple[float, float, float]:
     spread = min(len(distinct_sources) / 5, 1.0) * 15
     momentum = round(velocity + quality + recency + update_frequency + spread, 1)
 
-    # --- Viral score (0-100), PRELIMINARY rules-only approximation. ---
+    # --- Viral score (0-100): coverage_component (unchanged Phase 1
+    # formula) blended with the Phase 3 AI sub-scores when available. ---
     tier_mix_pct = min(high_tier_count / max(len(distinct_sources), 1), 1.0) * 100
     recency_pct = (recency / 20) * 100
     source_count_pct = min(len(distinct_sources) / 10, 1.0) * 100
-    viral = round(
-        0.40 * momentum + 0.30 * tier_mix_pct + 0.15 * recency_pct + 0.15 * source_count_pct, 1
+    coverage_component = (
+        0.40 * momentum + 0.30 * tier_mix_pct + 0.15 * recency_pct + 0.15 * source_count_pct
     )
+
+    ai_dims = [
+        cluster.ai_emotional_strength, cluster.ai_visual_potential,
+        cluster.ai_conversation_potential, cluster.ai_novelty,
+    ]
+    if all(v is not None for v in ai_dims):
+        ai_component = sum(ai_dims) / len(ai_dims)
+        viral = round(0.5 * coverage_component + 0.5 * ai_component, 1)
+    else:
+        viral = round(coverage_component, 1)
 
     # --- Confidence score (0-100): kept independent of viral score, always.
     # official_source_presence rewards a genuine Tier-1 (official/government)

@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai_scoring import score_story_content
 from app.entities import extract_entities, extract_keywords, extract_location, GENERIC_ENTITIES, KNOWN_LOCATIONS
 from app.models import NormalizedArticle, StoryCluster, StoryClusterArticle
 from app.normalize import headline_tokens
@@ -275,6 +276,21 @@ def assign_cluster(session: Session, normalized: NormalizedArticle, raw_headline
     session.add(cluster)
     session.flush()
     _attach(session, cluster, normalized, match_level="seed", match_score=1.0)
+
+    # AI-score once per genuinely NEW story, not on every article that
+    # merges into an existing cluster -- keeps Claude usage proportional to
+    # new stories discovered, not total article volume (most incoming
+    # articles match an existing cluster via the block above). Fails soft:
+    # score_story_content returns None on any error, leaving the cluster to
+    # fall back to the coverage-only formula in compute_scores.
+    ai_scores = score_story_content(raw_headline, cluster.category, entities)
+    if ai_scores:
+        cluster.ai_emotional_strength = ai_scores["emotional_strength"]
+        cluster.ai_visual_potential = ai_scores["visual_potential"]
+        cluster.ai_conversation_potential = ai_scores["conversation_potential"]
+        cluster.ai_novelty = ai_scores["novelty"]
+        cluster.ai_scored_at = datetime.now(timezone.utc)
+
     _recompute_cluster(session, cluster)
     return cluster
 

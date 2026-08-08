@@ -375,13 +375,23 @@ def render_detail_page(cluster: dict, articles: list[dict], flash: str | None = 
   {flash_html}
 
   <div class="meta-grid">
-    <div class="meta-box"><div class="label">Viral score (preliminary)</div><div class="value {_score_class(cluster['viral_score'])}">{cluster['viral_score']:.0f}</div></div>
+    <div class="meta-box"><div class="label">Viral score{' (AI-blended)' if cluster.get('ai_scored_at') else ' (coverage only)'}</div><div class="value {_score_class(cluster['viral_score'])}">{cluster['viral_score']:.0f}</div></div>
     <div class="meta-box"><div class="label">Confidence score</div><div class="value {_score_class(cluster['confidence_score'])}">{cluster['confidence_score']:.0f}</div></div>
     <div class="meta-box"><div class="label">Momentum score</div><div class="value {_score_class(cluster['momentum_score'])}">{cluster['momentum_score']:.0f}</div></div>
     <div class="meta-box"><div class="label">Sources</div><div class="value">{cluster['source_count']}</div></div>
     <div class="meta-box"><div class="label">Articles</div><div class="value">{cluster['article_count']}</div></div>
     <div class="meta-box"><div class="label">Age</div><div class="value">{escape(cluster['age'])}</div></div>
   </div>
+
+  <h2>AI content judgment {'' if cluster.get('ai_scored_at') else '<span class="dup-flag">(not yet scored -- new clusters are scored automatically going forward)</span>'}</h2>
+  {(
+    '<div class="meta-grid">'
+    f'<div class="meta-box"><div class="label">Emotional strength</div><div class="value {_score_class(cluster["ai_emotional_strength"])}">{cluster["ai_emotional_strength"]:.0f}</div></div>'
+    f'<div class="meta-box"><div class="label">Visual potential</div><div class="value {_score_class(cluster["ai_visual_potential"])}">{cluster["ai_visual_potential"]:.0f}</div></div>'
+    f'<div class="meta-box"><div class="label">Conversation potential</div><div class="value {_score_class(cluster["ai_conversation_potential"])}">{cluster["ai_conversation_potential"]:.0f}</div></div>'
+    f'<div class="meta-box"><div class="label">Novelty</div><div class="value {_score_class(cluster["ai_novelty"])}">{cluster["ai_novelty"]:.0f}</div></div>'
+    '</div>'
+  ) if cluster.get('ai_scored_at') else ''}
 
   <h2>Entities</h2>
   <div class="tags">{tag_html}</div>

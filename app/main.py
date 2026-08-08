@@ -665,6 +665,11 @@ def story_detail(cluster_id: int, msg: str | None = None, user: dict = Depends(r
             "entities": cluster.entities,
             "keywords": cluster.keywords,
             "handoff_sent_at": cluster.handoff_sent_at.strftime("%Y-%m-%d %H:%M UTC") if cluster.handoff_sent_at else None,
+            "ai_emotional_strength": cluster.ai_emotional_strength,
+            "ai_visual_potential": cluster.ai_visual_potential,
+            "ai_conversation_potential": cluster.ai_conversation_potential,
+            "ai_novelty": cluster.ai_novelty,
+            "ai_scored_at": cluster.ai_scored_at.strftime("%Y-%m-%d %H:%M UTC") if cluster.ai_scored_at else None,
         }
 
         return HTMLResponse(render_detail_page(cluster_dict, article_rows, flash=msg, covered_posts=covered_post_rows))

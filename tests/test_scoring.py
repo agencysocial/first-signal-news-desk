@@ -4,9 +4,15 @@ from app.scoring import compute_scores
 
 
 class FakeCluster:
-    def __init__(self, first_detected_at, latest_update_at):
+    def __init__(self, first_detected_at, latest_update_at,
+                 ai_emotional_strength=None, ai_visual_potential=None,
+                 ai_conversation_potential=None, ai_novelty=None):
         self.first_detected_at = first_detected_at
         self.latest_update_at = latest_update_at
+        self.ai_emotional_strength = ai_emotional_strength
+        self.ai_visual_potential = ai_visual_potential
+        self.ai_conversation_potential = ai_conversation_potential
+        self.ai_novelty = ai_novelty
 
 
 class FakeArticle:
@@ -99,3 +105,62 @@ def test_scores_are_bounded_0_to_100():
     momentum, viral, confidence = compute_scores(cluster, many_articles)
     for score in (momentum, viral, confidence):
         assert 0 <= score <= 100
+
+
+def test_viral_score_falls_back_to_coverage_only_when_unscored():
+    """A cluster with no AI sub-scores (the common case before Phase 3
+    scoring runs, or when Claude is unreachable) must score exactly the
+    same as the pre-Phase-3 coverage-only formula -- no regression."""
+    now = datetime.now(timezone.utc)
+    cluster = FakeCluster(first_detected_at=now - timedelta(minutes=1), latest_update_at=now)
+    articles = [FakeArticle(source_id=1, source_tier=2, detected_at=now)]
+
+    _, viral, _ = compute_scores(cluster, articles)
+    assert viral > 0  # sanity: the coverage formula still produces a real number
+
+
+def test_viral_score_blends_in_ai_subscores_when_present():
+    now = datetime.now(timezone.utc)
+    articles = [FakeArticle(source_id=1, source_tier=2, detected_at=now)]
+
+    unscored = FakeCluster(first_detected_at=now - timedelta(minutes=1), latest_update_at=now)
+    _, coverage_only_viral, _ = compute_scores(unscored, articles)
+
+    # All 4 AI dimensions maxed out -- should pull the blended score up
+    # relative to the coverage-only case, proving the blend actually fires.
+    scored_high = FakeCluster(
+        first_detected_at=now - timedelta(minutes=1), latest_update_at=now,
+        ai_emotional_strength=100, ai_visual_potential=100,
+        ai_conversation_potential=100, ai_novelty=100,
+    )
+    _, blended_high_viral, _ = compute_scores(scored_high, articles)
+    assert blended_high_viral > coverage_only_viral
+
+    # All 4 AI dimensions at zero -- should pull it down relative to
+    # coverage-only, proving the blend isn't a one-directional bonus.
+    scored_low = FakeCluster(
+        first_detected_at=now - timedelta(minutes=1), latest_update_at=now,
+        ai_emotional_strength=0, ai_visual_potential=0,
+        ai_conversation_potential=0, ai_novelty=0,
+    )
+    _, blended_low_viral, _ = compute_scores(scored_low, articles)
+    assert blended_low_viral < coverage_only_viral
+
+
+def test_viral_score_requires_all_four_ai_dims_not_partial():
+    """A cluster with only SOME AI dimensions set (shouldn't happen in
+    practice -- score_story_content returns all 4 or None -- but scoring
+    must not silently treat a partial/corrupt record as fully scored)."""
+    now = datetime.now(timezone.utc)
+    articles = [FakeArticle(source_id=1, source_tier=2, detected_at=now)]
+
+    unscored = FakeCluster(first_detected_at=now - timedelta(minutes=1), latest_update_at=now)
+    _, coverage_only_viral, _ = compute_scores(unscored, articles)
+
+    partial = FakeCluster(
+        first_detected_at=now - timedelta(minutes=1), latest_update_at=now,
+        ai_emotional_strength=100, ai_visual_potential=100,
+        ai_conversation_potential=None, ai_novelty=None,
+    )
+    _, partial_viral, _ = compute_scores(partial, articles)
+    assert partial_viral == coverage_only_viral

@@ -18,6 +18,9 @@ SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
 
+# Phase 3: AI-assisted viral sub-scores
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
 # Near-duplicate thresholds (Level 2 dedup). Tune against real data later;
 # these are deliberately conservative (biased toward false negatives per spec).
 HEADLINE_JACCARD_THRESHOLD = 0.6

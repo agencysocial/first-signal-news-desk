@@ -111,13 +111,26 @@ class StoryCluster(Base):
     source_count: Mapped[int] = mapped_column(Integer, default=0)
     primary_source_id: Mapped[int | None] = mapped_column(ForeignKey("sources.id"), nullable=True)
 
-    # Rules-only Phase 1 scores. viral_score is explicitly a preliminary
-    # approximation -- the emotional/visual/conversation/novelty sub-scores
-    # from the original spec need AI classification and are deferred to
-    # Phase 3, not stubbed here.
+    # Rules-only Phase 1 scores. viral_score blends the coverage-based
+    # formula (momentum/tier-mix/recency/source-count -- unchanged from
+    # Phase 1) with the Phase 3 AI sub-scores below when they're present
+    # (see scoring.compute_scores); falls back to coverage-only when a
+    # cluster hasn't been AI-scored yet, so nothing regresses.
     viral_score: Mapped[float] = mapped_column(Float, default=0.0)
     confidence_score: Mapped[float] = mapped_column(Float, default=0.0)
     momentum_score: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Phase 3: AI content-judgment sub-scores (0-100 each), the piece a
+    # rules engine can't compute -- does the STORY ITSELF read as something
+    # people react to, independent of how many sources have picked it up so
+    # far. Null until scored (see app/ai_scoring.py); compute_scores falls
+    # back to coverage_component alone when null, so nothing regresses for
+    # an unscored cluster.
+    ai_emotional_strength: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_visual_potential: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_conversation_potential: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_novelty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     entities: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list
     keywords: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list

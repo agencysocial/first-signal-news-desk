@@ -13,6 +13,24 @@ from app import models  # noqa: F401 -- registers models on Base.metadata
 from app.models import Source, RawArticle, NormalizedArticle
 from app.normalize import canonicalize_url, normalize_headline, compute_hashes
 from app.dedup import find_duplicate
+import app.clustering as clustering_module
+
+
+@pytest.fixture(autouse=True)
+def _no_real_ai_scoring_calls(monkeypatch):
+    """assign_cluster() calls Claude on every genuinely new cluster (Phase
+    3). Without this, every test that creates a cluster -- most of
+    test_clustering.py, test_collectors.py, test_twitter_capture.py, etc --
+    would make a REAL network call to Anthropic's API on every run (this
+    was caught live: the suite went from ~2s to ~50s the moment AI scoring
+    was wired in, because ANTHROPIC_API_KEY is genuinely set in this repo's
+    .env, so score_story_content() didn't short-circuit). Autouse so no
+    individual test file has to remember to mock this -- returning None
+    matches "Claude unreachable / not yet scored", which is exactly the
+    fallback compute_scores already handles, so existing coverage-only
+    assertions elsewhere in the suite stay valid unchanged.
+    """
+    monkeypatch.setattr(clustering_module, "score_story_content", lambda *a, **k: None)
 
 
 @pytest.fixture()
