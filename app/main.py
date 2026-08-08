@@ -597,16 +597,28 @@ def capture_twitter(tweet_url: str = Form(...), return_to: str = Form("/"), user
             safe_msg = str(exc).replace(" ", "+")
             return RedirectResponse(f"{return_to}?msg={safe_msg}", status_code=303)
         except Exception as exc:
-            # Diagnostic: surface the real exception instead of a blind 500,
-            # since this route was 500ing on Render but not locally with
-            # identical inputs -- pinning down environment-specific bugs
-            # (unpinned dependency versions, network path differences) needs
-            # the actual error, and Render's dashboard logs weren't
-            # available to check directly.
+            # Diagnostic: surface the real exception AND the file:line it
+            # came from, instead of a blind 500 -- the exception message
+            # alone (UnicodeEncodeError, ascii codec) wasn't enough to
+            # locate the actual line once an env-var-based fix (PYTHONUTF8=1)
+            # failed to resolve it. This is deliberately temporary/verbose;
+            # revert once the real line is found.
+            #
+            # The bug being diagnosed IS an ascii-encoding failure, so this
+            # handler must not itself write non-ASCII text anywhere (log
+            # line, redirect header) or it would crash the same way while
+            # trying to report the crash -- ascii-encode with 'replace' as
+            # the very first step, before any logging or string building.
             session.rollback()
-            logger.exception("capture_twitter failed unexpectedly")
-            safe_msg = f"{type(exc).__name__}: {exc}".replace(" ", "+").replace("\n", " ")[:300]
-            return RedirectResponse(f"{return_to}?msg=UNEXPECTED_ERROR:+{safe_msg}", status_code=303)
+            import traceback as _traceback
+            tb_text = _traceback.format_exc()
+            tb_ascii = tb_text.encode("ascii", errors="replace").decode("ascii")
+            try:
+                logger.error("capture_twitter failed unexpectedly:\n%s", tb_ascii)
+            except Exception:
+                pass  # even the ascii-safe version must never block the response below
+            safe_msg = tb_ascii.replace(" ", "_").replace("\n", "|")[:900]
+            return RedirectResponse(f"{return_to}?msg=TRACEBACK:+{safe_msg}", status_code=303)
         return RedirectResponse(f"/stories/{cluster.id}?msg=Tweet+captured", status_code=303)
     finally:
         session.close()
