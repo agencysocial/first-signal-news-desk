@@ -596,6 +596,17 @@ def capture_twitter(tweet_url: str = Form(...), return_to: str = Form("/"), user
             session.rollback()
             safe_msg = str(exc).replace(" ", "+")
             return RedirectResponse(f"{return_to}?msg={safe_msg}", status_code=303)
+        except Exception as exc:
+            # Diagnostic: surface the real exception instead of a blind 500,
+            # since this route was 500ing on Render but not locally with
+            # identical inputs -- pinning down environment-specific bugs
+            # (unpinned dependency versions, network path differences) needs
+            # the actual error, and Render's dashboard logs weren't
+            # available to check directly.
+            session.rollback()
+            logger.exception("capture_twitter failed unexpectedly")
+            safe_msg = f"{type(exc).__name__}: {exc}".replace(" ", "+").replace("\n", " ")[:300]
+            return RedirectResponse(f"{return_to}?msg=UNEXPECTED_ERROR:+{safe_msg}", status_code=303)
         return RedirectResponse(f"/stories/{cluster.id}?msg=Tweet+captured", status_code=303)
     finally:
         session.close()
