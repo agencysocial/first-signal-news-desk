@@ -196,18 +196,24 @@ def render_wire_page(clusters: list[dict], error_sources: list[tuple[str, str]],
     viral_active = "active" if sort == "viral" else ""
     sort_label = "most recently updated" if sort == "latest" else "highest viral score"
 
-    # Quick filters are full presets (sort preserved, everything else reset)
-    # rather than cumulative toggles -- "show me only Breaking" is simpler
-    # and more predictable than stacking with whatever else was active.
+    # Quick filters REFINE the currently active filters rather than resetting
+    # them -- picking a category via the filter form, then clicking a time-
+    # window chip, must keep the category (real operator-reported bug: it
+    # was dropping category and every other active filter, since each chip
+    # only ever encoded its own single param). "All" is the one deliberate
+    # exception -- it's a true full reset, not a refinement.
+    f = filters
+
     def chip(label, active, **params):
-        params["sort"] = sort
-        qs = "&".join(f"{k}={v}" for k, v in params.items())
+        merged = {k: v for k, v in f.items() if v not in (None, "", False)}
+        merged.update(params)
+        merged["sort"] = sort
+        qs = "&".join(f"{k}={v}" for k, v in merged.items())
         cls = "active" if active else ""
         return f'<a href="{base_path}?{qs}" class="{cls}">{escape(label)}</a>'
 
-    f = filters
     chip_list = [
-        chip("All", not any(f.values()), **{}),
+        f'<a href="{base_path}?sort={escape(sort)}" class="{"active" if not any(f.values()) else ""}">All</a>',
         chip("Last 15m", f.get("window") == "15m", window="15m"),
         chip("Last 1h", f.get("window") == "1h", window="1h"),
         chip("Last 3h", f.get("window") == "3h", window="3h"),
