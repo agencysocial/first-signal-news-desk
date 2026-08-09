@@ -1651,6 +1651,85 @@ def pipeline_queue_history_image(path: str = "", user: dict = Depends(require_us
                     headers={"Cache-Control": "max-age=86400"})
 
 
+@app.post("/pipeline-queue/write-tobi")
+async def pipeline_queue_write_tobi(request: Request, user: dict = Depends(require_user)):
+    """Generate 3 TOBI post options (12-32 words each) for a pending queue item."""
+    form = await request.form()
+    cluster_id = int(form.get("cluster_id", 0))
+
+    key = _get_anthropic_key()
+    if not key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
+
+    items = _load_fsn_queue()
+    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    headline = (item or {}).get("text") or ""
+    if not headline:
+        # Fall back to DB
+        session = SessionLocal()
+        try:
+            c = session.get(StoryCluster, cluster_id)
+            if c:
+                headline = c.canonical_headline or ""
+        finally:
+            session.close()
+    if not headline:
+        return JSONResponse({"error": "Item not found"}, status_code=404)
+
+    system = """\
+You are the First Signal News automation. Write 3 distinct TOBI text-only posts for the story.
+
+Rules:
+- Each post: 12-32 words (HARD LIMIT — count carefully)
+- America First conservative voice, direct and punchy
+- No em-dashes, no emojis, no hashtags
+- End each post with an agreement hook: "Do you agree?" / "Yes or No?" / "Right?" / "Who agrees?" / "Be honest:"
+- Each option must take a different angle (e.g. outrage, accountability, poll)
+
+Output ONLY valid JSON:
+{"options": ["post 1 text", "post 2 text", "post 3 text"]}"""
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=key)
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001", max_tokens=512,
+            system=system,
+            messages=[{"role": "user", "content": f"Story: {headline}\n\nWrite 3 TOBI options."}],
+        )
+        raw = resp.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        data = json.loads(raw)
+        return {"options": data.get("options") or []}
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.post("/pipeline-queue/apply-tobi")
+async def pipeline_queue_apply_tobi(request: Request, user: dict = Depends(require_user)):
+    """Save chosen TOBI text onto the queue item."""
+    form = await request.form()
+    cluster_id = int(form.get("cluster_id", 0))
+    text = str(form.get("text", "")).strip()
+    if not text:
+        return JSONResponse({"error": "No text"}, status_code=400)
+
+    items = _load_fsn_queue()
+    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    if not item:
+        return {"ok": True, "note": "client-side only on deployed server"}
+
+    if not item.get("draft"):
+        item["draft"] = {}
+    item["draft"]["tobi_text"] = text
+    item["generation_type"] = "tobi"
+    _save_fsn_queue(items)
+    return {"ok": True}
+
+
 @app.post("/pipeline-queue/apply-angle")
 async def pipeline_queue_apply_angle(request: Request, user: dict = Depends(require_user)):
     """Save a chosen angle (hook/tag/caption_lead) onto the queue item as its working draft headline."""

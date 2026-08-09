@@ -691,9 +691,16 @@ def render_pipeline_queue_page(
                 eff_type = (rec.get("gen_type") if rec else None) or ("tobi" if s_tmpl == "tobi" else "image_card")
                 img_sel  = "selected" if eff_type == "image_card" else ""
                 tobi_sel = "selected" if eff_type == "tobi" else ""
-                type_cell = (f'<select name="type_{cid}" style="font-size:12px;padding:3px 6px">'
-                             f'<option value="image_card" {img_sel}>Image Card</option>'
-                             f'<option value="tobi" {tobi_sel}>TOBI</option></select>')
+                type_cell = (
+                    f'<select name="type_{cid}" id="type-sel-{cid}" onchange="onTypeChange({cid},this)" style="font-size:12px;padding:3px 6px">'
+                    f'<option value="image_card" {img_sel}>Image Card</option>'
+                    f'<option value="tobi" {tobi_sel}>TOBI</option></select>'
+                    f'<div id="tobi-write-wrap-{cid}" style="display:{"block" if eff_type == "tobi" else "none"};margin-top:4px">'
+                    f'<button type="button" onclick="writeTOBI({cid},this)" '
+                    f'style="font-size:10px;padding:2px 8px;background:#0a1a10;border:1px solid #1a5a30;color:#4ade80;cursor:pointer;border-radius:3px">&#9998; Write TOBI</button>'
+                    f'<div id="tobi-panel-{cid}" style="display:none;margin-top:6px;padding:8px;background:#0d111a;border:1px solid #2a3555;border-radius:4px;font-size:12px"></div>'
+                    f'</div>'
+                )
                 check = f'<input type="checkbox" name="selected" value="{cid}" {is_checked}>'
             else:
                 label = "Image Card" if gen_type == "image_card" else "TOBI"
@@ -902,6 +909,66 @@ function useAngle(cid, idx, btn) {
       if (status) status.textContent = d.error || 'Error';
       btn.disabled = false;
     }
+  })
+  .catch(function(){ if (status) status.textContent = 'Failed'; btn.disabled = false; });
+}
+
+function onTypeChange(cid, sel) {
+  var wrap = document.getElementById('tobi-write-wrap-' + cid);
+  if (wrap) wrap.style.display = sel.value === 'tobi' ? 'block' : 'none';
+}
+
+function writeTOBI(cid, btn) {
+  var panel = document.getElementById('tobi-panel-' + cid);
+  if (!panel) return;
+  if (panel.style.display !== 'none') { panel.style.display = 'none'; return; }
+  if (panel.dataset.loaded) { panel.style.display = 'block'; return; }
+  btn.textContent = 'Writing...';
+  btn.disabled = true;
+  fetch('/pipeline-queue/write-tobi', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'cluster_id=' + encodeURIComponent(cid)
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    btn.textContent = '✎ Write TOBI';
+    btn.disabled = false;
+    if (d.error) { panel.innerHTML = '<span style="color:#f87171">' + d.error + '</span>'; panel.style.display = 'block'; return; }
+    var options = d.options || [];
+    var html = '';
+    options.forEach(function(opt, i) {
+      html += '<div style="margin-bottom:8px;padding:8px;background:#060910;border-radius:4px;border-left:3px solid #4ade80">';
+      html += '<div style="color:#c0c8d8;font-size:12px;line-height:1.5;margin-bottom:5px">' + opt + '</div>';
+      html += '<button type="button" onclick="useTOBI(' + cid + ',' + i + ',this)" '
+        + 'style="font-size:10px;padding:2px 8px;background:#0a1a0a;border:1px solid #1a5a1a;color:#4ade80;cursor:pointer;border-radius:3px">&#10003; Use this</button>';
+      html += '<span id="tobi-status-' + cid + '-' + i + '" style="margin-left:6px;font-size:10px;color:#8b93a3"></span>';
+      html += '</div>';
+    });
+    panel._options = options;
+    panel.innerHTML = html;
+    panel.dataset.loaded = '1';
+    panel.style.display = 'block';
+  })
+  .catch(function(){ btn.textContent = '✎ Write TOBI'; btn.disabled = false; panel.innerHTML = '<span style="color:#f87171">Request failed.</span>'; panel.style.display = 'block'; });
+}
+
+function useTOBI(cid, idx, btn) {
+  var panel = document.getElementById('tobi-panel-' + cid);
+  var text = panel && panel._options ? panel._options[idx] : null;
+  if (!text) return;
+  var status = document.getElementById('tobi-status-' + cid + '-' + idx);
+  btn.disabled = true;
+  if (status) status.textContent = 'Saving...';
+  fetch('/pipeline-queue/apply-tobi', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'cluster_id=' + encodeURIComponent(cid) + '&text=' + encodeURIComponent(text)
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if (d.ok) { if (status) status.textContent = 'Applied!'; }
+    else { if (status) status.textContent = d.error || 'Error'; btn.disabled = false; }
   })
   .catch(function(){ if (status) status.textContent = 'Failed'; btn.disabled = false; });
 }
