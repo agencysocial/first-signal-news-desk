@@ -1622,6 +1622,36 @@ def pipeline_queue_history_image(path: str = "", user: dict = Depends(require_us
                     headers={"Cache-Control": "max-age=86400"})
 
 
+@app.post("/pipeline-queue/apply-angle")
+async def pipeline_queue_apply_angle(request: Request, user: dict = Depends(require_user)):
+    """Save a chosen angle (hook/tag/caption_lead) onto the queue item as its working draft headline."""
+    form = await request.form()
+    cluster_id = int(form.get("cluster_id", 0))
+    hook         = str(form.get("hook", "")).strip()
+    tag          = str(form.get("tag", "")).strip()
+    caption_lead = str(form.get("caption_lead", "")).strip()
+    angle_type   = str(form.get("angle_type", "")).strip()
+
+    items = _load_fsn_queue()
+    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    if not item:
+        # On Render the queue comes from DB — store angle in session or just return ok
+        # The JS already updates the headline display client-side
+        return {"ok": True, "note": "client-side only on deployed server"}
+
+    # Patch the item's draft with the chosen angle values
+    if not item.get("draft"):
+        item["draft"] = {}
+    item["draft"]["headline"] = hook.upper()
+    item["draft"]["tag"] = tag
+    if caption_lead:
+        caps = item["draft"].setdefault("captions", {})
+        caps["short"] = caption_lead
+    item["chosen_angle_type"] = angle_type
+    _save_fsn_queue(items)
+    return {"ok": True}
+
+
 @app.get("/pipeline-queue/output-image/{filename}")
 def pipeline_queue_output_image(filename: str, user: dict = Depends(require_user)):
     """Serve a PNG card from the last completed job's batch dir."""

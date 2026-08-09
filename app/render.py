@@ -832,11 +832,48 @@ function expandAngles(cid, btn) {
         html += '<div style="color:#FFDE59;font-size:12px;font-weight:600;margin-bottom:3px">' + (a.hook||'') + '</div>';
         html += '<div style="color:#c0c8d8;font-size:11px;margin-bottom:3px">' + (a.caption_lead||'') + '</div>';
         html += '<div style="color:#8b93a3;font-size:10px">' + (a.why||'') + '</div>';
+        html += '<button type="button" onclick="useAngle(' + cid + ',' + i + ',this)" '
+          + 'style="margin-top:6px;font-size:10px;padding:2px 8px;background:#0a1a0a;border:1px solid #1a5a1a;'
+          + 'color:#4ade80;cursor:pointer;border-radius:3px">&#10003; Use this angle</button>';
+        html += '<div id="angle-status-' + cid + '-' + i + '" style="display:inline-block;margin-left:6px;font-size:10px;color:#8b93a3"></div>';
         html += '</div>';
       });
+      panel._angles = angles;
       panel.innerHTML = html;
     })
     .catch(function(){ panel.innerHTML = '<span style="color:#f87171">Request failed.</span>'; });
+}
+
+function useAngle(cid, idx, btn) {
+  var panel = document.getElementById('angles-' + cid);
+  if (!panel || !panel._angles) return;
+  var a = panel._angles[idx];
+  if (!a) return;
+  var status = document.getElementById('angle-status-' + cid + '-' + idx);
+  btn.disabled = true;
+  if (status) status.textContent = 'Saving...';
+  fetch('/pipeline-queue/apply-angle', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'cluster_id=' + encodeURIComponent(cid)
+      + '&hook=' + encodeURIComponent(a.hook||'')
+      + '&tag=' + encodeURIComponent(a.tag||'')
+      + '&caption_lead=' + encodeURIComponent(a.caption_lead||'')
+      + '&angle_type=' + encodeURIComponent(a.angle_type||'')
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if (d.ok) {
+      if (status) status.textContent = 'Applied!';
+      /* Update the headline display in the draft panel if open */
+      var hl = document.getElementById('hl-' + cid);
+      if (hl) hl.textContent = a.hook || '';
+    } else {
+      if (status) status.textContent = d.error || 'Error';
+      btn.disabled = false;
+    }
+  })
+  .catch(function(){ if (status) status.textContent = 'Failed'; btn.disabled = false; });
 }
 </script>"""
 
