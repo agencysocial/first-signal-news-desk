@@ -120,7 +120,10 @@ def render_login_page(error: str | None = None, next_path: str = "/") -> str:
     error_html = f'<div class="flash" style="background:#3a1414;border-color:#4a2020;color:#f87171">{escape(error)}</div>' if error else ""
     body = f"""
   <div style="max-width:340px;margin:80px auto 0 auto">
-    <h1 style="text-align:center;margin-bottom:24px">AIM News Desk</h1>
+    <div style="text-align:center;margin-bottom:20px">
+      <img src="/static/logo.png" alt="First Signal" style="width:300px;max-width:100%;height:auto">
+    </div>
+    <h1 style="text-align:center;margin-bottom:24px">News Desk</h1>
     {error_html}
     <form method="post" action="/login" style="display:flex;flex-direction:column;gap:10px">
       <input type="hidden" name="next" value="{escape(next_path)}">
@@ -136,7 +139,7 @@ def render_login_page(error: str | None = None, next_path: str = "/") -> str:
 <html>
 <head>
   <meta charset="utf-8">
-  <title>AIM News Desk &mdash; Log In</title>
+  <title>News Desk &mdash; Log In</title>
   <style>{STYLE}</style>
 </head>
 <body>

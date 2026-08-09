@@ -10,6 +10,7 @@ from pathlib import Path
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, func
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -462,6 +463,12 @@ app = FastAPI(title="AIM News Desk - Phase 1b", lifespan=lifespan,
 # Session cookie for team login (Phase 2). SESSION_SECRET is a fixed value
 # from .env, not regenerated per-process -- see .env's comment on why.
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET or "dev-only-insecure-secret")
+
+# Static assets (logo, etc). Deliberately NOT behind require_user -- a
+# StaticFiles mount bypasses route-level auth entirely regardless, and the
+# login page (which renders before any session exists) needs to load the
+# logo image without being authenticated first.
+app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
 
 
 @app.exception_handler(NotAuthenticated)
