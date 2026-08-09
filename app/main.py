@@ -1819,6 +1819,70 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+@app.post("/pipeline-queue/generate-all-captions")
+async def pipeline_queue_generate_all_captions(request: Request, user: dict = Depends(require_user)):
+    """Generate all 4 caption variants + first comment for a queue item in one AI call."""
+    form = await request.form()
+    cluster_id = int(form.get("cluster_id", 0))
+
+    key = _get_anthropic_key()
+    if not key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
+
+    items = _load_fsn_queue()
+    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    if not item:
+        return JSONResponse({"error": "Item not found"}, status_code=404)
+
+    draft    = item.get("draft") or {}
+    headline = draft.get("headline") or item.get("text") or ""
+    tag      = draft.get("tag") or ""
+    story    = item.get("text") or ""
+
+    system = (
+        "You are the First Signal News caption writer. America First conservative voice. "
+        "No em-dashes, no hashtags, no emojis. Be direct, pointed, specific to the story. "
+        "Short captions end with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:). "
+        "Output ONLY valid JSON — no explanation, no markdown."
+    )
+    user_msg = (
+        f"Story: {story}\nHeadline: {headline}\nTag: {tag}\n\n"
+        "Write all 4 Facebook caption variants and a first comment. Return JSON:\n"
+        '{"short":"10-15 words + agreement hook","medium":"40-60 words","long":"100-150 words",'
+        '"extra_long":"200-300 words","first_comment":"5-15 words, invites reply, no question mark required"}'
+    )
+
+    try:
+        import anthropic, re as _re
+        client = anthropic.Anthropic(api_key=key)
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001", max_tokens=1200,
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        raw = resp.content[0].text.strip()
+        m = _re.search(r'\{.*\}', raw, _re.S)
+        if not m:
+            return JSONResponse({"error": f"No JSON in response: {raw[:200]}"}, status_code=500)
+        data = json.loads(m.group())
+
+        if not item.get("draft"):
+            item["draft"] = {}
+        item["draft"].setdefault("captions", {}).update({
+            "short":      data.get("short", ""),
+            "medium":     data.get("medium", ""),
+            "long":       data.get("long", ""),
+            "extra_long": data.get("extra_long", ""),
+        })
+        if data.get("first_comment"):
+            item["draft"]["first_comment"] = data["first_comment"]
+        _save_fsn_queue(items)
+        return JSONResponse({"ok": True, "captions": item["draft"]["captions"],
+                             "first_comment": item["draft"].get("first_comment", "")})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
 @app.post("/pipeline-queue/expand-angles")
 async def pipeline_queue_expand_angles(request: Request, user: dict = Depends(require_user)):
     """Suggest 3 FSN story angles for a pending item before drafting."""

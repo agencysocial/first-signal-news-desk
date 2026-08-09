@@ -741,14 +741,24 @@ def render_pipeline_queue_page(
                     inner += f'<div style="margin-bottom:6px"><span style="color:#8b93a3;font-size:10px">XL:</span> <span style="color:#c0c8d8;font-size:11px">{c_xl}</span></div>'
                 if fc:
                     inner += f'<div style="border-top:1px solid #1a1f2b;padding-top:6px;margin-top:4px"><span style="color:#8b93a3;font-size:10px">FIRST COMMENT:</span> <span style="color:#c0c8d8;font-size:11px">{fc}</span></div>'
-                if inner:
+                has_full_captions = bool(caps.get("medium") or caps.get("long"))
+                gen_caps_btn = (
+                    f'<button type="button" id="gencaps-btn-{cid}" onclick="generateAllCaptions({cid},this)" '
+                    f'style="font-size:10px;padding:3px 10px;background:#0a1a10;border:1px solid #1a5a30;'
+                    f'color:#4ade80;cursor:pointer;border-radius:3px;margin-bottom:10px">'
+                    f'&#9998; Generate All Captions</button>'
+                    f'<span id="gencaps-status-{cid}" style="font-size:10px;color:#8b93a3;margin-left:8px"></span>'
+                    f'<div id="gencaps-result-{cid}"></div>'
+                ) if not has_full_captions else ""
+                if inner or not has_full_captions:
                     story_panel_html = (
                         f'<div style="margin-top:6px">'
                         f'<button type="button" onclick="toggleStory(\'{cid}\')" '
                         f'style="font-size:10px;padding:2px 8px;background:#0a1020;border:1px solid #2a3555;'
                         f'color:#c0c8d8;cursor:pointer;border-radius:3px">&#128196; Story &amp; Captions</button>'
                         f'<div id="story-{cid}" style="display:none;margin-top:8px;padding:10px;'
-                        f'background:#060910;border:1px solid #1a1f2b;border-radius:4px">{inner}</div>'
+                        f'background:#060910;border:1px solid #1a1f2b;border-radius:4px">'
+                        f'{gen_caps_btn}{inner}</div>'
                         f'</div>'
                     )
 
@@ -821,6 +831,32 @@ function toggleDraft(cid) {
 function toggleStory(cid) {
   var el = document.getElementById('story-' + cid);
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function generateAllCaptions(cid, btn) {
+  btn.disabled = true; btn.textContent = 'Generating...';
+  var status = document.getElementById('gencaps-status-' + cid);
+  if (status) status.textContent = 'Writing 4 variants...';
+  var fd = new FormData(); fd.append('cluster_id', cid);
+  fetch('/pipeline-queue/generate-all-captions', {method:'POST', body:fd})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      btn.disabled = false; btn.textContent = '✓ Done';
+      if (status) status.textContent = '';
+      if (d.error) { if (status) status.textContent = 'Error: ' + d.error; return; }
+      var caps = d.captions || {};
+      var fc   = d.first_comment || '';
+      var html = '';
+      var labels = {short:'SHORT',medium:'MEDIUM',long:'LONG',extra_long:'XL'};
+      Object.keys(labels).forEach(function(k){
+        if (caps[k]) html += '<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">' + labels[k] + ':</span> <span style="color:#c0c8d8;font-size:11px">' + caps[k] + '</span></div>';
+      });
+      if (fc) html += '<div style="border-top:1px solid #1a1f2b;padding-top:6px;margin-top:4px"><span style="color:#8b93a3;font-size:10px">FIRST COMMENT:</span> <span style="color:#c0c8d8;font-size:11px">' + fc + '</span></div>';
+      var res = document.getElementById('gencaps-result-' + cid);
+      if (res) res.innerHTML = html;
+      btn.style.display = 'none';
+    })
+    .catch(function(e){ btn.disabled=false; btn.textContent='Generate All Captions'; if(status) status.textContent='Request failed.'; });
 }
 
 function pickHeadline(cid, idx, btn) {
