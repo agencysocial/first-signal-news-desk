@@ -1275,7 +1275,7 @@ async def pipeline_queue_generate(request: Request, user: dict = Depends(require
             _build_picks_from_approved_queue()
             msg = f"{updated} story(s) approved — click Generate Images Now"
         else:
-            msg = f"{updated} story(s) approved — to generate images open Claude Code locally and run /batch"
+            msg = f"{updated} story(s) approved — click Generate Images Now"
     elif action == "generate":
         msg = "No stories selected"
     else:
