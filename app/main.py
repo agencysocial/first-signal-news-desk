@@ -37,6 +37,20 @@ _FSN_PICKS_PATH  = _FSN_ROOT / "memory" / "approved_picks.json"
 _FSN_JOB_PATH    = _FSN_ROOT / "memory" / "batch_job.json"
 _batch_lock = threading.Lock()
 
+def _get_anthropic_key() -> str | None:
+    """Return ANTHROPIC_API_KEY from env var (Render) or FSN .env file (local)."""
+    import os as _os
+    key = _os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if key:
+        return key
+    env_path = _FSN_ROOT / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("ANTHROPIC_API_KEY="):
+                return line.split("=", 1)[1].strip()
+    return None
+
 def _load_fsn_queue() -> list[dict]:
     if _FSN_QUEUE_PATH.exists():
         try:
@@ -1397,14 +1411,7 @@ def pipeline_queue_output_json(user: dict = Depends(require_user)):
 @app.post("/pipeline-queue/critique-batch")
 async def pipeline_queue_critique_batch(user: dict = Depends(require_user)):
     """Claude reviews the full approved batch plan before generation fires."""
-    import os, sys as _sys
-    key = None
-    env_path = _FSN_ROOT / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("ANTHROPIC_API_KEY="):
-                key = line.split("=", 1)[1].strip()
+    key = _get_anthropic_key()
     if not key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
 
