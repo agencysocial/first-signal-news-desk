@@ -1216,6 +1216,20 @@ def pipeline_queue(background_tasks: BackgroundTasks, msg: str = "", user: dict 
     picks  = _read_picks()
     posts  = (picks or {}).get("posts") or []
 
+    # On Render, picks file never exists — treat approved image cards as "picks ready"
+    approved_image_cards = [
+        x for x in items
+        if x.get("queue_status") == "approved" and x.get("post_type", "image_card") == "image_card"
+    ]
+    if not _is_local() and approved_image_cards:
+        picks_ready = True
+        picks_count = len(approved_image_cards)
+        picks_date  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    else:
+        picks_ready = bool(posts)
+        picks_count = len(posts)
+        picks_date  = (picks or {}).get("batch_date", "")
+
     # Load any fresh batch recommendation
     try:
         import importlib.util as _ilu, sys as _sys
@@ -1229,9 +1243,9 @@ def pipeline_queue(background_tasks: BackgroundTasks, msg: str = "", user: dict 
     return render_pipeline_queue_page(
         items, msg=msg,
         job=job,
-        picks_ready=bool(posts),
-        picks_count=len(posts),
-        picks_date=(picks or {}).get("batch_date", ""),
+        picks_ready=picks_ready,
+        picks_count=picks_count,
+        picks_date=picks_date,
         recommendation=recommendation,
     )
 
