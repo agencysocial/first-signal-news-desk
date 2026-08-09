@@ -831,7 +831,10 @@ function expandAngles(cid, btn) {
         html += '<div style="color:' + colors[i] + ';font-size:10px;text-transform:uppercase;font-weight:700;margin-bottom:3px">' + (a.angle_type||'') + ' &nbsp;&#9632;&nbsp; ' + (a.tag||'') + '</div>';
         html += '<div style="color:#FFDE59;font-size:12px;font-weight:600;margin-bottom:3px">' + (a.hook||'') + '</div>';
         html += '<div style="color:#c0c8d8;font-size:11px;margin-bottom:3px">' + (a.caption_lead||'') + '</div>';
-        html += '<div style="color:#8b93a3;font-size:10px">' + (a.why||'') + '</div>';
+        html += '<div style="color:#8b93a3;font-size:10px;margin-bottom:3px">' + (a.why||'') + '</div>';
+        if (a.image_scene) {
+          html += '<div style="color:#60a5fa;font-size:10px;font-style:italic;margin-bottom:3px">&#128247; ' + (a.image_scene||'') + '</div>';
+        }
         html += '<button type="button" onclick="useAngle(' + cid + ',' + i + ',this)" '
           + 'style="margin-top:6px;font-size:10px;padding:2px 8px;background:#0a1a0a;border:1px solid #1a5a1a;'
           + 'color:#4ade80;cursor:pointer;border-radius:3px">&#10003; Use this angle</button>';
@@ -845,10 +848,14 @@ function expandAngles(cid, btn) {
         + '<input id="custom-tag-' + cid + '" type="text" maxlength="40" placeholder="e.g. JUST IN" '
         + 'style="display:block;width:100%;margin-top:2px;padding:4px 7px;background:#0d111a;border:1px solid #2a3555;'
         + 'color:#fff;font-size:12px;border-radius:3px;box-sizing:border-box"></div>';
-      html += '<div style="margin-bottom:6px"><label style="color:#8b93a3;font-size:10px">MAIN HEADLINE</label>'
+      html += '<div style="margin-bottom:4px"><label style="color:#8b93a3;font-size:10px">MAIN HEADLINE</label>'
         + '<input id="custom-hook-' + cid + '" type="text" maxlength="120" placeholder="Your headline here" '
         + 'style="display:block;width:100%;margin-top:2px;padding:4px 7px;background:#0d111a;border:1px solid #2a3555;'
         + 'color:#FFDE59;font-size:12px;border-radius:3px;box-sizing:border-box"></div>';
+      html += '<div style="margin-bottom:6px"><label style="color:#8b93a3;font-size:10px">IMAGE SCENE</label>'
+        + '<input id="custom-scene-' + cid + '" type="text" maxlength="200" placeholder="e.g. US Capitol exterior, dramatic sky" '
+        + 'style="display:block;width:100%;margin-top:2px;padding:4px 7px;background:#0d111a;border:1px solid #2a3555;'
+        + 'color:#60a5fa;font-size:12px;border-radius:3px;box-sizing:border-box"></div>';
       html += '<button type="button" onclick="useCustomAngle(' + cid + ',this)" '
         + 'style="font-size:10px;padding:2px 8px;background:#0a0a1a;border:1px solid #5a3a9a;'
         + 'color:#8b5cf6;cursor:pointer;border-radius:3px">&#10003; Use custom</button>';
@@ -874,6 +881,7 @@ function useAngle(cid, idx, btn) {
       + '&hook=' + encodeURIComponent(a.hook||'')
       + '&tag=' + encodeURIComponent(a.tag||'')
       + '&caption_lead=' + encodeURIComponent(a.caption_lead||'')
+      + '&image_scene=' + encodeURIComponent(a.image_scene||'')
       + '&angle_type=' + encodeURIComponent(a.angle_type||'')
   })
   .then(function(r){ return r.json(); })
@@ -892,8 +900,9 @@ function useAngle(cid, idx, btn) {
 }
 
 function useCustomAngle(cid, btn) {
-  var hook = (document.getElementById('custom-hook-' + cid) || {}).value || '';
-  var tag  = (document.getElementById('custom-tag-' + cid) || {}).value || '';
+  var hook  = (document.getElementById('custom-hook-' + cid) || {}).value || '';
+  var tag   = (document.getElementById('custom-tag-' + cid) || {}).value || '';
+  var scene = (document.getElementById('custom-scene-' + cid) || {}).value || '';
   var status = document.getElementById('custom-angle-status-' + cid);
   if (!hook.trim()) { if (status) status.textContent = 'Enter a headline first.'; return; }
   btn.disabled = true;
@@ -904,6 +913,7 @@ function useCustomAngle(cid, btn) {
     body: 'cluster_id=' + encodeURIComponent(cid)
       + '&hook=' + encodeURIComponent(hook)
       + '&tag=' + encodeURIComponent(tag)
+      + '&image_scene=' + encodeURIComponent(scene)
       + '&angle_type=custom'
   })
   .then(function(r){ return r.json(); })

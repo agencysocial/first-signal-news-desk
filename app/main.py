@@ -1577,6 +1577,7 @@ Output ONLY valid JSON:
       "hook": "the 8-16 word headline this angle would produce",
       "caption_lead": "the first sentence of the short caption for this angle",
       "tag": "EXACTLY 3 UPPERCASE WORDS for the red pill",
+      "image_scene": "concrete scene for the image upper two-thirds — either a thematic scene (building, courthouse, border fence, port, etc.) or 'recognizable likeness of [Name], head-and-shoulders portrait' if the angle is specifically about that person",
       "why": "one sentence — why this angle works for FSN audience"
     },
     ... exactly 3 angles ...
@@ -1631,6 +1632,7 @@ async def pipeline_queue_apply_angle(request: Request, user: dict = Depends(requ
     tag          = str(form.get("tag", "")).strip()
     caption_lead = str(form.get("caption_lead", "")).strip()
     angle_type   = str(form.get("angle_type", "")).strip()
+    image_scene  = str(form.get("image_scene", "")).strip()
 
     items = _load_fsn_queue()
     item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
@@ -1647,6 +1649,9 @@ async def pipeline_queue_apply_angle(request: Request, user: dict = Depends(requ
     if caption_lead:
         caps = item["draft"].setdefault("captions", {})
         caps["short"] = caption_lead
+    if image_scene:
+        item["draft"]["image_scene"] = image_scene
+        item["scene"] = image_scene
     item["chosen_angle_type"] = angle_type
     _save_fsn_queue(items)
     return {"ok": True}
