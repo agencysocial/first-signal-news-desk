@@ -322,6 +322,19 @@ TIER_MINUTES = {
     "low": POLL_MINUTES_LOW,
 }
 
+# Source types that must never go through collect_source's RSS/Atom fetch
+# path. twitter_manual sources are auto-created by app/collectors/twitter_manual.py
+# with .url set to the author's profile page (not a feed) -- collect_source
+# was never guarded against this, so poll_tier, run_full_scan, and the
+# per-source "Fetch now" button were all silently attempting to parse a
+# Twitter profile page as RSS/XML on every scan (real operator-reported
+# symptom: "Daily Mail US (X)", "jack (X)", "folkhero (X)" showing
+# "parse failed: not well-formed (invalid token)" in the Source errors
+# panel). The comment on twitter_manual.py's Source creation already said
+# "not actually polled -- capture is manual/on-demand", but nothing
+# actually enforced that anywhere until now.
+NON_POLLABLE_SOURCE_TYPES = {"twitter_manual"}
+
 # Editor-settable statuses (per spec, only New->Developing is automatic).
 VALID_STATUSES = {
     "New", "Developing", "Breaking", "Trending", "Watchlist",
@@ -383,7 +396,10 @@ def poll_tier(tier: str):
     session = SessionLocal()
     try:
         sources = session.execute(
-            select(Source).where(Source.enabled.is_(True), Source.polling_tier == tier)
+            select(Source).where(
+                Source.enabled.is_(True), Source.polling_tier == tier,
+                Source.type.notin_(NON_POLLABLE_SOURCE_TYPES),
+            )
         ).scalars().all()
         for source in sources:
             stats = collect_source(session, source)
@@ -401,7 +417,11 @@ def run_full_scan():
     sources_scanned = 0
     sources_failed = 0
     try:
-        sources = session.execute(select(Source).where(Source.enabled.is_(True))).scalars().all()
+        sources = session.execute(
+            select(Source).where(
+                Source.enabled.is_(True), Source.type.notin_(NON_POLLABLE_SOURCE_TYPES),
+            )
+        ).scalars().all()
         for source in sources:
             stats = collect_source(session, source)
             sources_scanned += 1
@@ -1005,6 +1025,11 @@ def fetch_source_now(source_id: int, user: dict = Depends(require_user)):
         source = session.get(Source, source_id)
         if not source:
             return HTMLResponse("<h1>Not found</h1>", status_code=404)
+        if source.type in NON_POLLABLE_SOURCE_TYPES:
+            return RedirectResponse(
+                "/sources?msg=This+source+type+is+manual-capture+only+--+it+has+no+feed+to+fetch",
+                status_code=303,
+            )
         stats = collect_source(session, source)
         if stats["error"]:
             msg = f"Fetch failed: {stats['error']}"
