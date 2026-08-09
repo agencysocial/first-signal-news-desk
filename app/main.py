@@ -434,6 +434,69 @@ def health():
         session.close()
 
 
+@app.get("/api/handoffs")
+def api_handoffs(request: Request):
+    """Return all sent-handoff clusters as JSON for the local FSN pipeline.
+    Reads from the database (Supabase) so data survives server restarts.
+    Protected by X-Pipeline-Key header matching PIPELINE_API_KEY env var."""
+    from app.config import PIPELINE_API_KEY
+    key = request.headers.get("X-Pipeline-Key", "")
+    if not PIPELINE_API_KEY or key != PIPELINE_API_KEY:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    session = SessionLocal()
+    try:
+        clusters = session.execute(
+            select(StoryCluster).where(StoryCluster.handoff_sent_at.is_not(None))
+            .order_by(StoryCluster.handoff_sent_at.desc())
+            .limit(200)
+        ).scalars().all()
+
+        records = []
+        for cluster in clusters:
+            links = session.execute(
+                select(StoryClusterArticle).where(
+                    StoryClusterArticle.cluster_id == cluster.id)
+            ).scalars().all()
+            article_ids = [l.normalized_article_id for l in links]
+            articles = session.execute(
+                select(NormalizedArticle).where(NormalizedArticle.id.in_(article_ids))
+            ).scalars().all()
+
+            records.append({
+                "cluster_id": cluster.id,
+                "canonical_headline": cluster.canonical_headline,
+                "category": cluster.category,
+                "status": cluster.status,
+                "verification_status": cluster.verification_status,
+                "scores": {
+                    "viral_score_preliminary": cluster.viral_score,
+                    "confidence_score": cluster.confidence_score,
+                    "momentum_score": cluster.momentum_score,
+                },
+                "entities": json.loads(cluster.entities or "[]"),
+                "keywords": json.loads(cluster.keywords or "[]"),
+                "location": cluster.location,
+                "first_detected_at": cluster.first_detected_at.isoformat() if cluster.first_detected_at else None,
+                "latest_update_at": cluster.latest_update_at.isoformat() if cluster.latest_update_at else None,
+                "sources": [
+                    {
+                        "source_name": a.source.name if a.source else None,
+                        "headline": a.raw_article.headline if a.raw_article else a.normalized_headline,
+                        "url": a.canonical_url,
+                        "tier": a.source_tier,
+                        "published_at": a.published_at.isoformat() if a.published_at else None,
+                    }
+                    for a in articles
+                ],
+                "handoff_sent_at": cluster.handoff_sent_at.isoformat(),
+            })
+        return {"handoffs": records}
+    finally:
+        session.close()
+
+
 def _wire_response(
     *, msg, sort, category, status, verification, source_id, window,
     min_viral, min_confidence, exclude_covered, page_title, base_path,
@@ -761,10 +824,12 @@ def handoff(cluster_id: int, user: dict = Depends(require_user)):
             select(NormalizedArticle).where(NormalizedArticle.id.in_(article_ids))
         ).scalars().all()
 
-        path = write_handoff(cluster, articles)
+        write_handoff(cluster, articles)
         cluster.handoff_sent_at = datetime.now(timezone.utc)
         session.commit()
-        return RedirectResponse(f"/stories/{cluster_id}?msg=Handoff+written+to+{path}", status_code=303)
+        return RedirectResponse(
+            f"/stories/{cluster_id}?msg=Sent+to+First+Signal+Pipeline", status_code=303
+        )
     finally:
         session.close()
 

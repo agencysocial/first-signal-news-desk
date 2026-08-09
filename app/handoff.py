@@ -7,8 +7,12 @@ the story data an editor decided is worth pushing downstream.
 import json
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 
-HANDOFF_DIR = "handoff"
+# Always write relative to the aim-news-desk root (parent of this file's package),
+# regardless of the server's working directory.
+_AIM_ROOT = Path(__file__).resolve().parent.parent
+HANDOFF_DIR = str(_AIM_ROOT / "handoff")
 
 
 def write_handoff(cluster, articles: list) -> str:

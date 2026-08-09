@@ -41,6 +41,11 @@ SESSION_SECRET = _clean_secret("SESSION_SECRET")
 # Phase 3: AI-assisted viral sub-scores
 ANTHROPIC_API_KEY = _clean_secret("ANTHROPIC_API_KEY")
 
+# Pipeline handoff API key — used by the local FSN pipeline to fetch handoffs
+# from the deployed server. Set the same value in both the server .env and
+# in the FSN pipeline .env as PIPELINE_API_KEY.
+PIPELINE_API_KEY = _clean_secret("PIPELINE_API_KEY")
+
 # Near-duplicate thresholds (Level 2 dedup). Tune against real data later;
 # these are deliberately conservative (biased toward false negatives per spec).
 HEADLINE_JACCARD_THRESHOLD = 0.6
