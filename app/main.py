@@ -3,15 +3,17 @@ import logging
 import subprocess
 import sys
 import threading
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text as _sql_text
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth import NotAuthenticated, get_user_role, require_user, verify_password_login
@@ -38,6 +40,83 @@ _FSN_PICKS_PATH  = _FSN_ROOT / "memory" / "approved_picks.json"
 _FSN_JOB_PATH    = _FSN_ROOT / "memory" / "batch_job.json"
 _batch_lock = threading.Lock()
 
+# ── Kie.ai cloud image generation ─────────────────────────────────────────────
+_KIE_CREATE = "https://api.kie.ai/api/v1/jobs/createTask"
+_KIE_RECORD = "https://api.kie.ai/api/v1/jobs/recordInfo"
+_KIE_MODEL  = "gpt-image-2-image-to-image"
+_KIE_POLL_INTERVAL = 5
+_KIE_POLL_TIMEOUT  = 600  # 10 min
+
+_ANTI_SLOP = (
+    "Candid Associated Press / Reuters wire-service photograph (NOT a cinematic poster, "
+    "NOT stylized, NOT stock). Shot on a Canon EOS R5 with a 35-50mm prime lens at f/2.8-f/4, "
+    "ISO 400-1600, raw documentary photojournalism style. Subject expression is ORDINARY and "
+    "unposed. NO dramatic rim-light, NO cinematic grade. The image must look like it was pulled "
+    "from a real newspaper, NOT generated."
+)
+
+
+def _get_kie_key() -> str | None:
+    key = __import__("os").environ.get("KIE_AI_API_KEY", "").strip()
+    if key and not key.startswith("YOUR_"):
+        return key
+    env_path = _FSN_ROOT / ".env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("KIE_AI_API_KEY="):
+                v = line.split("=", 1)[1].strip()
+                if v and not v.startswith("YOUR_"):
+                    return v
+    return None
+
+
+def _build_image_prompt(headline: str, tag: str, scene: str) -> str:
+    return (
+        f"A 4:5 vertical First Signal News breaking-news share card. "
+        f"UPPER TWO-THIRDS is the photo: {scene}. {_ANTI_SLOP} "
+        f"LOWER THIRD is a solid flat BLACK footer panel. Inside the footer, a small bright RED "
+        f"rectangular tag box with the label \"{tag}\" in bold white uppercase. Directly below it, "
+        f"the headline \"{headline}\" in BOLD BRIGHT YELLOW uppercase modern sans-serif (Montserrat), "
+        f"left-aligned, wrapped over 2-4 lines. Footer contains ONLY those two text elements. "
+        f"No watermark, no channel name, no URL anywhere. Flat 2D text, no drop shadows. "
+        f"4:5 vertical portrait, photorealistic, sharp, magazine-quality."
+    )
+
+
+def _kie_submit(prompt: str, key: str) -> str:
+    body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": "4:5", "resolution": "1K"}}
+    r = httpx.post(_KIE_CREATE, headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                   json=body, timeout=60)
+    r.raise_for_status()
+    payload = r.json()
+    if payload.get("code") != 200:
+        raise RuntimeError(f"Kie createTask: code={payload.get('code')} msg={payload.get('msg')}")
+    task_id = (payload.get("data") or {}).get("taskId")
+    if not task_id:
+        raise RuntimeError(f"Kie createTask: no taskId in {payload}")
+    return task_id
+
+
+def _kie_poll(task_id: str, key: str) -> str:
+    deadline = time.time() + _KIE_POLL_TIMEOUT
+    while time.time() < deadline:
+        r = httpx.get(f"{_KIE_RECORD}?taskId={task_id}",
+                      headers={"Authorization": f"Bearer {key}"}, timeout=30)
+        r.raise_for_status()
+        data = (r.json().get("data") or {})
+        state = data.get("state")
+        if state == "success":
+            raw = data.get("resultJson")
+            parsed = json.loads(raw) if isinstance(raw, str) else (raw or {})
+            urls = parsed.get("resultUrls") or []
+            if not urls:
+                raise RuntimeError("Kie: success but no resultUrls")
+            return urls[0]
+        if state == "fail":
+            raise RuntimeError(f"Kie task failed: {data.get('failMsg')}")
+        time.sleep(_KIE_POLL_INTERVAL)
+    raise TimeoutError(f"Kie task {task_id} timed out after {_KIE_POLL_TIMEOUT}s")
+
 def _is_local() -> bool:
     """True when running on the local Windows machine (FSN pipeline exists)."""
     return _FSN_ROOT.exists()
@@ -62,8 +141,7 @@ def _load_fsn_queue() -> list[dict]:
             return json.loads(_FSN_QUEUE_PATH.read_text(encoding="utf-8"))
         except Exception:
             return []
-    # Running on deployed server (no local FSN path) — build queue from DB.
-    # Shows all clusters where "Send to First Signal Pipeline" was clicked.
+    # Running on deployed server — build queue from DB.
     session = SessionLocal()
     try:
         clusters = session.execute(
@@ -71,8 +149,6 @@ def _load_fsn_queue() -> list[dict]:
             .order_by(StoryCluster.handoff_sent_at.desc())
             .limit(200)
         ).scalars().all()
-        # Load article URLs for each cluster so Preview button has a URL
-        from sqlalchemy import text as _text
         cluster_ids = [c.id for c in clusters]
         url_map: dict[int, str] = {}
         if cluster_ids:
@@ -88,7 +164,14 @@ def _load_fsn_queue() -> list[dict]:
         items = []
         for c in clusters:
             url = url_map.get(c.id, "")
-            items.append({
+            # Merge persisted FSN production state from DB
+            fsn = {}
+            if c.fsn_state:
+                try:
+                    fsn = json.loads(c.fsn_state)
+                except Exception:
+                    pass
+            item = {
                 "cluster_id": c.id,
                 "text": c.canonical_headline or "",
                 "category": c.category or "general",
@@ -97,20 +180,47 @@ def _load_fsn_queue() -> list[dict]:
                 "entities": json.loads(c.entities or "[]"),
                 "keywords": json.loads(c.keywords or "[]"),
                 "verification_status": c.verification_status or "unverified",
-                "queue_status": "pending",
+                "queue_status": fsn.get("queue_status", "pending"),
+                "post_type": fsn.get("post_type", "image_card"),
+                "approved_at": fsn.get("approved_at", ""),
                 "added_to_queue_at": c.handoff_sent_at.isoformat() if c.handoff_sent_at else "",
                 "post_url": url,
                 "sources": [{"url": url}] if url else [],
-                "draft": None,
+                "draft": fsn.get("draft"),
+                "tobi_text": fsn.get("tobi_text"),
+                "generated_image_url": fsn.get("generated_image_url"),
+                "image_gen_status": fsn.get("image_gen_status", ""),
                 "_source": "newsdesk_handoff",
-            })
+            }
+            items.append(item)
         return items
     finally:
         session.close()
 
+
 def _save_fsn_queue(items: list[dict]) -> None:
-    _FSN_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _FSN_QUEUE_PATH.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
+    if _FSN_QUEUE_PATH.exists() or _is_local():
+        _FSN_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _FSN_QUEUE_PATH.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
+        return
+    # On Render: persist FSN state to DB so changes survive redeploys.
+    _FSN_STATE_KEYS = {"queue_status", "post_type", "draft", "approved_at",
+                       "generated_image_url", "image_gen_status", "tobi_text", "output_file"}
+    session = SessionLocal()
+    try:
+        for item in items:
+            cid = item.get("cluster_id")
+            if not cid:
+                continue
+            fsn = {k: item[k] for k in _FSN_STATE_KEYS if k in item}
+            c = session.get(StoryCluster, int(cid))
+            if c:
+                c.fsn_state = json.dumps(fsn, ensure_ascii=False)
+        session.commit()
+    except Exception:
+        session.rollback()
+    finally:
+        session.close()
 
 def _read_picks() -> dict | None:
     if not _FSN_PICKS_PATH.exists():
@@ -447,6 +557,17 @@ def run_full_scan():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Add fsn_state column if it doesn't exist (idempotent — PostgreSQL IF NOT EXISTS).
+    from app.db import engine as _engine
+    try:
+        with _engine.connect() as _conn:
+            _conn.execute(_sql_text(
+                "ALTER TABLE story_clusters ADD COLUMN IF NOT EXISTS fsn_state TEXT"
+            ))
+            _conn.commit()
+    except Exception as _e:
+        logger.warning("fsn_state migration skipped: %s", _e)
+
     for tier, minutes in TIER_MINUTES.items():
         scheduler.add_job(
             poll_tier, "interval", minutes=minutes, args=[tier],
@@ -1321,14 +1442,74 @@ def pipeline_queue_batch_status(user: dict = Depends(require_user)):
     })
 
 
+def _generate_cloud_images_background(cluster_ids: list) -> None:
+    """Generate images via Kie.ai REST API — runs on Render (no local filesystem needed)."""
+    key = _get_kie_key()
+    if not key:
+        logger.error("cloud image gen: KIE_AI_API_KEY not set in environment")
+        return
+
+    for cid in cluster_ids:
+        items = _load_fsn_queue()
+        item = next((x for x in items if str(x.get("cluster_id")) == str(cid)), None)
+        if not item:
+            continue
+
+        draft = item.get("draft") or {}
+        headline = draft.get("headline") or item.get("text") or ""
+        tag = draft.get("tag") or "BREAKING NEWS"
+        scene = draft.get("image_scene") or "United States Capitol building exterior, wide establishing shot"
+
+        # Mark as generating
+        item["image_gen_status"] = "generating"
+        _save_fsn_queue(items)
+
+        try:
+            prompt = _build_image_prompt(headline, tag, scene)
+            task_id = _kie_submit(prompt, key)
+            result_url = _kie_poll(task_id, key)
+            item["generated_image_url"] = result_url
+            item["image_gen_status"] = "done"
+        except Exception as exc:
+            item["image_gen_status"] = f"error: {exc}"
+            logger.error("cloud image gen cluster %s: %s", cid, exc)
+
+        # Reload to get latest state, then update this item
+        items = _load_fsn_queue()
+        for i, x in enumerate(items):
+            if str(x.get("cluster_id")) == str(cid):
+                items[i]["generated_image_url"] = item.get("generated_image_url")
+                items[i]["image_gen_status"] = item["image_gen_status"]
+                break
+        _save_fsn_queue(items)
+
+
 @app.post("/pipeline-queue/run-batch")
 def pipeline_queue_run_batch(background_tasks: BackgroundTasks, user: dict = Depends(require_user)):
-    """Fire the full generation pipeline as a background task."""
-    if not _is_local():
+    """Generate images — uses Kie.ai REST on Render, local subprocess on Windows."""
+    items = _load_fsn_queue()
+    approved_image_cards = [
+        x for x in items
+        if x.get("queue_status") == "approved" and x.get("post_type", "image_card") == "image_card"
+    ]
+
+    if not approved_image_cards:
         return RedirectResponse(
-            "/pipeline-queue?msg=Image+generation+runs+locally+only.+Open+Claude+Code+on+your+Windows+machine+and+run+%2Fbatch",
+            "/pipeline-queue?msg=No+image+cards+approved.+Select+stories+and+click+Send+to+Generation+first.",
             status_code=303,
         )
+
+    if not _is_local():
+        # Cloud path: call Kie.ai directly from the server
+        cluster_ids = [str(x["cluster_id"]) for x in approved_image_cards]
+        background_tasks.add_task(_generate_cloud_images_background, cluster_ids)
+        n = len(cluster_ids)
+        return RedirectResponse(
+            f"/pipeline-queue?msg=Generating+{n}+image+card(s)+via+Kie.ai+—+refresh+in+60-90+seconds",
+            status_code=303,
+        )
+
+    # Local path: existing subprocess flow
     with _batch_lock:
         if _read_job().get("status") == "running":
             return RedirectResponse("/pipeline-queue?msg=Generation+already+running", status_code=303)

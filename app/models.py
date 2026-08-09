@@ -147,6 +147,10 @@ class StoryCluster(Base):
     handoff_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     covered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # FSN Production Queue state — JSON blob persisted to DB so cloud team edits survive redeploys.
+    # Stores: queue_status, post_type, draft, approved_at, generated_image_url, image_gen_status, tobi_text.
+    fsn_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

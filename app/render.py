@@ -733,6 +733,27 @@ def render_pipeline_queue_page(
                     f'border:1px solid #2a3555;border-radius:4px;font-size:12px"></div>'
                 )
 
+            # Generated image display
+            gen_img_url = item.get("generated_image_url") or ""
+            gen_status  = item.get("image_gen_status") or ""
+            gen_img_html = ""
+            if gen_img_url:
+                gen_img_html = (
+                    f'<div style="margin-top:10px">'
+                    f'<div style="color:#4ade80;font-size:10px;margin-bottom:4px">&#9989; Generated</div>'
+                    f'<a href="{escape(gen_img_url)}" target="_blank">'
+                    f'<img src="{escape(gen_img_url)}" alt="generated card"'
+                    f' style="max-width:200px;width:100%;border-radius:4px;display:block;border:1px solid #2a3555">'
+                    f'</a>'
+                    f'<div style="margin-top:4px"><a href="{escape(gen_img_url)}" target="_blank" '
+                    f'style="color:#60a5fa;font-size:10px">Open full image</a></div>'
+                    f'</div>'
+                )
+            elif gen_status == "generating":
+                gen_img_html = '<div style="margin-top:8px;color:#facc15;font-size:11px">&#9203; Generating image... (refresh in 60-90s)</div>'
+            elif gen_status.startswith("error:"):
+                gen_img_html = f'<div style="margin-top:8px;color:#f87171;font-size:10px">&#9888; {escape(gen_status)}</div>'
+
             rows.append(f"""
       <tr>
         <td style="width:28px">{check}</td>
@@ -741,6 +762,7 @@ def render_pipeline_queue_page(
           <div style="color:#8b93a3;font-size:11px;margin-top:3px">{cat} &middot; {srcs} source(s) &middot; added {added}</div>
           <div style="margin-top:4px">{badges}</div>
           {draft_html}{angles_btn}{preview_btn}
+          {gen_img_html}
         </td>
         <td>{ai_score_cell(item)}</td>
         <td>{verif_badge(verif)}</td>
@@ -1723,5 +1745,8 @@ function toggleHist(id) {
   {approved_section}
   {history_section}
 """
-    head = _page_head(extra_meta='<meta http-equiv="refresh" content="30">')
+    # Refresh every 15s when images are generating, 30s otherwise
+    any_generating = any(x.get("image_gen_status") == "generating" for x in items)
+    refresh_secs = 15 if any_generating else 30
+    head = _page_head(extra_meta=f'<meta http-equiv="refresh" content="{refresh_secs}">')
     return head + body + PAGE_TAIL
