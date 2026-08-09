@@ -955,6 +955,7 @@ def sources_list(user: dict = Depends(require_user)):
             "credibility_tier": s.credibility_tier,
             "polling_tier": s.polling_tier,
             "enabled": s.enabled,
+            "user_agent": s.user_agent,
             "last_fetch_at": s.last_fetch_at.strftime("%Y-%m-%d %H:%M UTC") if s.last_fetch_at else "never",
             "last_error": s.last_error,
         } for s in rows]
@@ -1002,6 +1003,7 @@ def update_source(
     polling_tier: str = Form(...),
     category: str = Form(""),
     enabled: bool = Form(False),
+    user_agent: str = Form(""),
 ):
     session = SessionLocal()
     try:
@@ -1012,6 +1014,7 @@ def update_source(
         source.polling_tier = polling_tier
         source.category = category or None
         source.enabled = enabled
+        source.user_agent = user_agent.strip() or None
         session.commit()
         return RedirectResponse("/sources?msg=Source+updated", status_code=303)
     finally:

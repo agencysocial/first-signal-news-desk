@@ -24,6 +24,14 @@ class Source(Base):
     credibility_tier: Mapped[int] = mapped_column(Integer, default=3)  # 1 (official) - 5 (unverified)
     polling_tier: Mapped[str] = mapped_column(String(20), default="standard")  # priority|standard|low
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Per-source User-Agent override. Null = use the shared default in
+    # app/collectors/rss.py. Found live that different sites' bot-detection
+    # actively disagrees with each other: Politico previously 403'd the
+    # default feedparser UA and needed a browser UA to work; Newsmax does
+    # the opposite -- it hangs specifically when the shared browser UA is
+    # used (confirmed 3/3 live requests) but responds instantly to a plain
+    # UA. One shared UA can't satisfy both, so this is per-source.
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_fetch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

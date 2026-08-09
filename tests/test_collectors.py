@@ -12,7 +12,7 @@ class FakeEntry(dict):
 def test_collect_source_handles_malformed_feed_gracefully(monkeypatch, session, make_source):
     source = make_source(name="Broken Feed")
 
-    def fake_fetch(url):
+    def fake_fetch(url, user_agent=None):
         return SimpleNamespace(entries=[], bozo=True, bozo_exception=Exception("not well-formed"))
 
     monkeypatch.setattr(rss_module, "_fetch_feed", fake_fetch)
@@ -27,7 +27,7 @@ def test_collect_source_handles_malformed_feed_gracefully(monkeypatch, session, 
 def test_collect_source_handles_network_exception_without_raising(monkeypatch, session, make_source):
     source = make_source(name="Unreachable Feed")
 
-    def raising_fetch(url):
+    def raising_fetch(url, user_agent=None):
         raise ConnectionError("could not connect")
 
     monkeypatch.setattr(rss_module, "_fetch_feed", raising_fetch)
@@ -50,7 +50,7 @@ def test_collect_source_handles_slow_source_via_timeout_not_a_hang(monkeypatch, 
     """
     source = make_source(name="Slow Feed")
 
-    def timing_out_fetch(url):
+    def timing_out_fetch(url, user_agent=None):
         raise socket.timeout("timed out")
 
     monkeypatch.setattr(rss_module, "_fetch_feed", timing_out_fetch)
@@ -71,7 +71,7 @@ def test_collect_source_inserts_and_clusters_valid_entries(monkeypatch, session,
                   summary="Another summary.", author=None, id="guid-2", published_parsed=None),
     ]
 
-    def fake_fetch(url):
+    def fake_fetch(url, user_agent=None):
         return SimpleNamespace(entries=entries, bozo=False)
 
     monkeypatch.setattr(rss_module, "_fetch_feed", fake_fetch)
@@ -89,7 +89,7 @@ def test_collect_source_skips_already_collected_urls(monkeypatch, session, make_
     entry = FakeEntry(link="https://example.com/same", title="Same story every time",
                        summary=None, author=None, id="guid-1", published_parsed=None)
 
-    def fake_fetch(url):
+    def fake_fetch(url, user_agent=None):
         return SimpleNamespace(entries=[entry], bozo=False)
 
     monkeypatch.setattr(rss_module, "_fetch_feed", fake_fetch)
@@ -99,3 +99,41 @@ def test_collect_source_skips_already_collected_urls(monkeypatch, session, make_
 
     assert first_stats["inserted"] == 1
     assert second_stats["inserted"] == 0  # already collected this raw URL from this source
+
+
+def test_collect_source_passes_per_source_user_agent_override(monkeypatch, session, make_source):
+    """Regression test: Newsmax hangs specifically on the shared browser UA
+    (confirmed live, 3/3 requests) but responds instantly to a plain UA --
+    Politico needs the opposite. One shared UA can't satisfy both, so
+    collect_source must pass the source's own override through when set."""
+    source = make_source(name="Newsmax Politics")
+    source.user_agent = "plain-ua/1.0"
+
+    captured = {}
+
+    def fake_fetch(url, user_agent=None):
+        captured["user_agent"] = user_agent
+        return SimpleNamespace(entries=[], bozo=False)
+
+    monkeypatch.setattr(rss_module, "_fetch_feed", fake_fetch)
+    rss_module.collect_source(session, source)
+
+    assert captured["user_agent"] == "plain-ua/1.0"
+
+
+def test_collect_source_passes_none_when_no_override_set(monkeypatch, session, make_source):
+    """No override configured -- _fetch_feed must receive None so it falls
+    back to the shared default UA, not silently break every other source."""
+    source = make_source(name="Ordinary Feed")
+    assert source.user_agent is None
+
+    captured = {}
+
+    def fake_fetch(url, user_agent=None):
+        captured["user_agent"] = user_agent
+        return SimpleNamespace(entries=[], bozo=False)
+
+    monkeypatch.setattr(rss_module, "_fetch_feed", fake_fetch)
+    rss_module.collect_source(session, source)
+
+    assert captured["user_agent"] is None

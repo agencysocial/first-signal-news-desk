@@ -31,15 +31,19 @@ _USER_AGENT = (
 )
 
 
-def _fetch_feed(url: str):
+def _fetch_feed(url: str, user_agent: str | None = None):
     """feedparser.parse(url) has no built-in network timeout -- it can hang
     on a slow/unresponsive server for as long as the OS socket timeout
     allows (observed: several minutes on Windows, WinError 10060), which
     blocks every other source queued behind it in the same scan. Fetch with
     an explicit bounded timeout, then hand the bytes to feedparser -- it
     never touches the network itself this way.
+
+    user_agent overrides the shared default for one source -- see
+    Source.user_agent's docstring for why this needs to be per-source
+    rather than one value for every feed.
     """
-    req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent or _USER_AGENT})
     with urllib.request.urlopen(req, timeout=FEED_FETCH_TIMEOUT_SECONDS) as resp:
         return feedparser.parse(resp.read())
 
@@ -64,7 +68,7 @@ def collect_source(session: Session, source: Source) -> dict:
     stats = {"fetched": 0, "inserted": 0, "duplicates": 0, "canonical": 0, "error": None}
 
     try:
-        parsed = _fetch_feed(source.url)
+        parsed = _fetch_feed(source.url, user_agent=source.user_agent)
     except Exception as exc:  # network / parser failure
         source.last_error = f"fetch failed: {exc}"
         source.last_fetch_at = datetime.now(timezone.utc)

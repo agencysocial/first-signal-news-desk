@@ -491,6 +491,7 @@ def render_sources_page(sources: list[dict]) -> str:
             <input type="text" name="category" value="{escape(s['category'] or '')}" style="width:90px" placeholder="category">
             <select name="credibility_tier">{tier_options}</select>
             <select name="polling_tier">{polling_options}</select>
+            <input type="text" name="user_agent" value="{escape(s.get('user_agent') or '')}" style="width:110px" placeholder="UA override (blank=default)">
             <label><input type="checkbox" name="enabled" value="true" {"checked" if s['enabled'] else ""}> enabled</label>
             <button type="submit">Save</button>
           </form>
