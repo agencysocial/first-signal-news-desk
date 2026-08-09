@@ -711,6 +711,47 @@ def render_pipeline_queue_page(
                 check = ""
 
             draft_html = draft_toggle(cid, draft, item) if selectable else ""
+
+            # Story panel for approved (non-selectable) rows — shows headline, tag, captions, first comment
+            story_panel_html = ""
+            if not selectable and draft:
+                hl  = escape((draft.get("headline") or "")[:160])
+                tg  = escape(draft.get("tag") or "")
+                fc  = escape(draft.get("first_comment") or "")
+                caps = draft.get("captions") or {}
+                c_short = escape(caps.get("short") or "")
+                c_med   = escape(caps.get("medium") or "")
+                c_long  = escape(caps.get("long") or "")
+                c_xl    = escape(caps.get("extra_long") or "")
+                scene   = escape(draft.get("image_scene") or "")
+                inner = ""
+                if tg:
+                    inner += f'<div style="display:inline-block;background:#D02020;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;margin-bottom:6px">{tg}</div>'
+                if hl:
+                    inner += f'<div style="color:#FFDE59;font-size:13px;font-weight:700;margin-bottom:6px">{hl}</div>'
+                if scene:
+                    inner += f'<div style="color:#60a5fa;font-size:10px;margin-bottom:8px">&#128247; Scene: {scene}</div>'
+                if c_short:
+                    inner += f'<div style="margin-bottom:6px"><span style="color:#8b93a3;font-size:10px">SHORT:</span> <span style="color:#c0c8d8;font-size:11px">{c_short}</span></div>'
+                if c_med:
+                    inner += f'<div style="margin-bottom:6px"><span style="color:#8b93a3;font-size:10px">MEDIUM:</span> <span style="color:#c0c8d8;font-size:11px">{c_med}</span></div>'
+                if c_long:
+                    inner += f'<div style="margin-bottom:6px"><span style="color:#8b93a3;font-size:10px">LONG:</span> <span style="color:#c0c8d8;font-size:11px">{c_long}</span></div>'
+                if c_xl:
+                    inner += f'<div style="margin-bottom:6px"><span style="color:#8b93a3;font-size:10px">XL:</span> <span style="color:#c0c8d8;font-size:11px">{c_xl}</span></div>'
+                if fc:
+                    inner += f'<div style="border-top:1px solid #1a1f2b;padding-top:6px;margin-top:4px"><span style="color:#8b93a3;font-size:10px">FIRST COMMENT:</span> <span style="color:#c0c8d8;font-size:11px">{fc}</span></div>'
+                if inner:
+                    story_panel_html = (
+                        f'<div style="margin-top:6px">'
+                        f'<button type="button" onclick="toggleStory(\'{cid}\')" '
+                        f'style="font-size:10px;padding:2px 8px;background:#0a1020;border:1px solid #2a3555;'
+                        f'color:#c0c8d8;cursor:pointer;border-radius:3px">&#128196; Story &amp; Captions</button>'
+                        f'<div id="story-{cid}" style="display:none;margin-top:8px;padding:10px;'
+                        f'background:#060910;border:1px solid #1a1f2b;border-radius:4px">{inner}</div>'
+                        f'</div>'
+                    )
+
             angles_btn = (
                 f'<button type="button" onclick="expandAngles({cid},this)" '
                 f'style="font-size:10px;padding:2px 7px;margin-top:4px;margin-left:4px;background:#0a1020;'
@@ -761,7 +802,7 @@ def render_pipeline_queue_page(
           <div style="font-size:13px;font-weight:500;line-height:1.4">{text}</div>
           <div style="color:#8b93a3;font-size:11px;margin-top:3px">{cat} &middot; {srcs} source(s) &middot; added {added}</div>
           <div style="margin-top:4px">{badges}</div>
-          {draft_html}{angles_btn}{preview_btn}
+          {draft_html}{story_panel_html}{angles_btn}{preview_btn}
           {gen_img_html}
         </td>
         <td>{ai_score_cell(item)}</td>
@@ -775,6 +816,11 @@ def render_pipeline_queue_page(
 function toggleDraft(cid) {
   var el = document.getElementById('draft-' + cid);
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleStory(cid) {
+  var el = document.getElementById('story-' + cid);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 function pickHeadline(cid, idx, btn) {
