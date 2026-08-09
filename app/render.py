@@ -573,7 +573,15 @@ def render_pipeline_queue_page(
 
     def draft_toggle(cid, draft, item=None):
         if not draft:
-            return ""
+            return (
+                f'<button type="button" onclick="toggleDraft({cid})" '
+                f'style="font-size:10px;padding:2px 7px;margin-top:4px;background:#1a2030;border:1px solid #2a3555;color:#8b93a3;cursor:pointer">'
+                f'&#9998; Draft</button>'
+                f'<div id="draft-{cid}" style="display:none;margin-top:8px;padding:10px;background:#0d111a;'
+                f'border:1px solid #2a3555;border-radius:4px;font-size:12px;color:#8b93a3">'
+                f'No draft yet. Run <strong>&#9998; Draft Queue</strong> above to auto-generate.'
+                f'</div>'
+            )
         hl      = escape((draft.get("headline") or "")[:100])
         tag     = escape(draft.get("tag") or "")
         cap     = escape((draft.get("captions") or {}).get("short") or "")

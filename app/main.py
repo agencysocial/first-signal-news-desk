@@ -66,8 +66,23 @@ def _load_fsn_queue() -> list[dict]:
             .order_by(StoryCluster.handoff_sent_at.desc())
             .limit(200)
         ).scalars().all()
+        # Load article URLs for each cluster so Preview button has a URL
+        from sqlalchemy import text as _text
+        cluster_ids = [c.id for c in clusters]
+        url_map: dict[int, str] = {}
+        if cluster_ids:
+            rows = session.execute(
+                select(StoryClusterArticle.cluster_id, NormalizedArticle.canonical_url)
+                .join(NormalizedArticle, NormalizedArticle.id == StoryClusterArticle.normalized_article_id)
+                .where(StoryClusterArticle.cluster_id.in_(cluster_ids))
+            ).all()
+            for cluster_id, url in rows:
+                if cluster_id not in url_map and url:
+                    url_map[cluster_id] = url
+
         items = []
         for c in clusters:
+            url = url_map.get(c.id, "")
             items.append({
                 "cluster_id": c.id,
                 "text": c.canonical_headline or "",
@@ -79,7 +94,8 @@ def _load_fsn_queue() -> list[dict]:
                 "verification_status": c.verification_status or "unverified",
                 "queue_status": "pending",
                 "added_to_queue_at": c.handoff_sent_at.isoformat() if c.handoff_sent_at else "",
-                "sources": [],
+                "post_url": url,
+                "sources": [{"url": url}] if url else [],
                 "draft": None,
                 "_source": "newsdesk_handoff",
             })
