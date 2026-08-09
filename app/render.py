@@ -839,6 +839,21 @@ function expandAngles(cid, btn) {
         html += '</div>';
       });
       panel._angles = angles;
+      html += '<div style="margin-top:10px;padding:8px;background:#060910;border-radius:4px;border-left:3px solid #8b5cf6">';
+      html += '<div style="color:#8b5cf6;font-size:10px;text-transform:uppercase;font-weight:700;margin-bottom:6px">&#9998; Custom</div>';
+      html += '<div style="margin-bottom:4px"><label style="color:#8b93a3;font-size:10px">3-WORD TAG</label>'
+        + '<input id="custom-tag-' + cid + '" type="text" maxlength="40" placeholder="e.g. JUST IN" '
+        + 'style="display:block;width:100%;margin-top:2px;padding:4px 7px;background:#0d111a;border:1px solid #2a3555;'
+        + 'color:#fff;font-size:12px;border-radius:3px;box-sizing:border-box"></div>';
+      html += '<div style="margin-bottom:6px"><label style="color:#8b93a3;font-size:10px">MAIN HEADLINE</label>'
+        + '<input id="custom-hook-' + cid + '" type="text" maxlength="120" placeholder="Your headline here" '
+        + 'style="display:block;width:100%;margin-top:2px;padding:4px 7px;background:#0d111a;border:1px solid #2a3555;'
+        + 'color:#FFDE59;font-size:12px;border-radius:3px;box-sizing:border-box"></div>';
+      html += '<button type="button" onclick="useCustomAngle(' + cid + ',this)" '
+        + 'style="font-size:10px;padding:2px 8px;background:#0a0a1a;border:1px solid #5a3a9a;'
+        + 'color:#8b5cf6;cursor:pointer;border-radius:3px">&#10003; Use custom</button>';
+      html += '<span id="custom-angle-status-' + cid + '" style="margin-left:6px;font-size:10px;color:#8b93a3"></span>';
+      html += '</div>';
       panel.innerHTML = html;
     })
     .catch(function(){ panel.innerHTML = '<span style="color:#f87171">Request failed.</span>'; });
@@ -868,6 +883,36 @@ function useAngle(cid, idx, btn) {
       /* Update the headline display in the draft panel if open */
       var hl = document.getElementById('hl-' + cid);
       if (hl) hl.textContent = a.hook || '';
+    } else {
+      if (status) status.textContent = d.error || 'Error';
+      btn.disabled = false;
+    }
+  })
+  .catch(function(){ if (status) status.textContent = 'Failed'; btn.disabled = false; });
+}
+
+function useCustomAngle(cid, btn) {
+  var hook = (document.getElementById('custom-hook-' + cid) || {}).value || '';
+  var tag  = (document.getElementById('custom-tag-' + cid) || {}).value || '';
+  var status = document.getElementById('custom-angle-status-' + cid);
+  if (!hook.trim()) { if (status) status.textContent = 'Enter a headline first.'; return; }
+  btn.disabled = true;
+  if (status) status.textContent = 'Saving...';
+  fetch('/pipeline-queue/apply-angle', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'cluster_id=' + encodeURIComponent(cid)
+      + '&hook=' + encodeURIComponent(hook)
+      + '&tag=' + encodeURIComponent(tag)
+      + '&angle_type=custom'
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if (d.ok) {
+      if (status) status.textContent = 'Applied!';
+      var hl = document.getElementById('hl-' + cid);
+      if (hl) hl.textContent = hook;
+      btn.disabled = false;
     } else {
       if (status) status.textContent = d.error || 'Error';
       btn.disabled = false;
