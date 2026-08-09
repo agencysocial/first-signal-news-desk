@@ -38,6 +38,10 @@ _FSN_PICKS_PATH  = _FSN_ROOT / "memory" / "approved_picks.json"
 _FSN_JOB_PATH    = _FSN_ROOT / "memory" / "batch_job.json"
 _batch_lock = threading.Lock()
 
+def _is_local() -> bool:
+    """True when running on the local Windows machine (FSN pipeline exists)."""
+    return _FSN_ROOT.exists()
+
 def _get_anthropic_key() -> str | None:
     """Return ANTHROPIC_API_KEY from env var (Render) or FSN .env file (local)."""
     import os as _os
@@ -1145,9 +1149,12 @@ async def pipeline_queue_generate(request: Request, user: dict = Depends(require
     _save_fsn_queue(items)
 
     if action == "generate" and updated:
-        # Write approved_picks.json NOW so run-batch always has fresh content
-        picks = _build_picks_from_approved_queue()
-        msg = f"{updated} story(s) ready — click Generate Images Now"
+        if _is_local():
+            # Write approved_picks.json so run-batch has fresh content
+            _build_picks_from_approved_queue()
+            msg = f"{updated} story(s) approved — click Generate Images Now"
+        else:
+            msg = f"{updated} story(s) approved — to generate images open Claude Code locally and run /batch"
     elif action == "generate":
         msg = "No stories selected"
     else:
@@ -1317,6 +1324,11 @@ def pipeline_queue_batch_status(user: dict = Depends(require_user)):
 @app.post("/pipeline-queue/run-batch")
 def pipeline_queue_run_batch(background_tasks: BackgroundTasks, user: dict = Depends(require_user)):
     """Fire the full generation pipeline as a background task."""
+    if not _is_local():
+        return RedirectResponse(
+            "/pipeline-queue?msg=Image+generation+runs+locally+only.+Open+Claude+Code+on+your+Windows+machine+and+run+%2Fbatch",
+            status_code=303,
+        )
     with _batch_lock:
         if _read_job().get("status") == "running":
             return RedirectResponse("/pipeline-queue?msg=Generation+already+running", status_code=303)
