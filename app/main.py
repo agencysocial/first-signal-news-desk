@@ -198,14 +198,16 @@ def _load_fsn_queue() -> list[dict]:
         session.close()
 
 
+_FSN_STATE_KEYS = {"queue_status", "post_type", "draft", "approved_at",
+                   "generated_image_url", "image_gen_status", "tobi_text", "output_file"}
+
+
 def _save_fsn_queue(items: list[dict]) -> None:
-    if _FSN_QUEUE_PATH.exists() or _is_local():
+    if _is_local():
         _FSN_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
         _FSN_QUEUE_PATH.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
         return
     # On Render: persist FSN state to DB so changes survive redeploys.
-    _FSN_STATE_KEYS = {"queue_status", "post_type", "draft", "approved_at",
-                       "generated_image_url", "image_gen_status", "tobi_text", "output_file"}
     session = SessionLocal()
     try:
         for item in items:
@@ -219,6 +221,28 @@ def _save_fsn_queue(items: list[dict]) -> None:
         session.commit()
     except Exception:
         session.rollback()
+    finally:
+        session.close()
+
+
+def _update_cluster_fsn(cid: int | str, **kwargs) -> None:
+    """Patch specific FSN state fields for one cluster directly in DB. Fast, no full queue load."""
+    session = SessionLocal()
+    try:
+        c = session.get(StoryCluster, int(cid))
+        if c:
+            fsn: dict = {}
+            if c.fsn_state:
+                try:
+                    fsn = json.loads(c.fsn_state)
+                except Exception:
+                    pass
+            fsn.update(kwargs)
+            c.fsn_state = json.dumps(fsn, ensure_ascii=False)
+            session.commit()
+    except Exception as exc:
+        session.rollback()
+        logger.error("_update_cluster_fsn %s: %s", cid, exc)
     finally:
         session.close()
 
@@ -1456,46 +1480,51 @@ def pipeline_queue_batch_status(user: dict = Depends(require_user)):
     })
 
 
-def _generate_cloud_images_background(cluster_ids: list) -> None:
-    """Generate images via Kie.ai REST API — runs on Render (no local filesystem needed)."""
+def _generate_one_image(cid: str, key: str, item: dict) -> None:
+    """Generate image for a single cluster and update DB directly. Runs in a thread."""
+    draft = item.get("draft") or {}
+    headline = draft.get("headline") or item.get("text") or ""
+    tag      = draft.get("tag") or "BREAKING NEWS"
+    scene    = draft.get("image_scene") or "United States Capitol building exterior, wide establishing shot"
+    try:
+        prompt = _build_image_prompt(headline, tag, scene)
+        task_id = _kie_submit(prompt, key)
+        result_url = _kie_poll(task_id, key)
+        _update_cluster_fsn(cid, generated_image_url=result_url, image_gen_status="done")
+        logger.info("cloud image gen cluster %s: done -> %s", cid, result_url)
+    except Exception as exc:
+        _update_cluster_fsn(cid, image_gen_status=f"error: {exc}")
+        logger.error("cloud image gen cluster %s: %s", cid, exc)
+
+
+def _generate_cloud_images_background(cluster_ids: list, items_snapshot: list) -> None:
+    """Generate all images in parallel (up to 3 workers). Marks each as 'generating' first."""
     key = _get_kie_key()
     if not key:
-        logger.error("cloud image gen: KIE_AI_API_KEY not set in environment")
+        for cid in cluster_ids:
+            _update_cluster_fsn(cid, image_gen_status="error: KIE_AI_API_KEY not set on server")
+        logger.error("cloud image gen: KIE_AI_API_KEY not configured on Render")
         return
 
+    # Build lookup from snapshot so we don't reload the queue 4× at the start
+    item_map = {str(x.get("cluster_id")): x for x in items_snapshot}
+
+    # Mark all as generating immediately so the UI shows status on next refresh
     for cid in cluster_ids:
-        items = _load_fsn_queue()
-        item = next((x for x in items if str(x.get("cluster_id")) == str(cid)), None)
-        if not item:
-            continue
+        _update_cluster_fsn(cid, image_gen_status="generating")
 
-        draft = item.get("draft") or {}
-        headline = draft.get("headline") or item.get("text") or ""
-        tag = draft.get("tag") or "BREAKING NEWS"
-        scene = draft.get("image_scene") or "United States Capitol building exterior, wide establishing shot"
-
-        # Mark as generating
-        item["image_gen_status"] = "generating"
-        _save_fsn_queue(items)
-
-        try:
-            prompt = _build_image_prompt(headline, tag, scene)
-            task_id = _kie_submit(prompt, key)
-            result_url = _kie_poll(task_id, key)
-            item["generated_image_url"] = result_url
-            item["image_gen_status"] = "done"
-        except Exception as exc:
-            item["image_gen_status"] = f"error: {exc}"
-            logger.error("cloud image gen cluster %s: %s", cid, exc)
-
-        # Reload to get latest state, then update this item
-        items = _load_fsn_queue()
-        for i, x in enumerate(items):
-            if str(x.get("cluster_id")) == str(cid):
-                items[i]["generated_image_url"] = item.get("generated_image_url")
-                items[i]["image_gen_status"] = item["image_gen_status"]
-                break
-        _save_fsn_queue(items)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {
+            pool.submit(_generate_one_image, cid, key, item_map.get(cid, {})): cid
+            for cid in cluster_ids
+        }
+        for future in as_completed(futures):
+            cid = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                logger.error("image gen thread %s: %s", cid, exc)
 
 
 @app.post("/pipeline-queue/run-batch")
@@ -1514,12 +1543,12 @@ def pipeline_queue_run_batch(background_tasks: BackgroundTasks, user: dict = Dep
         )
 
     if not _is_local():
-        # Cloud path: call Kie.ai directly from the server
+        # Cloud path: call Kie.ai directly from the server (parallel, up to 3 at once)
         cluster_ids = [str(x["cluster_id"]) for x in approved_image_cards]
-        background_tasks.add_task(_generate_cloud_images_background, cluster_ids)
+        background_tasks.add_task(_generate_cloud_images_background, cluster_ids, approved_image_cards)
         n = len(cluster_ids)
         return RedirectResponse(
-            f"/pipeline-queue?msg=Generating+{n}+image+card(s)+via+Kie.ai+—+refresh+in+60-90+seconds",
+            f"/pipeline-queue?msg=Generating+{n}+image(s)+in+parallel+via+Kie.ai",
             status_code=303,
         )
 

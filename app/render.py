@@ -1145,8 +1145,22 @@ function useCustomAngle(cid, btn) {
   }
   </script>"""
 
+        n_generating = sum(1 for x in approved if x.get("image_gen_status") == "generating")
+        n_done       = sum(1 for x in approved if x.get("image_gen_status") == "done")
+        gen_status_bar = ""
+        if n_generating or n_done:
+            gen_status_bar = (
+                f'<div style="margin-bottom:10px;padding:10px 14px;background:#0d111a;border:1px solid #2a3555;border-radius:5px;font-size:12px">'
+                f'<span style="color:#facc15">&#9203; {n_generating} generating</span>'
+                f'&nbsp;&nbsp;<span style="color:#4ade80">&#9989; {n_done} done</span>'
+                f'&nbsp;&nbsp;<span style="color:#8b93a3">{len(approved)-n_generating-n_done} queued</span>'
+                + (' &nbsp;<span style="color:#8b93a3;font-size:10px">— page refreshes every 15s</span>' if n_generating else '')
+                + '</div>'
+            )
+
         approved_section = f"""
   <h2 style="margin-top:32px">Ready for Generation ({len(approved)})</h2>
+  {gen_status_bar}
   {draft_warn}
   {critique_panel}
   <form method="post" action="/pipeline-queue/recall">
