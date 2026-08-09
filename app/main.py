@@ -38,12 +38,40 @@ _FSN_JOB_PATH    = _FSN_ROOT / "memory" / "batch_job.json"
 _batch_lock = threading.Lock()
 
 def _load_fsn_queue() -> list[dict]:
-    if not _FSN_QUEUE_PATH.exists():
-        return []
+    if _FSN_QUEUE_PATH.exists():
+        try:
+            return json.loads(_FSN_QUEUE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+    # Running on deployed server (no local FSN path) — build queue from DB.
+    # Shows all clusters where "Send to First Signal Pipeline" was clicked.
+    session = SessionLocal()
     try:
-        return json.loads(_FSN_QUEUE_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return []
+        clusters = session.execute(
+            select(StoryCluster).where(StoryCluster.handoff_sent_at.is_not(None))
+            .order_by(StoryCluster.handoff_sent_at.desc())
+            .limit(200)
+        ).scalars().all()
+        items = []
+        for c in clusters:
+            items.append({
+                "cluster_id": c.id,
+                "text": c.canonical_headline or "",
+                "category": c.category or "general",
+                "viral_score": round(float(c.viral_score or 0), 1),
+                "confidence_score": round(float(c.confidence_score or 0), 1),
+                "entities": json.loads(c.entities or "[]"),
+                "keywords": json.loads(c.keywords or "[]"),
+                "verification_status": c.verification_status or "unverified",
+                "queue_status": "pending",
+                "added_to_queue_at": c.handoff_sent_at.isoformat() if c.handoff_sent_at else "",
+                "sources": [],
+                "draft": None,
+                "_source": "newsdesk_handoff",
+            })
+        return items
+    finally:
+        session.close()
 
 def _save_fsn_queue(items: list[dict]) -> None:
     _FSN_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
