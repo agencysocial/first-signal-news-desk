@@ -1501,13 +1501,7 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     cluster_id = int(form.get("cluster_id", 0))
     variant    = (form.get("variant") or "short").strip()
 
-    key = None
-    env_path = _FSN_ROOT / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("ANTHROPIC_API_KEY="):
-                key = line.split("=", 1)[1].strip()
+    key = _get_anthropic_key()
     if not key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
 
@@ -1560,13 +1554,7 @@ async def pipeline_queue_expand_angles(request: Request, user: dict = Depends(re
     form = await request.form()
     cluster_id = int(form.get("cluster_id", 0))
 
-    key = None
-    env_path = _FSN_ROOT / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("ANTHROPIC_API_KEY="):
-                key = line.split("=", 1)[1].strip()
+    key = _get_anthropic_key()
     if not key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
 
