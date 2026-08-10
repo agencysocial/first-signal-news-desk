@@ -1785,26 +1785,32 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     headline = draft.get("headline") or item.get("text") or ""
     captions = draft.get("captions") or {}
 
-    bands = {"short": "10-15", "medium": "40-60", "long": "100-150", "extra_long": "200-300"}
-    band  = bands.get(variant, "40-60")
+    bands = {"short": "30-50", "medium": "80-120", "long": "250-350", "extra_long": "450-600"}
+    band  = bands.get(variant, "80-120")
+    article_note = (
+        " Write a full Facebook news article: lead paragraph states the facts, "
+        "body paragraphs add context and accountability, closing line is the hook."
+        if variant in ("long", "extra_long") else ""
+    )
 
     system = (
         "You are the First Signal News caption writer. America First conservative voice. "
-        "No em-dashes, no hashtags, no emojis. Output ONLY the rewritten caption text — no explanation, no quotes around it."
+        "No em-dashes, no hashtags, no emojis. Name real people and real facts. "
+        "Output ONLY the rewritten caption text — no explanation, no quotes around it."
     )
     user_msg = (
         f"Headline: {headline}\n"
         f"Current {variant} caption: {captions.get(variant, '')}\n\n"
-        f"Rewrite the {variant} caption. Word band: {band} words. "
-        f"Short captions must end with an agreement hook (Do you agree? / Right? / Yes or No?). "
-        "Make it sharper and more scroll-stopping. Return ONLY the new caption text."
+        f"Rewrite the {variant} caption. Word count: {band} words.{article_note} "
+        f"Short and medium captions must end with an agreement hook (Do you agree? / Right? / Yes or No?). "
+        "Return ONLY the new caption text."
     )
 
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=512,
+            model="claude-haiku-4-5-20251001", max_tokens=1200,
             system=system,
             messages=[{"role": "user", "content": user_msg}],
         )
@@ -1842,21 +1848,31 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
     system = (
         "You are the First Signal News caption writer. America First conservative voice. "
         "No em-dashes, no hashtags, no emojis. Be direct, pointed, specific to the story. "
-        "Short captions end with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:). "
-        "Output ONLY valid JSON — no explanation, no markdown."
+        "Name the real people and real facts. Never fabricate. No hedging, no balance. "
+        "Short ends with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:). "
+        "Long and Extra Long are FULL FACEBOOK ARTICLES — lead with the biggest fact, "
+        "build the case paragraph by paragraph, name names, cite what happened, end with the hook. "
+        "Output ONLY valid JSON — no explanation, no markdown fences."
     )
     user_msg = (
         f"Story: {story}\nHeadline: {headline}\nTag: {tag}\n\n"
-        "Write all 4 Facebook caption variants and a first comment. Return JSON:\n"
-        '{"short":"10-15 words + agreement hook","medium":"40-60 words","long":"100-150 words",'
-        '"extra_long":"200-300 words","first_comment":"5-15 words, invites reply, no question mark required"}'
+        "Write all 4 Facebook caption variants and a first comment. Exact requirements:\n"
+        "- short: 30-50 words, punchy hook sentence or two, ends with agreement hook\n"
+        "- medium: 80-120 words, 2-3 sharp paragraphs, ends with agreement hook\n"
+        "- long: 250-350 words, full Facebook news article — lead paragraph states the facts, "
+        "body paragraphs add context and accountability, closing line is the hook\n"
+        "- extra_long: 450-600 words, complete Facebook news article with intro, background, "
+        "quotes/facts from the story, what it means, why it matters to America First readers, "
+        "strong closing hook\n"
+        "- first_comment: 5-15 words, invites reply, no question mark required\n\n"
+        'Return JSON: {"short":"...","medium":"...","long":"...","extra_long":"...","first_comment":"..."}'
     )
 
     try:
         import anthropic, re as _re
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=1200,
+            model="claude-haiku-4-5-20251001", max_tokens=2500,
             system=system,
             messages=[{"role": "user", "content": user_msg}],
         )

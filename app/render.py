@@ -732,13 +732,13 @@ def render_pipeline_queue_page(
                 if scene:
                     inner += f'<div style="color:#60a5fa;font-size:10px;margin-bottom:8px">&#128247; Scene: {scene}</div>'
                 if c_short:
-                    inner += f'<div style="margin-bottom:6px"><span style="color:#8b93a3;font-size:10px">SHORT:</span> <span style="color:#c0c8d8;font-size:11px">{c_short}</span></div>'
+                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">SHORT (30-50w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5">{c_short}</div></div>'
                 if c_med:
-                    inner += f'<div style="margin-bottom:6px"><span style="color:#8b93a3;font-size:10px">MEDIUM:</span> <span style="color:#c0c8d8;font-size:11px">{c_med}</span></div>'
+                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">MEDIUM (80-120w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5">{c_med}</div></div>'
                 if c_long:
-                    inner += f'<div style="margin-bottom:6px"><span style="color:#8b93a3;font-size:10px">LONG:</span> <span style="color:#c0c8d8;font-size:11px">{c_long}</span></div>'
+                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">LONG ARTICLE (250-350w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5;white-space:pre-wrap">{c_long}</div></div>'
                 if c_xl:
-                    inner += f'<div style="margin-bottom:6px"><span style="color:#8b93a3;font-size:10px">XL:</span> <span style="color:#c0c8d8;font-size:11px">{c_xl}</span></div>'
+                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">XL ARTICLE (450-600w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5;white-space:pre-wrap">{c_xl}</div></div>'
                 if fc:
                     inner += f'<div style="border-top:1px solid #1a1f2b;padding-top:6px;margin-top:4px"><span style="color:#8b93a3;font-size:10px">FIRST COMMENT:</span> <span style="color:#c0c8d8;font-size:11px">{fc}</span></div>'
                 has_full_captions = bool(caps.get("medium") or caps.get("long"))
@@ -847,7 +847,7 @@ function generateAllCaptions(cid, btn) {
       var caps = d.captions || {};
       var fc   = d.first_comment || '';
       var html = '';
-      var labels = {short:'SHORT',medium:'MEDIUM',long:'LONG',extra_long:'XL'};
+      var labels = {short:'SHORT (30-50w)',medium:'MEDIUM (80-120w)',long:'LONG ARTICLE (250-350w)',extra_long:'XL ARTICLE (450-600w)'};
       Object.keys(labels).forEach(function(k){
         if (caps[k]) html += '<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">' + labels[k] + ':</span> <span style="color:#c0c8d8;font-size:11px">' + caps[k] + '</span></div>';
       });
