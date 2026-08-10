@@ -72,16 +72,57 @@ def _get_kie_key() -> str | None:
 
 def _build_image_prompt(headline: str, tag: str, scene: str) -> str:
     return (
-        f"A 4:5 vertical First Signal News breaking-news share card. "
+        f"A 4:5 vertical breaking-news share card. "
         f"UPPER TWO-THIRDS is the photo: {scene}. {_ANTI_SLOP} "
         f"LOWER THIRD is a solid flat BLACK footer panel. Inside the footer, at the top, a small "
         f"bright RED rectangular tag box with the label \"{tag}\" in bold white uppercase. "
         f"Directly below it, the headline \"{headline}\" in BOLD BRIGHT YELLOW uppercase modern "
         f"sans-serif (Montserrat style), left-aligned, large and highly legible, wrapped over 2-4 lines. "
-        f"At the very bottom center of the image, a small white text watermark reading \"First Signal News\". "
-        f"No other text, no URLs, no social handles anywhere. Flat 2D text, no drop shadows, no outer glows. "
+        f"No text, no logos, no watermarks, no URLs, no social handles outside the black footer panel. "
+        f"Flat 2D text, no drop shadows, no outer glows. "
         f"4:5 vertical portrait, photorealistic, sharp, vivid, magazine-quality."
     )
+
+
+def _stamp_logo(image_bytes: bytes, cid: str) -> Path:
+    """Download image bytes, stamp the FSN logo at top-left, save to /tmp. Returns path."""
+    from PIL import Image as _PILImage
+    import io as _io
+
+    LOGO_FIXED_WIDTH = 200
+    MARGIN = 20
+    BRIGHTNESS_THRESHOLD = 140
+
+    static_dir = Path(__file__).resolve().parent / "static"
+    logo_white = static_dir / "logo_white_text.png"
+    logo_black = static_dir / "logo_black_text.png"
+
+    card = _PILImage.open(_io.BytesIO(image_bytes)).convert("RGBA")
+    w, h = card.size
+
+    # Sample top-left region to decide which logo variant
+    region_w = min(300, w // 3)
+    region_h = min(120, h // 6)
+    region = card.crop((0, 0, region_w, region_h)).convert("RGB")
+    pixels = list(region.getdata())
+    avg_brightness = sum(0.299 * r + 0.587 * g + 0.114 * b for r, g, b in pixels) / max(len(pixels), 1)
+    logo_path = logo_black if avg_brightness > BRIGHTNESS_THRESHOLD else logo_white
+
+    logo = _PILImage.open(logo_path).convert("RGBA")
+    ratio = LOGO_FIXED_WIDTH / logo.width
+    logo_h = int(logo.height * ratio)
+    logo = logo.resize((LOGO_FIXED_WIDTH, logo_h), _PILImage.LANCZOS)
+
+    card.paste(logo, (MARGIN, MARGIN), logo)
+
+    out = _PILImage.new("RGB", card.size, (0, 0, 0))
+    out.paste(card, mask=card.split()[3])
+
+    tmp_dir = Path("/tmp/fsn_images")
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    out_path = tmp_dir / f"{cid}.png"
+    out.save(str(out_path), "PNG", optimize=True)
+    return out_path
 
 
 def _kie_submit(prompt: str, key: str) -> str:
@@ -1482,7 +1523,7 @@ def pipeline_queue_batch_status(user: dict = Depends(require_user)):
 
 
 def _generate_one_image(cid: str, key: str, item: dict) -> None:
-    """Generate image for a single cluster and update DB directly. Runs in a thread."""
+    """Generate image for a single cluster, stamp logo, and update DB. Runs in a thread."""
     draft = item.get("draft") or {}
     headline = draft.get("headline") or item.get("text") or ""
     tag      = draft.get("tag") or "BREAKING NEWS"
@@ -1490,9 +1531,17 @@ def _generate_one_image(cid: str, key: str, item: dict) -> None:
     try:
         prompt = _build_image_prompt(headline, tag, scene)
         task_id = _kie_submit(prompt, key)
-        result_url = _kie_poll(task_id, key)
-        _update_cluster_fsn(cid, generated_image_url=result_url, image_gen_status="done")
-        logger.info("cloud image gen cluster %s: done -> %s", cid, result_url)
+        kie_url = _kie_poll(task_id, key)
+
+        # Download and stamp logo
+        r = httpx.get(kie_url, timeout=60, follow_redirects=True)
+        r.raise_for_status()
+        _stamp_logo(r.content, cid)
+
+        # Store the served URL (ephemeral on Render; kie_result_url is the CDN fallback)
+        served_url = f"/pipeline-queue/image/{cid}"
+        _update_cluster_fsn(cid, generated_image_url=served_url, kie_result_url=kie_url, image_gen_status="done")
+        logger.info("cloud image gen cluster %s: done -> %s", cid, served_url)
     except Exception as exc:
         _update_cluster_fsn(cid, image_gen_status=f"error: {exc}")
         logger.error("cloud image gen cluster %s: %s", cid, exc)
@@ -2086,6 +2135,35 @@ async def pipeline_queue_apply_angle(request: Request, user: dict = Depends(requ
     item["chosen_angle_type"] = angle_type
     _save_fsn_queue(items)
     return {"ok": True}
+
+
+@app.get("/pipeline-queue/image/{cid}")
+def pipeline_queue_serve_image(cid: str, user: dict = Depends(require_user)):
+    """Serve a logo-stamped PNG generated for a cluster. Re-stamps from Kie CDN if /tmp was cleared."""
+    # Sanitise: cid must be numeric
+    if not cid.isdigit():
+        return Response(status_code=400)
+    tmp_path = Path("/tmp/fsn_images") / f"{cid}.png"
+    if tmp_path.exists():
+        return Response(content=tmp_path.read_bytes(), media_type="image/png")
+
+    # /tmp was cleared (redeploy) — re-download from Kie CDN and re-stamp
+    session = SessionLocal()
+    try:
+        c = session.get(StoryCluster, int(cid))
+        if not c or not c.fsn_state:
+            return Response(status_code=404)
+        fsn = json.loads(c.fsn_state)
+        kie_url = fsn.get("kie_result_url")
+        if not kie_url:
+            return Response(status_code=404)
+    finally:
+        session.close()
+
+    r = httpx.get(kie_url, timeout=60, follow_redirects=True)
+    r.raise_for_status()
+    _stamp_logo(r.content, cid)
+    return Response(content=tmp_path.read_bytes(), media_type="image/png")
 
 
 @app.get("/pipeline-queue/output-image/{filename}")
