@@ -74,6 +74,39 @@ STYLE = """
     .filter-form label { color: #8b93a3; }
     .updated-fresh { color: #4ade80; font-weight: 600; }
     .new-dot { color: #4ade80; }
+
+    /* Mobile: the full workflow needs to work on a phone, not just be
+    readable -- reviewing stories, filtering, and sending to the production
+    queue all happen away from a desk. The main structural problem tables
+    have on a narrow screen isn't font size, it's column count (the Wire
+    table alone is 9 columns) -- no amount of shrinking makes that fit, so
+    below the breakpoint every data table becomes a stack of cards instead:
+    hide the header row, turn each <tr> into its own bordered block, and
+    turn each <td> into a labeled row using its data-label attribute. This
+    is a CSS-only transform (see render_wire_page etc. for the data-label
+    attributes) rather than maintaining separate mobile/desktop markup. */
+    @media (max-width: 768px) {
+        body { padding: 12px; }
+        .nav { flex-wrap: wrap; gap: 8px; }
+        .nav > div { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+        table, thead, tbody, th, td, tr { display: block; }
+        table { border: none; }
+        thead { position: absolute; left: -9999px; top: -9999px; } /* keep for screen readers, hide visually */
+        tr { border: 1px solid #1a1f2b; border-radius: 6px; margin-bottom: 10px; padding: 8px 10px; background: #0d111a; }
+        tr:hover td { background: none; }
+        td { border-bottom: none; padding: 6px 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+        td[data-label]::before {
+            content: attr(data-label); color: #8b93a3; font-size: 11px; text-transform: uppercase;
+            font-weight: 600; flex-shrink: 0; padding-top: 1px;
+        }
+        td:not([data-label]) { display: block; } /* checkbox/action-only cells: no label to show */
+        .filter-form, .actions, .chips { gap: 10px; }
+        input[type=text], input[type=number], input[type=url], input[type=email], input[type=password], select {
+            font-size: 16px; /* prevents iOS Safari auto-zoom on focus */
+        }
+        button, .actions button, .chips a { padding: 8px 14px; } /* larger touch targets */
+        .meta-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+    }
 """
 
 NAV = """
@@ -95,6 +128,7 @@ def _page_head(extra_meta: str = "") -> str:
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AIM News Desk &mdash; Phase 1f</title>
   {extra_meta}
   <style>{STYLE}</style>
@@ -139,6 +173,7 @@ def render_login_page(error: str | None = None, next_path: str = "/") -> str:
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>News Desk &mdash; Log In</title>
   <style>{STYLE}</style>
 </head>
@@ -167,15 +202,15 @@ def render_wire_page(clusters: list[dict], error_sources: list[tuple[str, str]],
         fresh_class = "updated-fresh" if c.get("is_fresh") else ""
         rows.append(f"""
       <tr>
-        <td class="score {_score_class(c['viral_score'])}">{c['viral_score']:.0f}</td>
-        <td class="score {_score_class(c['confidence_score'])}">{c['confidence_score']:.0f}</td>
-        <td class="score {_score_class(c['momentum_score'])}">{c['momentum_score']:.0f}</td>
-        <td><a href="/stories/{c['id']}">{escape(c['canonical_headline'])}</a></td>
-        <td>{escape(c['category'] or '-')}</td>
-        <td>{c['source_count']}</td>
-        <td>{escape(c['age'])}</td>
-        <td class="{fresh_class}">{escape(c.get('updated_ago', '-'))}{' <span class="new-dot">&bull;</span>' if c.get('is_fresh') else ''}</td>
-        <td><span class="badge status-{escape(c['status'])}">{escape(c['status'])}</span></td>
+        <td data-label="Viral" class="score {_score_class(c['viral_score'])}">{c['viral_score']:.0f}</td>
+        <td data-label="Confidence" class="score {_score_class(c['confidence_score'])}">{c['confidence_score']:.0f}</td>
+        <td data-label="Momentum" class="score {_score_class(c['momentum_score'])}">{c['momentum_score']:.0f}</td>
+        <td data-label="Headline"><a href="/stories/{c['id']}">{escape(c['canonical_headline'])}</a></td>
+        <td data-label="Category">{escape(c['category'] or '-')}</td>
+        <td data-label="Sources">{c['source_count']}</td>
+        <td data-label="Age">{escape(c['age'])}</td>
+        <td data-label="Updated" class="{fresh_class}">{escape(c.get('updated_ago', '-'))}{' <span class="new-dot">&bull;</span>' if c.get('is_fresh') else ''}</td>
+        <td data-label="Status"><span class="badge status-{escape(c['status'])}">{escape(c['status'])}</span></td>
       </tr>""")
 
     errors_html = ""
@@ -328,12 +363,12 @@ def _render_coverage_history(covered_posts: list[dict]) -> str:
         )
         rows.append(f"""
       <tr>
-        <td>{escape(cp['covered_at'])}</td>
-        <td>{escape(cp.get('platform') or '-')}</td>
-        <td>{link}</td>
-        <td>{escape(cp.get('format') or '-')}</td>
-        <td>{escape(cp.get('editor') or '-')}</td>
-        <td>{escape(cp.get('notes') or '-')}</td>
+        <td data-label="Covered">{escape(cp['covered_at'])}</td>
+        <td data-label="Platform">{escape(cp.get('platform') or '-')}</td>
+        <td data-label="Post">{link}</td>
+        <td data-label="Format">{escape(cp.get('format') or '-')}</td>
+        <td data-label="Editor">{escape(cp.get('editor') or '-')}</td>
+        <td data-label="Notes">{escape(cp.get('notes') or '-')}</td>
       </tr>""")
     return f"""
   <h2>Coverage history ({len(covered_posts)})</h2>
@@ -361,11 +396,11 @@ def render_detail_page(cluster: dict, articles: list[dict], flash: str | None = 
         article_rows.append(f"""
       <tr>
         <td><input type="checkbox" name="article_ids" value="{a['id']}" form="split-form"></td>
-        <td><a href="{escape(a['url'])}" target="_blank" rel="noopener">{escape(a['headline'])}</a></td>
-        <td><a href="/?source_id={a['source_id']}">{escape(a['source_name'])}</a></td>
-        <td><span class="badge tier-{a['source_tier']}">T{a['source_tier']}</span></td>
-        <td>{escape(a['published_at'] or '-')}</td>
-        <td>{escape(a['detected_at'])}</td>
+        <td data-label="Headline"><a href="{escape(a['url'])}" target="_blank" rel="noopener">{escape(a['headline'])}</a></td>
+        <td data-label="Source"><a href="/?source_id={a['source_id']}">{escape(a['source_name'])}</a></td>
+        <td data-label="Tier"><span class="badge tier-{a['source_tier']}">T{a['source_tier']}</span></td>
+        <td data-label="Published">{escape(a['published_at'] or '-')}</td>
+        <td data-label="Detected">{escape(a['detected_at'])}</td>
         <td>{dup_note}</td>
       </tr>""")
 
@@ -486,10 +521,10 @@ def render_sources_page(sources: list[dict]) -> str:
 
         rows.append(f"""
       <tr>
-        <td><a href="/?source_id={s['id']}">{escape(s['name'])}</a><div class="dup-flag">{escape(s['type'])}</div></td>
-        <td>{error_html or '-'}</td>
-        <td>{escape(s['last_fetch_at'])}</td>
-        <td>
+        <td data-label="Name"><a href="/?source_id={s['id']}">{escape(s['name'])}</a><div class="dup-flag">{escape(s['type'])}</div></td>
+        <td data-label="Last error">{error_html or '-'}</td>
+        <td data-label="Last fetch">{escape(s['last_fetch_at'])}</td>
+        <td data-label="Edit">
           <form method="post" action="/sources/{s['id']}/update" class="inline-form">
             <input type="text" name="category" value="{escape(s['category'] or '')}" style="width:90px" placeholder="category">
             <select name="credibility_tier">{tier_options}</select>
@@ -909,16 +944,17 @@ def render_pipeline_queue_page(
             rows.append(f"""
       <tr>
         <td style="width:28px">{check}</td>
-        <td>
+        <td data-label="Story">
           <div style="font-size:13px;font-weight:500;line-height:1.4">{text}</div>
           <div style="color:#8b93a3;font-size:11px;margin-top:3px">{cat} &middot; {srcs} source(s) &middot; added {added}</div>
           <div style="margin-top:4px">{badges}</div>
-          {draft_html}{story_panel_html}{video_panel_html}{angles_btn}{preview_btn}
+          {draft_html}{story_panel_html}{video_panel_html}
+          <div style="display:flex;flex-wrap:wrap;align-items:flex-start">{angles_btn} {preview_btn}</div>
           {gen_img_html}
         </td>
-        <td>{ai_score_cell(item)}</td>
-        <td>{verif_badge(verif)}</td>
-        <td>{type_cell}</td>
+        <td data-label="Viral">{ai_score_cell(item)}</td>
+        <td data-label="Verification">{verif_badge(verif)}</td>
+        <td data-label="Type">{type_cell}</td>
       </tr>""")
         return "".join(rows)
 
