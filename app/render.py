@@ -850,12 +850,14 @@ def render_pipeline_queue_page(
                         f'</div>'
                     )
 
+                # Auto-open the panel if scripts are already generated
+                panel_display = "block" if has_scripts else "none"
                 video_panel_html = (
                     f'<div style="margin-top:6px">'
                     f'<button type="button" onclick="toggleStory(\'vid-{cid}\')" '
                     f'style="font-size:10px;padding:2px 8px;background:#0a0a1a;border:1px solid #2a2060;'
                     f'color:#a78bfa;cursor:pointer;border-radius:3px">&#127916; Video Package</button>'
-                    f'<div id="story-vid-{cid}" style="display:none;margin-top:8px;padding:10px;'
+                    f'<div id="story-vid-{cid}" style="display:{panel_display};margin-top:8px;padding:10px;'
                     f'background:#060910;border:1px solid #1a1f2b;border-radius:4px">'
                     f'{gen_vid_btn}{inner_v}</div>'
                     f'</div>'
@@ -970,25 +972,12 @@ function writeVideoScript(cid, btn, fromApproved) {
       if (statusEl) statusEl.textContent = '';
       if (d.error) {
         if (statusEl) statusEl.textContent = 'Error: ' + d.error;
+        btn.disabled = false; btn.textContent = origText;
         return;
       }
-      var resultEl = document.getElementById('genvid-result-' + cid);
-      var html = '';
-      if ((d.video_titles||[]).length) {
-        html += '<div style="margin-bottom:10px"><div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Reels Cover Titles</div>';
-        d.video_titles.forEach(function(t,i){ html += '<div style="color:#FFDE59;font-size:12px;font-weight:600;margin-bottom:3px">Option ' + (i+1) + ': ' + t + '</div>'; });
-        html += '</div>';
-      }
-      if (d.reels_description) html += '<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">REELS DESCRIPTION:</span><div style="color:#c0c8d8;font-size:11px;line-height:1.5;margin-top:2px;white-space:pre-wrap">' + d.reels_description + '</div></div>';
-      var scripts = {short:'SHORT (30-45s)',medium:'MEDIUM (60-90s)',long:'LONG (120-180s)'};
-      var cols = {short:'#4ade80',medium:'#60a5fa',long:'#f59e0b'};
-      Object.keys(scripts).forEach(function(k){
-        if (d['script_'+k]) html += '<div style="margin-bottom:12px;padding:10px;background:#060910;border-radius:4px;border-left:3px solid ' + cols[k] + '"><div style="color:' + cols[k] + ';font-size:10px;font-weight:700;text-transform:uppercase;margin-bottom:6px">' + scripts[k] + '</div><div style="color:#c0c8d8;font-size:11px;line-height:1.8;white-space:pre-wrap">' + d['script_'+k] + '</div></div>';
-      });
-      if (d.poll_question) html += '<div style="margin-bottom:8px;padding:8px;background:#0d111a;border:1px solid #2a3555;border-radius:4px"><div style="color:#8b93a3;font-size:10px;text-transform:uppercase;margin-bottom:3px">Poll Question</div><div style="color:#e6e8ec;font-size:12px;white-space:pre-wrap">' + d.poll_question + '</div></div>';
-      if (d.video_first_comment) html += '<div style="border-top:1px solid #1a1f2b;padding-top:8px"><div style="color:#8b93a3;font-size:10px;text-transform:uppercase;margin-bottom:3px">First Comment</div><div style="color:#c0c8d8;font-size:11px;line-height:1.6;white-space:pre-wrap">' + d.video_first_comment + '</div></div>';
-      if (resultEl) resultEl.innerHTML = html;
-      else if (panel) panel.innerHTML = html;
+      // Data is saved to DB. Reload so the server renders the full persistent panel.
+      if (statusEl) statusEl.textContent = 'Done. Loading...';
+      window.location.reload();
     })
     .catch(function(e){ btn.disabled=false; btn.textContent=origText; if(statusEl) statusEl.textContent='Request failed.'; });
 }
