@@ -694,19 +694,27 @@ def render_pipeline_queue_page(
                 eff_type = (rec.get("gen_type") if rec else None) or ("tobi" if s_tmpl == "tobi" else "image_card")
                 img_sel  = "selected" if eff_type == "image_card" else ""
                 tobi_sel = "selected" if eff_type == "tobi" else ""
+                vid_sel  = "selected" if eff_type == "video_package" else ""
                 type_cell = (
                     f'<select name="type_{cid}" id="type-sel-{cid}" onchange="onTypeChange({cid},this)" style="font-size:12px;padding:3px 6px">'
                     f'<option value="image_card" {img_sel}>Image Card</option>'
-                    f'<option value="tobi" {tobi_sel}>TOBI</option></select>'
+                    f'<option value="tobi" {tobi_sel}>TOBI</option>'
+                    f'<option value="video_package" {vid_sel}>Video Package</option></select>'
                     f'<div id="tobi-write-wrap-{cid}" style="display:{"block" if eff_type == "tobi" else "none"};margin-top:4px">'
                     f'<button type="button" onclick="writeTOBI({cid},this)" '
                     f'style="font-size:10px;padding:2px 8px;background:#0a1a10;border:1px solid #1a5a30;color:#4ade80;cursor:pointer;border-radius:3px">&#9998; Write TOBI</button>'
                     f'<div id="tobi-panel-{cid}" style="display:none;margin-top:6px;padding:8px;background:#0d111a;border:1px solid #2a3555;border-radius:4px;font-size:12px"></div>'
                     f'</div>'
+                    f'<div id="video-write-wrap-{cid}" style="display:{"block" if eff_type == "video_package" else "none"};margin-top:4px">'
+                    f'<button type="button" onclick="writeVideoScript({cid},this)" '
+                    f'style="font-size:10px;padding:2px 8px;background:#0a0a1a;border:1px solid #2a2060;color:#a78bfa;cursor:pointer;border-radius:3px">&#127916; Write Video Scripts</button>'
+                    f'<div id="video-panel-{cid}" style="display:none;margin-top:6px;padding:8px;background:#0d111a;border:1px solid #2a3555;border-radius:4px;font-size:12px"></div>'
+                    f'</div>'
                 )
                 check = f'<input type="checkbox" name="selected" value="{cid}" {is_checked}>'
             else:
-                label = "Image Card" if gen_type == "image_card" else "TOBI"
+                label_map = {"image_card": "Image Card", "tobi": "TOBI", "video_package": "Video Package"}
+                label = label_map.get(gen_type, gen_type or "Image Card")
                 type_cell = f'<span style="color:#8b93a3">{label}</span>'
                 check = ""
 
@@ -762,6 +770,97 @@ def render_pipeline_queue_page(
                         f'</div>'
                     )
 
+            # Video Package panel for approved rows
+            video_panel_html = ""
+            if not selectable and gen_type == "video_package":
+                vt = item.get("video_titles") or []
+                vd = escape(item.get("reels_description") or "")
+                vs = escape(item.get("script_short") or "")
+                vm = escape(item.get("script_medium") or "")
+                vl = escape(item.get("script_long") or "")
+                vp = escape(item.get("poll_question") or "")
+                vf = escape(item.get("video_first_comment") or "")
+                has_scripts = bool(vs or vm or vl)
+
+                gen_vid_btn = (
+                    f'<button type="button" id="genvid-btn-{cid}" onclick="writeVideoScript({cid},this,true)" '
+                    f'style="font-size:10px;padding:3px 10px;background:#0a0a1a;border:1px solid #2a2060;'
+                    f'color:#a78bfa;cursor:pointer;border-radius:3px;margin-bottom:10px">'
+                    f'&#127916; Generate Video Scripts</button>'
+                    f'<span id="genvid-status-{cid}" style="font-size:10px;color:#8b93a3;margin-left:8px"></span>'
+                    f'<div id="genvid-result-{cid}"></div>'
+                ) if not has_scripts else ""
+
+                inner_v = ""
+                if vt:
+                    inner_v += '<div style="margin-bottom:10px">'
+                    inner_v += '<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Reels Cover Titles</div>'
+                    for i, t in enumerate(vt[:3], 1):
+                        inner_v += (
+                            f'<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:4px">'
+                            f'<span style="color:#a78bfa;font-size:10px;white-space:nowrap;margin-top:1px">Option {i}</span>'
+                            f'<span style="color:#FFDE59;font-size:12px;font-weight:600;flex:1">{escape(t)}</span>'
+                            f'<button type="button" onclick="copyText(this,\'{escape(t).replace(chr(39), "&apos;")}\''
+                            f')" style="font-size:9px;padding:1px 6px;flex-shrink:0">Copy</button>'
+                            f'</div>'
+                        )
+                    inner_v += '</div>'
+                if vd:
+                    inner_v += (
+                        f'<div style="margin-bottom:10px">'
+                        f'<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Reels Description</div>'
+                        f'<div style="color:#c0c8d8;font-size:11px;line-height:1.6;white-space:pre-wrap">{vd}</div>'
+                        f'<button type="button" onclick="copyText(this,document.getElementById(\'vd-{cid}\').textContent)" '
+                        f'id="vd-{cid}" data-text="{vd}" style="font-size:9px;padding:1px 6px;margin-top:4px" '
+                        f'onclick="copyText(this,\'{vd.replace(chr(39), chr(39))}\')">Copy</button>'
+                        f'</div>'
+                    )
+
+                script_colors = {"SHORT (30-45s)": "#4ade80", "MEDIUM (60-90s)": "#60a5fa", "LONG (120-180s)": "#f59e0b"}
+                script_ids    = {"SHORT (30-45s)": f"vs-{cid}", "MEDIUM (60-90s)": f"vm-{cid}", "LONG (120-180s)": f"vl-{cid}"}
+                script_vals   = {"SHORT (30-45s)": vs, "MEDIUM (60-90s)": vm, "LONG (120-180s)": vl}
+                for label_s, val_s in script_vals.items():
+                    if val_s:
+                        sid = script_ids[label_s]
+                        col = script_colors[label_s]
+                        inner_v += (
+                            f'<div style="margin-bottom:12px;padding:10px;background:#060910;border-radius:4px;border-left:3px solid {col}">'
+                            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+                            f'<span style="color:{col};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">{label_s}</span>'
+                            f'<button type="button" onclick="copyEl(\'{sid}\')" style="font-size:9px;padding:1px 8px">Copy Script</button>'
+                            f'</div>'
+                            f'<div id="{sid}" style="color:#c0c8d8;font-size:11px;line-height:1.8;white-space:pre-wrap">{val_s}</div>'
+                            f'</div>'
+                        )
+                if vp:
+                    inner_v += (
+                        f'<div style="margin-bottom:10px;padding:8px;background:#0d111a;border:1px solid #2a3555;border-radius:4px">'
+                        f'<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Poll Question</div>'
+                        f'<div style="color:#e6e8ec;font-size:12px;line-height:1.5;white-space:pre-wrap">{vp}</div>'
+                        f'<button type="button" onclick="copyEl(\'vpoll-{cid}\')" id="vpoll-{cid}" data-text="{vp}" '
+                        f'style="font-size:9px;padding:1px 6px;margin-top:4px" onclick="">Copy</button>'
+                        f'</div>'
+                    )
+                if vf:
+                    inner_v += (
+                        f'<div style="border-top:1px solid #1a1f2b;padding-top:8px;margin-top:4px">'
+                        f'<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">First Comment</div>'
+                        f'<div id="vfc-{cid}" style="color:#c0c8d8;font-size:11px;line-height:1.6;white-space:pre-wrap">{vf}</div>'
+                        f'<button type="button" onclick="copyEl(\'vfc-{cid}\')" style="font-size:9px;padding:1px 6px;margin-top:4px">Copy</button>'
+                        f'</div>'
+                    )
+
+                video_panel_html = (
+                    f'<div style="margin-top:6px">'
+                    f'<button type="button" onclick="toggleStory(\'vid-{cid}\')" '
+                    f'style="font-size:10px;padding:2px 8px;background:#0a0a1a;border:1px solid #2a2060;'
+                    f'color:#a78bfa;cursor:pointer;border-radius:3px">&#127916; Video Package</button>'
+                    f'<div id="story-vid-{cid}" style="display:none;margin-top:8px;padding:10px;'
+                    f'background:#060910;border:1px solid #1a1f2b;border-radius:4px">'
+                    f'{gen_vid_btn}{inner_v}</div>'
+                    f'</div>'
+                )
+
             angles_btn = (
                 f'<button type="button" onclick="expandAngles({cid},this)" '
                 f'style="font-size:10px;padding:2px 7px;margin-top:4px;margin-left:4px;background:#0a1020;'
@@ -812,7 +911,7 @@ def render_pipeline_queue_page(
           <div style="font-size:13px;font-weight:500;line-height:1.4">{text}</div>
           <div style="color:#8b93a3;font-size:11px;margin-top:3px">{cat} &middot; {srcs} source(s) &middot; added {added}</div>
           <div style="margin-top:4px">{badges}</div>
-          {draft_html}{story_panel_html}{angles_btn}{preview_btn}
+          {draft_html}{story_panel_html}{video_panel_html}{angles_btn}{preview_btn}
           {gen_img_html}
         </td>
         <td>{ai_score_cell(item)}</td>
@@ -831,6 +930,67 @@ function toggleDraft(cid) {
 function toggleStory(cid) {
   var el = document.getElementById('story-' + cid);
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function copyEl(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var text = el.dataset.text || el.textContent || '';
+  navigator.clipboard.writeText(text.trim()).catch(function(){
+    var ta = document.createElement('textarea');
+    ta.value = text.trim(); document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  });
+}
+
+function copyText(btn, text) {
+  navigator.clipboard.writeText((text||'').trim()).catch(function(){
+    var ta = document.createElement('textarea');
+    ta.value = (text||'').trim(); document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+  });
+  var orig = btn.textContent; btn.textContent = '✓'; btn.style.color = '#4ade80';
+  setTimeout(function(){ btn.textContent = orig; btn.style.color = ''; }, 1200);
+}
+
+function writeVideoScript(cid, btn, fromApproved) {
+  var panel = fromApproved
+    ? document.getElementById('story-vid-' + cid)
+    : document.getElementById('video-panel-' + cid);
+  var statusEl = document.getElementById('genvid-status-' + cid);
+  if (panel && !fromApproved) { panel.style.display = 'block'; }
+  var origText = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Writing scripts...';
+  if (statusEl) statusEl.textContent = 'Calling AI...';
+  var fd = new FormData(); fd.append('cluster_id', cid);
+  fetch('/pipeline-queue/write-video-script', {method:'POST', body:fd})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      btn.disabled = false; btn.textContent = origText;
+      if (statusEl) statusEl.textContent = '';
+      if (d.error) {
+        if (statusEl) statusEl.textContent = 'Error: ' + d.error;
+        return;
+      }
+      var resultEl = document.getElementById('genvid-result-' + cid);
+      var html = '';
+      if ((d.video_titles||[]).length) {
+        html += '<div style="margin-bottom:10px"><div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Reels Cover Titles</div>';
+        d.video_titles.forEach(function(t,i){ html += '<div style="color:#FFDE59;font-size:12px;font-weight:600;margin-bottom:3px">Option ' + (i+1) + ': ' + t + '</div>'; });
+        html += '</div>';
+      }
+      if (d.reels_description) html += '<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">REELS DESCRIPTION:</span><div style="color:#c0c8d8;font-size:11px;line-height:1.5;margin-top:2px;white-space:pre-wrap">' + d.reels_description + '</div></div>';
+      var scripts = {short:'SHORT (30-45s)',medium:'MEDIUM (60-90s)',long:'LONG (120-180s)'};
+      var cols = {short:'#4ade80',medium:'#60a5fa',long:'#f59e0b'};
+      Object.keys(scripts).forEach(function(k){
+        if (d['script_'+k]) html += '<div style="margin-bottom:12px;padding:10px;background:#060910;border-radius:4px;border-left:3px solid ' + cols[k] + '"><div style="color:' + cols[k] + ';font-size:10px;font-weight:700;text-transform:uppercase;margin-bottom:6px">' + scripts[k] + '</div><div style="color:#c0c8d8;font-size:11px;line-height:1.8;white-space:pre-wrap">' + d['script_'+k] + '</div></div>';
+      });
+      if (d.poll_question) html += '<div style="margin-bottom:8px;padding:8px;background:#0d111a;border:1px solid #2a3555;border-radius:4px"><div style="color:#8b93a3;font-size:10px;text-transform:uppercase;margin-bottom:3px">Poll Question</div><div style="color:#e6e8ec;font-size:12px;white-space:pre-wrap">' + d.poll_question + '</div></div>';
+      if (d.video_first_comment) html += '<div style="border-top:1px solid #1a1f2b;padding-top:8px"><div style="color:#8b93a3;font-size:10px;text-transform:uppercase;margin-bottom:3px">First Comment</div><div style="color:#c0c8d8;font-size:11px;line-height:1.6;white-space:pre-wrap">' + d.video_first_comment + '</div></div>';
+      if (resultEl) resultEl.innerHTML = html;
+      else if (panel) panel.innerHTML = html;
+    })
+    .catch(function(e){ btn.disabled=false; btn.textContent=origText; if(statusEl) statusEl.textContent='Request failed.'; });
 }
 
 function generateAllCaptions(cid, btn) {
@@ -1021,8 +1181,10 @@ function useAngle(cid, idx, btn) {
 }
 
 function onTypeChange(cid, sel) {
-  var wrap = document.getElementById('tobi-write-wrap-' + cid);
-  if (wrap) wrap.style.display = sel.value === 'tobi' ? 'block' : 'none';
+  var tobiWrap  = document.getElementById('tobi-write-wrap-' + cid);
+  var videoWrap = document.getElementById('video-write-wrap-' + cid);
+  if (tobiWrap)  tobiWrap.style.display  = sel.value === 'tobi'          ? 'block' : 'none';
+  if (videoWrap) videoWrap.style.display = sel.value === 'video_package' ? 'block' : 'none';
 }
 
 function writeTOBI(cid, btn) {

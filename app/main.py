@@ -232,6 +232,13 @@ def _load_fsn_queue() -> list[dict]:
                 "tobi_text": fsn.get("tobi_text"),
                 "generated_image_url": fsn.get("generated_image_url"),
                 "image_gen_status": fsn.get("image_gen_status", ""),
+                "video_titles":        fsn.get("video_titles", []),
+                "reels_description":   fsn.get("reels_description", ""),
+                "script_short":        fsn.get("script_short", ""),
+                "script_medium":       fsn.get("script_medium", ""),
+                "script_long":         fsn.get("script_long", ""),
+                "poll_question":       fsn.get("poll_question", ""),
+                "video_first_comment": fsn.get("video_first_comment", ""),
                 "_source": "newsdesk_handoff",
             }
             items.append(item)
@@ -241,7 +248,9 @@ def _load_fsn_queue() -> list[dict]:
 
 
 _FSN_STATE_KEYS = {"queue_status", "post_type", "draft", "approved_at",
-                   "generated_image_url", "image_gen_status", "tobi_text", "output_file"}
+                   "generated_image_url", "image_gen_status", "tobi_text", "output_file",
+                   "video_titles", "reels_description", "script_short", "script_medium",
+                   "script_long", "poll_question", "video_first_comment"}
 
 
 def _save_fsn_queue(items: list[dict]) -> None:
@@ -1945,6 +1954,113 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
         _save_fsn_queue(items)
         return JSONResponse({"ok": True, "captions": item["draft"]["captions"],
                              "first_comment": item["draft"].get("first_comment", "")})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+_VIDEO_SYSTEM = """You are the First Signal News video script writer for an AI Avatar presenter.
+
+VOICE RULES (strict — this text will be fed to a TTS avatar):
+- Short sentences. 8 to 18 words each. Every sentence is its own complete idea.
+- No em-dashes. No semicolons. No parentheses mid-sentence.
+- No complicated words. If a word needs explaining, replace it with a simpler one.
+- Conversational flow. Write how a sharp anchor speaks, not how a journalist types.
+- Numbers as digits: 36-year-old, 3 bills, not thirty-six or three bills.
+- Attribution phrases instead of quote marks: use "Her exact words." then a new line for the quote. Or "Here is what she said." then the quote. Never wrap quotes in quotation marks mid-sentence.
+- Context pivot: signal the shift with a full sentence. Example: "Here is why that matters."
+- Hook: first sentence must be punchy and surprising. Subject plus action plus implication. Example: "AOC just turned her fertility treatment into a content series."
+- Closing: end every script with the question for the audience, then "Follow First Signal." on its own line.
+
+WHAT TO NEVER DO:
+- No em-dashes anywhere
+- No "delve", "tapestry", "it's worth noting", "in today's world"
+- No hedging or balance. Take a clear America First side.
+- Never fabricate a quote, charge, vote, or statistic. Stick to the sourced facts.
+
+SCRIPT LENGTHS:
+- short: 30 to 45 seconds. Hook plus 3 to 5 facts plus closing question. About 80 to 120 words.
+- medium: 60 to 90 seconds. Hook plus facts plus one context paragraph plus closing question. About 160 to 240 words.
+- long: 120 to 180 seconds. Hook plus facts plus context pivot section plus analysis paragraph plus stakes paragraph plus closing question. About 320 to 480 words.
+
+Output ONLY valid JSON — no explanation, no markdown fences."""
+
+_VIDEO_USER_TPL = """\
+Story: {story}
+Headline: {headline}
+
+Write all video package content for this story. Return exactly this JSON shape:
+{{
+  "video_titles": ["title option 1", "title option 2", "title option 3"],
+  "reels_description": "...",
+  "script_short": "...",
+  "script_medium": "...",
+  "script_long": "...",
+  "poll_question": "...",
+  "video_first_comment": "..."
+}}
+
+Rules per field:
+- video_titles: 3 short punchy options for a Reels cover card. Under 10 words each. No em-dashes.
+- reels_description: 2 to 4 sentences. Rapid-fire facts from the story. End with 1 or 2 relevant emojis and 2 to 3 hashtags including #FirstSignal.
+- script_short: 80 to 120 words. Hook plus key facts plus closing question plus "Follow First Signal." on its own line.
+- script_medium: 160 to 240 words. Hook plus facts plus context section plus closing question plus "Follow First Signal." on its own line.
+- script_long: 320 to 480 words. Full anchor script. Hook, facts, context pivot ("Here is why that matters."), analysis, stakes, closing question, "Follow First Signal." on its own line.
+- poll_question: One binary poll. Question on first line. Then two options with thumbs up / thumbs down emoji.
+- video_first_comment: 3 to 5 sentences. In-depth context that adds to the story. End with a question to drive replies. No em-dashes.
+"""
+
+
+@app.post("/pipeline-queue/write-video-script")
+async def pipeline_queue_write_video_script(request: Request, user: dict = Depends(require_user)):
+    """Generate all video package content (titles, description, 3 scripts, poll, first comment) in one AI call."""
+    form = await request.form()
+    cluster_id = int(form.get("cluster_id", 0))
+
+    key = _get_anthropic_key()
+    if not key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
+
+    items = _load_fsn_queue()
+    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    if not item:
+        return JSONResponse({"error": "Item not found"}, status_code=404)
+
+    draft    = item.get("draft") or {}
+    headline = draft.get("headline") or item.get("text") or ""
+    story    = item.get("text") or headline
+
+    user_msg = _VIDEO_USER_TPL.format(story=story, headline=headline)
+
+    try:
+        import anthropic, re as _re
+        client = anthropic.Anthropic(api_key=key)
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001", max_tokens=4000,
+            system=_VIDEO_SYSTEM,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        raw = resp.content[0].text.strip()
+        m = _re.search(r'\{.*\}', raw, _re.S)
+        if not m:
+            return JSONResponse({"error": f"No JSON in response: {raw[:300]}"}, status_code=500)
+        data = json.loads(m.group())
+
+        # Persist to queue / DB
+        video_fields = {
+            "video_titles":         data.get("video_titles") or [],
+            "reels_description":    data.get("reels_description") or "",
+            "script_short":         data.get("script_short") or "",
+            "script_medium":        data.get("script_medium") or "",
+            "script_long":          data.get("script_long") or "",
+            "poll_question":        data.get("poll_question") or "",
+            "video_first_comment":  data.get("video_first_comment") or "",
+        }
+        item.update(video_fields)
+        _save_fsn_queue(items)
+        # Also write to DB fsn_state for cloud persistence
+        _update_cluster_fsn(cluster_id, **video_fields)
+
+        return JSONResponse({"ok": True, **video_fields})
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
