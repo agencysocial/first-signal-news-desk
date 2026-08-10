@@ -74,12 +74,13 @@ def _build_image_prompt(headline: str, tag: str, scene: str) -> str:
     return (
         f"A 4:5 vertical First Signal News breaking-news share card. "
         f"UPPER TWO-THIRDS is the photo: {scene}. {_ANTI_SLOP} "
-        f"LOWER THIRD is a solid flat BLACK footer panel. Inside the footer, a small bright RED "
-        f"rectangular tag box with the label \"{tag}\" in bold white uppercase. Directly below it, "
-        f"the headline \"{headline}\" in BOLD BRIGHT YELLOW uppercase modern sans-serif (Montserrat), "
-        f"left-aligned, wrapped over 2-4 lines. Footer contains ONLY those two text elements. "
-        f"No watermark, no channel name, no URL anywhere. Flat 2D text, no drop shadows. "
-        f"4:5 vertical portrait, photorealistic, sharp, magazine-quality."
+        f"LOWER THIRD is a solid flat BLACK footer panel. Inside the footer, at the top, a small "
+        f"bright RED rectangular tag box with the label \"{tag}\" in bold white uppercase. "
+        f"Directly below it, the headline \"{headline}\" in BOLD BRIGHT YELLOW uppercase modern "
+        f"sans-serif (Montserrat style), left-aligned, large and highly legible, wrapped over 2-4 lines. "
+        f"At the very bottom center of the image, a small white text watermark reading \"First Signal News\". "
+        f"No other text, no URLs, no social handles anywhere. Flat 2D text, no drop shadows, no outer glows. "
+        f"4:5 vertical portrait, photorealistic, sharp, vivid, magazine-quality."
     )
 
 
