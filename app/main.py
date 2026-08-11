@@ -2088,8 +2088,9 @@ async def pipeline_queue_write_video_script(request: Request, user: dict = Depen
             return JSONResponse({"error": f"No JSON in response: {raw[:300]}"}, status_code=500)
         data = json.loads(m.group())
 
-        # Persist to queue / DB
+        # Persist to queue / DB — include post_type so type survives reload
         video_fields = {
+            "post_type":            "video_package",
             "video_titles":         data.get("video_titles") or [],
             "reels_description":    data.get("reels_description") or "",
             "script_short":         data.get("script_short") or "",

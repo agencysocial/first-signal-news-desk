@@ -806,97 +806,81 @@ def render_pipeline_queue_page(
                         f'</div>'
                     )
 
-            # Video Package panel for approved rows
+            # Video Package — persistent button+panel for ANY row that has scripts
             video_panel_html = ""
-            if not selectable and gen_type == "video_package":
-                vt = item.get("video_titles") or []
+            vt = item.get("video_titles") or []
+            vs = item.get("script_short") or ""
+            vm = item.get("script_medium") or ""
+            vl = item.get("script_long") or ""
+            has_scripts = bool(vs or vm or vl)
+
+            if has_scripts:
                 vd = escape(item.get("reels_description") or "")
-                vs = escape(item.get("script_short") or "")
-                vm = escape(item.get("script_medium") or "")
-                vl = escape(item.get("script_long") or "")
+                vs_e = escape(vs); vm_e = escape(vm); vl_e = escape(vl)
                 vp = escape(item.get("poll_question") or "")
                 vf = escape(item.get("video_first_comment") or "")
-                has_scripts = bool(vs or vm or vl)
-
-                gen_vid_btn = (
-                    f'<button type="button" id="genvid-btn-{cid}" onclick="writeVideoScript({cid},this,true)" '
-                    f'style="font-size:10px;padding:3px 10px;background:#0a0a1a;border:1px solid #2a2060;'
-                    f'color:#a78bfa;cursor:pointer;border-radius:3px;margin-bottom:10px">'
-                    f'&#127916; Generate Video Scripts</button>'
-                    f'<span id="genvid-status-{cid}" style="font-size:10px;color:#8b93a3;margin-left:8px"></span>'
-                    f'<div id="genvid-result-{cid}"></div>'
-                ) if not has_scripts else ""
 
                 inner_v = ""
                 if vt:
-                    inner_v += '<div style="margin-bottom:10px">'
-                    inner_v += '<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Reels Cover Titles</div>'
+                    inner_v += '<div style="margin-bottom:10px"><div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Reels Cover Titles</div>'
                     for i, t in enumerate(vt[:3], 1):
+                        t_e = escape(t).replace("'", "&#39;")
                         inner_v += (
                             f'<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:4px">'
                             f'<span style="color:#a78bfa;font-size:10px;white-space:nowrap;margin-top:1px">Option {i}</span>'
                             f'<span style="color:#FFDE59;font-size:12px;font-weight:600;flex:1">{escape(t)}</span>'
-                            f'<button type="button" onclick="copyText(this,\'{escape(t).replace(chr(39), "&apos;")}\''
-                            f')" style="font-size:9px;padding:1px 6px;flex-shrink:0">Copy</button>'
+                            f'<button type="button" onclick="copyEl(\'vt{i}-{cid}\')" style="font-size:9px;padding:1px 6px;flex-shrink:0">Copy</button>'
+                            f'<span id="vt{i}-{cid}" style="display:none">{escape(t)}</span>'
                             f'</div>'
                         )
                     inner_v += '</div>'
                 if vd:
                     inner_v += (
-                        f'<div style="margin-bottom:10px">'
-                        f'<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Reels Description</div>'
-                        f'<div style="color:#c0c8d8;font-size:11px;line-height:1.6;white-space:pre-wrap">{vd}</div>'
-                        f'<button type="button" onclick="copyText(this,document.getElementById(\'vd-{cid}\').textContent)" '
-                        f'id="vd-{cid}" data-text="{vd}" style="font-size:9px;padding:1px 6px;margin-top:4px" '
-                        f'onclick="copyText(this,\'{vd.replace(chr(39), chr(39))}\')">Copy</button>'
-                        f'</div>'
+                        f'<div style="margin-bottom:10px"><div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Reels Description</div>'
+                        f'<div id="vd-{cid}" style="color:#c0c8d8;font-size:11px;line-height:1.6;white-space:pre-wrap">{vd}</div>'
+                        f'<button type="button" onclick="copyEl(\'vd-{cid}\')" style="font-size:9px;padding:1px 6px;margin-top:4px">Copy</button></div>'
                     )
-
-                script_colors = {"SHORT (30-45s)": "#4ade80", "MEDIUM (60-90s)": "#60a5fa", "LONG (120-180s)": "#f59e0b"}
-                script_ids    = {"SHORT (30-45s)": f"vs-{cid}", "MEDIUM (60-90s)": f"vm-{cid}", "LONG (120-180s)": f"vl-{cid}"}
-                script_vals   = {"SHORT (30-45s)": vs, "MEDIUM (60-90s)": vm, "LONG (120-180s)": vl}
-                for label_s, val_s in script_vals.items():
+                for label_s, val_s, sid, col in [
+                    ("SHORT (30-45s)",  vs_e, f"vs-{cid}", "#4ade80"),
+                    ("MEDIUM (60-90s)", vm_e, f"vm-{cid}", "#60a5fa"),
+                    ("LONG (120-180s)", vl_e, f"vl-{cid}", "#f59e0b"),
+                ]:
                     if val_s:
-                        sid = script_ids[label_s]
-                        col = script_colors[label_s]
                         inner_v += (
                             f'<div style="margin-bottom:12px;padding:10px;background:#060910;border-radius:4px;border-left:3px solid {col}">'
                             f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
                             f'<span style="color:{col};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px">{label_s}</span>'
-                            f'<button type="button" onclick="copyEl(\'{sid}\')" style="font-size:9px;padding:1px 8px">Copy Script</button>'
-                            f'</div>'
-                            f'<div id="{sid}" style="color:#c0c8d8;font-size:11px;line-height:1.8;white-space:pre-wrap">{val_s}</div>'
-                            f'</div>'
+                            f'<button type="button" onclick="copyEl(\'{sid}\')" style="font-size:9px;padding:1px 8px">Copy Script</button></div>'
+                            f'<div id="{sid}" style="color:#c0c8d8;font-size:11px;line-height:1.8;white-space:pre-wrap">{val_s}</div></div>'
                         )
                 if vp:
                     inner_v += (
                         f'<div style="margin-bottom:10px;padding:8px;background:#0d111a;border:1px solid #2a3555;border-radius:4px">'
                         f'<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Poll Question</div>'
-                        f'<div style="color:#e6e8ec;font-size:12px;line-height:1.5;white-space:pre-wrap">{vp}</div>'
-                        f'<button type="button" onclick="copyEl(\'vpoll-{cid}\')" id="vpoll-{cid}" data-text="{vp}" '
-                        f'style="font-size:9px;padding:1px 6px;margin-top:4px" onclick="">Copy</button>'
-                        f'</div>'
+                        f'<div id="vpoll-{cid}" style="color:#e6e8ec;font-size:12px;line-height:1.5;white-space:pre-wrap">{vp}</div>'
+                        f'<button type="button" onclick="copyEl(\'vpoll-{cid}\')" style="font-size:9px;padding:1px 6px;margin-top:4px">Copy</button></div>'
                     )
                 if vf:
                     inner_v += (
                         f'<div style="border-top:1px solid #1a1f2b;padding-top:8px;margin-top:4px">'
                         f'<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">First Comment</div>'
                         f'<div id="vfc-{cid}" style="color:#c0c8d8;font-size:11px;line-height:1.6;white-space:pre-wrap">{vf}</div>'
-                        f'<button type="button" onclick="copyEl(\'vfc-{cid}\')" style="font-size:9px;padding:1px 6px;margin-top:4px">Copy</button>'
-                        f'</div>'
+                        f'<button type="button" onclick="copyEl(\'vfc-{cid}\')" style="font-size:9px;padding:1px 6px;margin-top:4px">Copy</button></div>'
                     )
 
-                # Auto-open the panel if scripts are already generated
-                panel_display = "block" if has_scripts else "none"
                 video_panel_html = (
-                    f'<div style="margin-top:6px">'
-                    f'<button type="button" onclick="toggleStory(\'vid-{cid}\')" '
-                    f'style="font-size:10px;padding:2px 8px;background:#0a0a1a;border:1px solid #2a2060;'
-                    f'color:#a78bfa;cursor:pointer;border-radius:3px">&#127916; Video Package</button>'
-                    f'<div id="story-vid-{cid}" style="display:{panel_display};margin-top:8px;padding:10px;'
-                    f'background:#060910;border:1px solid #1a1f2b;border-radius:4px">'
-                    f'{gen_vid_btn}{inner_v}</div>'
-                    f'</div>'
+                    f'<div id="vidpanel-wrap-{cid}" style="display:none;margin-top:8px;padding:10px;'
+                    f'background:#060910;border:1px solid #2a2060;border-radius:4px">'
+                    f'{inner_v}</div>'
+                )
+
+            # Video Package persistent button — shown when scripts exist on any row
+            video_saved_btn = ""
+            if has_scripts:
+                video_saved_btn = (
+                    f'<button type="button" onclick="togglePanel(\'vidpanel-wrap-{cid}\')" '
+                    f'style="font-size:10px;padding:2px 7px;margin-top:4px;margin-left:4px;background:#0a0a1a;'
+                    f'border:1px solid #2a2060;color:#a78bfa;cursor:pointer;border-radius:3px">&#127916; Video</button>'
                 )
 
             # Persistent TOBI panel — server-rendered when tobi_text is saved
@@ -1017,8 +1001,9 @@ def render_pipeline_queue_page(
           <div style="font-size:13px;font-weight:500;line-height:1.4">{text}</div>
           <div style="color:#8b93a3;font-size:11px;margin-top:3px">{cat} &middot; {srcs} source(s) &middot; added {added}</div>
           <div style="margin-top:4px">{badges}</div>
-          {draft_html}{story_panel_html}{video_panel_html}
-          <div style="display:flex;flex-wrap:wrap;align-items:flex-start">{angles_btn} {preview_btn} {tobi_saved_btn} {scores_btn}</div>
+          {draft_html}{story_panel_html}
+          {video_panel_html}
+          <div style="display:flex;flex-wrap:wrap;align-items:flex-start">{angles_btn} {preview_btn} {tobi_saved_btn} {video_saved_btn} {scores_btn}</div>
           {gen_img_html}
         </td>
         <td data-label="Viral">{ai_score_cell(item)}</td>
