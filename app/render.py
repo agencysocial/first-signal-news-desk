@@ -74,6 +74,7 @@ STYLE = """
     .filter-form label { color: #8b93a3; }
     .updated-fresh { color: #4ade80; font-weight: 600; }
     .new-dot { color: #4ade80; }
+    @keyframes blink-red { 0%,100%{opacity:1} 50%{opacity:.35} }
 
     /* Mobile: the full workflow needs to work on a phone, not just be
     readable -- reviewing stories, filtering, and sending to the production
@@ -756,7 +757,19 @@ def render_pipeline_queue_page(
             rec      = rec_map.get(cid) if selectable else None
 
             needs_draft = item.get("needs_draft") and not (item.get("draft") or {}).get("headline")
+
+            # BREAKING badge: high-momentum story detected within the last 6 hours
+            _item_age_h = _item_age_days(item) * 24
+            _is_breaking = (
+                float(item.get("momentum_score") or 0) > 60
+                and _item_age_h <= 6
+            )
+
             badges = ""
+            if _is_breaking:
+                badges += ('<span class="badge" style="background:#7a0000;color:#fff;border:1px solid #cc0000;'
+                           'font-weight:700;letter-spacing:.5px;animation:blink-red 1.4s step-start infinite">'
+                           '&#128308; BREAKING</span> ')
             if rec:
                 rec_reason = escape(rec.get("reason") or "")
                 badges += (f'<span class="badge" style="background:#0a1a0a;color:#4ade80;border:1px solid #1a5a1a"'
