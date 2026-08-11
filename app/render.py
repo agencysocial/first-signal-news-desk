@@ -725,8 +725,9 @@ def render_pipeline_queue_page(
 
             if selectable:
                 is_checked  = "checked" if rec else ""
-                # Use recommended gen_type if available, else suggested template
-                eff_type = (rec.get("gen_type") if rec else None) or ("tobi" if s_tmpl == "tobi" else "image_card")
+                # Saved post_type wins; fall back to rec or template suggestion
+                saved_type = item.get("post_type") or ""
+                eff_type = saved_type or (rec.get("gen_type") if rec else None) or ("tobi" if s_tmpl == "tobi" else "image_card")
                 img_sel  = "selected" if eff_type == "image_card" else ""
                 tobi_sel = "selected" if eff_type == "tobi" else ""
                 vid_sel  = "selected" if eff_type == "video_package" else ""
@@ -898,6 +899,23 @@ def render_pipeline_queue_page(
                     f'</div>'
                 )
 
+            # Persistent TOBI panel — server-rendered when tobi_text is saved
+            tobi_text_saved = escape(item.get("tobi_text") or (item.get("draft") or {}).get("tobi_text") or "")
+            tobi_saved_btn = ""
+            if tobi_text_saved:
+                tobi_saved_btn = (
+                    f'<button type="button" onclick="togglePanel(\'tobi-saved-{cid}\')" '
+                    f'style="font-size:10px;padding:2px 7px;margin-top:4px;margin-left:4px;background:#0a1a10;'
+                    f'border:1px solid #1a5a30;color:#4ade80;cursor:pointer;border-radius:3px">&#128221; TOBI</button>'
+                    f'<div id="tobi-saved-{cid}" style="display:none;margin-top:8px;padding:10px;background:#0d111a;'
+                    f'border:1px solid #1a5a30;border-radius:4px">'
+                    f'<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">TOBI Post</div>'
+                    f'<div id="tobi-text-{cid}" style="color:#c0c8d8;font-size:12px;line-height:1.6">{tobi_text_saved}</div>'
+                    f'<button type="button" onclick="copyEl(\'tobi-text-{cid}\')" '
+                    f'style="font-size:9px;padding:1px 8px;margin-top:6px">Copy</button>'
+                    f'</div>'
+                )
+
             angles_btn = (
                 f'<button type="button" onclick="expandAngles({cid},this)" '
                 f'style="font-size:10px;padding:2px 7px;margin-top:4px;margin-left:4px;background:#0a1020;'
@@ -1000,7 +1018,7 @@ def render_pipeline_queue_page(
           <div style="color:#8b93a3;font-size:11px;margin-top:3px">{cat} &middot; {srcs} source(s) &middot; added {added}</div>
           <div style="margin-top:4px">{badges}</div>
           {draft_html}{story_panel_html}{video_panel_html}
-          <div style="display:flex;flex-wrap:wrap;align-items:flex-start">{angles_btn} {preview_btn} {scores_btn}</div>
+          <div style="display:flex;flex-wrap:wrap;align-items:flex-start">{angles_btn} {preview_btn} {tobi_saved_btn} {scores_btn}</div>
           {gen_img_html}
         </td>
         <td data-label="Viral">{ai_score_cell(item)}</td>
@@ -1266,6 +1284,11 @@ function onTypeChange(cid, sel) {
   var videoWrap = document.getElementById('video-write-wrap-' + cid);
   if (tobiWrap)  tobiWrap.style.display  = sel.value === 'tobi'          ? 'block' : 'none';
   if (videoWrap) videoWrap.style.display = sel.value === 'video_package' ? 'block' : 'none';
+  // Persist immediately so the type survives the 30s auto-refresh
+  var fd = new FormData();
+  fd.append('cluster_id', cid);
+  fd.append('post_type', sel.value);
+  fetch('/pipeline-queue/set-post-type', {method:'POST', body:fd}).catch(function(){});
 }
 
 function writeTOBI(cid, btn) {
@@ -1317,8 +1340,13 @@ function useTOBI(cid, idx, btn) {
   })
   .then(function(r){ return r.json(); })
   .then(function(d){
-    if (d.ok) { if (status) status.textContent = 'Applied!'; }
-    else { if (status) status.textContent = d.error || 'Error'; btn.disabled = false; }
+    if (d.ok) {
+      if (status) status.textContent = 'Saved. Loading...';
+      window.location.reload();
+    } else {
+      if (status) status.textContent = d.error || 'Error';
+      btn.disabled = false;
+    }
   })
   .catch(function(){ if (status) status.textContent = 'Failed'; btn.disabled = false; });
 }

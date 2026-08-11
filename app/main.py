@@ -233,7 +233,7 @@ def _load_fsn_queue() -> list[dict]:
                 "post_url": url,
                 "sources": [{"url": url}] if url else [],
                 "draft": fsn.get("draft"),
-                "tobi_text": fsn.get("tobi_text"),
+                "tobi_text": fsn.get("tobi_text") or (fsn.get("draft") or {}).get("tobi_text"),
                 "generated_image_url": fsn.get("generated_image_url"),
                 "image_gen_status": fsn.get("image_gen_status", ""),
                 "video_titles":        fsn.get("video_titles", []),
@@ -2240,6 +2240,26 @@ Output ONLY valid JSON:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+@app.post("/pipeline-queue/set-post-type")
+async def pipeline_queue_set_post_type(request: Request, user: dict = Depends(require_user)):
+    """Immediately persist post_type for a cluster so it survives page refresh."""
+    form = await request.form()
+    cluster_id = int(form.get("cluster_id", 0))
+    post_type  = str(form.get("post_type", "image_card")).strip()
+    if post_type not in ("image_card", "tobi", "video_package"):
+        return JSONResponse({"error": "invalid type"}, status_code=400)
+    _update_cluster_fsn(cluster_id, post_type=post_type)
+    # Also update local queue file if running locally
+    if _is_local():
+        items = _load_fsn_queue()
+        for item in items:
+            if item.get("cluster_id") == cluster_id:
+                item["post_type"] = post_type
+                break
+        _save_fsn_queue(items)
+    return {"ok": True}
+
+
 @app.post("/pipeline-queue/apply-tobi")
 async def pipeline_queue_apply_tobi(request: Request, user: dict = Depends(require_user)):
     """Save chosen TOBI text onto the queue item."""
@@ -2249,16 +2269,18 @@ async def pipeline_queue_apply_tobi(request: Request, user: dict = Depends(requi
     if not text:
         return JSONResponse({"error": "No text"}, status_code=400)
 
-    items = _load_fsn_queue()
-    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
-    if not item:
-        return {"ok": True, "note": "client-side only on deployed server"}
+    # Persist to DB directly so it survives refresh
+    _update_cluster_fsn(cluster_id, post_type="tobi", tobi_text=text)
 
-    if not item.get("draft"):
-        item["draft"] = {}
-    item["draft"]["tobi_text"] = text
-    item["generation_type"] = "tobi"
-    _save_fsn_queue(items)
+    if _is_local():
+        items = _load_fsn_queue()
+        item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+        if item:
+            if not item.get("draft"):
+                item["draft"] = {}
+            item["draft"]["tobi_text"] = text
+            item["post_type"] = "tobi"
+            _save_fsn_queue(items)
     return {"ok": True}
 
 
