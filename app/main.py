@@ -1592,12 +1592,16 @@ def pipeline_queue_run_batch(background_tasks: BackgroundTasks, user: dict = Dep
     items = _load_fsn_queue()
     approved_image_cards = [
         x for x in items
-        if x.get("queue_status") == "approved" and x.get("post_type", "image_card") == "image_card"
+        if x.get("queue_status") == "approved"
+        and x.get("post_type", "image_card") == "image_card"
+        and x.get("image_gen_status") != "done"
+        and not x.get("generated_image_url")
+        and x.get("image_gen_status") != "generating"
     ]
 
     if not approved_image_cards:
         return RedirectResponse(
-            "/pipeline-queue?msg=No+image+cards+approved.+Select+stories+and+click+Send+to+Generation+first.",
+            "/pipeline-queue?msg=No+new+image+cards+to+generate.+Already-generated+cards+are+skipped+automatically.",
             status_code=303,
         )
 
