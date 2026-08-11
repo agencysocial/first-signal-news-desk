@@ -42,8 +42,20 @@ def _fetch_feed(url: str, user_agent: str | None = None):
     user_agent overrides the shared default for one source -- see
     Source.user_agent's docstring for why this needs to be per-source
     rather than one value for every feed.
+
+    Full browser header set is sent because some CDN/WAF setups (e.g. Politico)
+    block requests that carry only a UA string without the Accept/Language/etc.
+    headers a real browser would send.
     """
-    req = urllib.request.Request(url, headers={"User-Agent": user_agent or _USER_AGENT})
+    headers = {
+        "User-Agent": user_agent or _USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+    }
+    req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=FEED_FETCH_TIMEOUT_SECONDS) as resp:
         return feedparser.parse(resp.read())
 
