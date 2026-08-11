@@ -299,7 +299,7 @@ def render_wire_page(clusters: list[dict], error_sources: list[tuple[str, str]],
     body = f"""
   <h1>AIM News Desk &mdash; {escape(page_title)}</h1>
   <div class="sub">
-    {len(clusters)} story clusters &middot; viral score is a rules-only PRELIMINARY approximation (AI enrichment lands in Phase 3) &middot; sorted by {sort_label}
+    {len(clusters)} story clusters &middot; viral score blends coverage (momentum/tier/recency) with AI content judgment &middot; sorted by {sort_label}
     <br>Last scan: {escape(last_scan)} (auto-scans every 3-30 min in the background; this page refreshes itself every {refresh_seconds}s)
     <div class="sort-toggle">
       Sort:
