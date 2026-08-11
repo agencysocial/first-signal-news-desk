@@ -920,6 +920,57 @@ def render_pipeline_queue_page(
                     f'border:1px solid #2a3555;border-radius:4px;font-size:12px"></div>'
                 )
 
+            # Scores button — inline collapsible panel, server-rendered from item data
+            def _score_bar(val, max_val=100):
+                pct = min(100, round((val / max_val) * 100)) if max_val else 0
+                col = "#4ade80" if pct >= 60 else "#facc15" if pct >= 30 else "#8b93a3"
+                return (
+                    f'<div style="display:flex;align-items:center;gap:6px">'
+                    f'<div style="flex:1;height:4px;background:#1a1f2b;border-radius:2px">'
+                    f'<div style="width:{pct}%;height:100%;background:{col};border-radius:2px"></div></div>'
+                    f'<span style="color:{col};font-size:10px;width:32px;text-align:right">{val:.1f}</span>'
+                    f'</div>'
+                )
+
+            vs   = float(item.get("viral_score") or 0)
+            cs   = float(item.get("confidence_score") or 0)
+            ms   = float(item.get("momentum_score") or 0)
+            ai_e = item.get("ai_emotional_strength")
+            ai_v = item.get("ai_visual_potential")
+            ai_c = item.get("ai_conversation_potential")
+            ai_n = item.get("ai_novelty")
+
+            scores_inner = (
+                f'<div style="display:grid;grid-template-columns:110px 1fr;gap:5px 8px;align-items:center">'
+                f'<span style="color:#8b93a3;font-size:10px">Viral</span>{_score_bar(vs)}'
+                f'<span style="color:#8b93a3;font-size:10px">Confidence</span>{_score_bar(cs)}'
+                f'<span style="color:#8b93a3;font-size:10px">Momentum</span>{_score_bar(ms)}'
+            )
+            if ai_e is not None:
+                scores_inner += (
+                    f'<span style="color:#8b93a3;font-size:10px;margin-top:6px;grid-column:1/-1;'
+                    f'border-top:1px solid #1a1f2b;padding-top:5px">AI Scores</span>'
+                    f'<span style="color:#8b93a3;font-size:10px">Emotional</span>{_score_bar(float(ai_e))}'
+                    f'<span style="color:#8b93a3;font-size:10px">Visual</span>{_score_bar(float(ai_v or 0))}'
+                    f'<span style="color:#8b93a3;font-size:10px">Conversation</span>{_score_bar(float(ai_c or 0))}'
+                    f'<span style="color:#8b93a3;font-size:10px">Novelty</span>{_score_bar(float(ai_n or 0))}'
+                )
+            scores_inner += '</div>'
+
+            src_count = item.get("source_count") or len(item.get("sources") or [])
+            scores_btn = (
+                f'<button type="button" onclick="togglePanel(\'scores-{cid}\')" '
+                f'style="font-size:10px;padding:2px 7px;margin-top:4px;margin-left:4px;background:#0a1020;'
+                f'border:1px solid #2a3555;color:#facc15;cursor:pointer;border-radius:3px">'
+                f'&#9733; Scores</button>'
+                f'<div id="scores-{cid}" style="display:none;margin-top:8px;padding:10px;background:#0d111a;'
+                f'border:1px solid #2a3555;border-radius:4px;font-size:12px;min-width:200px">'
+                f'<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">'
+                f'Scores &middot; {src_count} source(s)</div>'
+                f'{scores_inner}'
+                f'</div>'
+            )
+
             # Generated image display
             gen_img_url = item.get("generated_image_url") or ""
             gen_status  = item.get("image_gen_status") or ""
@@ -949,7 +1000,7 @@ def render_pipeline_queue_page(
           <div style="color:#8b93a3;font-size:11px;margin-top:3px">{cat} &middot; {srcs} source(s) &middot; added {added}</div>
           <div style="margin-top:4px">{badges}</div>
           {draft_html}{story_panel_html}{video_panel_html}
-          <div style="display:flex;flex-wrap:wrap;align-items:flex-start">{angles_btn} {preview_btn}</div>
+          <div style="display:flex;flex-wrap:wrap;align-items:flex-start">{angles_btn} {preview_btn} {scores_btn}</div>
           {gen_img_html}
         </td>
         <td data-label="Viral">{ai_score_cell(item)}</td>
@@ -967,6 +1018,11 @@ function toggleDraft(cid) {
 
 function toggleStory(cid) {
   var el = document.getElementById('story-' + cid);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function togglePanel(id) {
+  var el = document.getElementById(id);
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
