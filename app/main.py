@@ -1705,8 +1705,43 @@ async def pipeline_queue_add_article(request: Request, user: dict = Depends(requ
     if not raw_headline:
         raw_headline = fetched_title or url or "Untitled article"
 
-    now    = datetime.now(timezone.utc).isoformat()
-    new_id = int(datetime.now(timezone.utc).timestamp() * 1000)
+    now = datetime.now(timezone.utc)
+
+    # Insert a real StoryCluster row so the entry persists on Render (DB-backed queue)
+    db = SessionLocal()
+    try:
+        cluster = StoryCluster(
+            canonical_headline=raw_headline,
+            summary=paste_text[:500] if paste_text else "",
+            category="manual",
+            status="New",
+            verification_status="manual_add",
+            first_detected_at=now,
+            latest_update_at=now,
+            article_count=1,
+            source_count=1,
+            viral_score=0.0,
+            confidence_score=0.0,
+            momentum_score=0.0,
+            handoff_sent_at=now,  # mark as sent so it appears in the queue
+            fsn_state=json.dumps({
+                "queue_status": "pending",
+                "post_type": "image_card",
+                "draft": {"headline": "", "tag": "JUST IN", "captions": {}, "first_comment": ""},
+                "needs_draft": True,
+            }, ensure_ascii=False),
+        )
+        db.add(cluster)
+        db.commit()
+        db.refresh(cluster)
+        new_id = cluster.id
+    except Exception as exc:
+        db.rollback()
+        logger.error("add-article: DB insert failed: %s", exc)
+        # Fallback: timestamp ID (local path)
+        new_id = int(now.timestamp() * 1000)
+    finally:
+        db.close()
 
     entry = {
         "cluster_id":          new_id,
@@ -1716,7 +1751,7 @@ async def pipeline_queue_add_article(request: Request, user: dict = Depends(requ
         "source_count":        1,
         "verification_status": "manual_add",
         "queue_status":        "pending",
-        "added_to_queue_at":   now,
+        "added_to_queue_at":   now.isoformat(),
         "source_url":          url,
         "suggested_template":  "A",
         "suggested_scene":     "",
