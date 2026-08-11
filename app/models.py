@@ -138,6 +138,7 @@ class StoryCluster(Base):
     ai_visual_potential: Mapped[float | None] = mapped_column(Float, nullable=True)
     ai_conversation_potential: Mapped[float | None] = mapped_column(Float, nullable=True)
     ai_novelty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_topic_relevance: Mapped[float | None] = mapped_column(Float, nullable=True)
     ai_scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     entities: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list

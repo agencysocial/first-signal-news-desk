@@ -226,6 +226,7 @@ def _load_fsn_queue() -> list[dict]:
                 "ai_visual_potential":       c.ai_visual_potential,
                 "ai_conversation_potential": c.ai_conversation_potential,
                 "ai_novelty":                c.ai_novelty,
+                "ai_topic_relevance":        c.ai_topic_relevance,
                 "queue_status": fsn.get("queue_status", "pending"),
                 "post_type": fsn.get("post_type", "image_card"),
                 "approved_at": fsn.get("approved_at", ""),
@@ -643,9 +644,12 @@ async def lifespan(app: FastAPI):
             _conn.execute(_sql_text(
                 "ALTER TABLE story_clusters ADD COLUMN IF NOT EXISTS fsn_state TEXT"
             ))
+            _conn.execute(_sql_text(
+                "ALTER TABLE story_clusters ADD COLUMN IF NOT EXISTS ai_topic_relevance FLOAT"
+            ))
             _conn.commit()
     except Exception as _e:
-        logger.warning("fsn_state migration skipped: %s", _e)
+        logger.warning("schema migration skipped: %s", _e)
 
     for tier, minutes in TIER_MINUTES.items():
         scheduler.add_job(
@@ -1036,6 +1040,7 @@ def story_detail(cluster_id: int, msg: str | None = None, user: dict = Depends(r
             "ai_visual_potential": cluster.ai_visual_potential,
             "ai_conversation_potential": cluster.ai_conversation_potential,
             "ai_novelty": cluster.ai_novelty,
+            "ai_topic_relevance": cluster.ai_topic_relevance,
             "ai_scored_at": cluster.ai_scored_at.strftime("%Y-%m-%d %H:%M UTC") if cluster.ai_scored_at else None,
         }
 

@@ -25,9 +25,9 @@ _ENDPOINT = "https://api.anthropic.com/v1/messages"
 _MODEL = "claude-haiku-4-5-20251001"
 _TIMEOUT = 30
 
-_DIMENSIONS = ("emotional_strength", "visual_potential", "conversation_potential", "novelty")
+_DIMENSIONS = ("emotional_strength", "visual_potential", "conversation_potential", "novelty", "topic_relevance")
 
-_PROMPT_TEMPLATE = """You are scoring a news story for social-media viral potential on 4 independent 0-100 dimensions. Respond with ONLY a JSON object, no other text, no markdown fences.
+_PROMPT_TEMPLATE = """You are scoring a news story for social-media viral potential on 5 independent 0-100 dimensions. Respond with ONLY a JSON object, no other text, no markdown fences.
 
 Story headline: {headline}
 Category: {category}
@@ -38,8 +38,9 @@ Score each dimension 0-100:
 - visual_potential: how well this maps to a concrete, dramatic visual scene
 - conversation_potential: how much this invites debate, argument, or strong opinions
 - novelty: how genuinely new/surprising this is, vs. a routine update
+- topic_relevance: how relevant this is to a US conservative / America First audience (politics, immigration, economy, military, crime, Second Amendment, border, election integrity, government accountability) -- 100 = core topic, 0 = completely off-brand (celebrity gossip, sports, foreign affairs with no US angle)
 
-Respond with exactly this JSON shape: {{"emotional_strength": <int>, "visual_potential": <int>, "conversation_potential": <int>, "novelty": <int>}}"""
+Respond with exactly this JSON shape: {{"emotional_strength": <int>, "visual_potential": <int>, "conversation_potential": <int>, "novelty": <int>, "topic_relevance": <int>}}"""
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
@@ -74,7 +75,7 @@ def score_story_content(headline: str, category: str | None, entities: list[str]
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             },
-            json={"model": _MODEL, "max_tokens": 200, "messages": [{"role": "user", "content": prompt}]},
+            json={"model": _MODEL, "max_tokens": 250, "messages": [{"role": "user", "content": prompt}]},
             timeout=_TIMEOUT,
         )
     except httpx.HTTPError:

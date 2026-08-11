@@ -613,6 +613,18 @@ def render_pipeline_queue_page(
     pending_fresh = [x for x in pending if _item_age_days(x) <= _STALE_DAYS]
     pending_old   = [x for x in pending if _item_age_days(x) >  _STALE_DAYS]
 
+    def _composite_sort_key(item: dict) -> float:
+        """Decay-adjusted viral score × topic relevance (if scored). Higher = better."""
+        age   = _item_age_days(item)
+        decay = _age_decay(age)
+        viral = float(item.get("viral_score") or 0)
+        rel   = item.get("ai_topic_relevance")
+        rel_factor = (float(rel) / 100.0) if rel is not None else 1.0
+        return viral * decay * rel_factor
+
+    pending_fresh.sort(key=_composite_sort_key, reverse=True)
+    pending_old.sort(key=_composite_sort_key, reverse=True)
+
     # Build recommendation lookup {cluster_id: {template, reason, type}}
     rec_map: dict[int, dict] = {}
     if recommendation:
@@ -988,6 +1000,7 @@ def render_pipeline_queue_page(
             ai_v = item.get("ai_visual_potential")
             ai_c = item.get("ai_conversation_potential")
             ai_n = item.get("ai_novelty")
+            ai_r = item.get("ai_topic_relevance")
 
             age_label = (f"{int(_age_days_item)}d old" if _age_days_item >= 1
                          else f"{int(_age_days_item * 24)}h old")
@@ -1012,6 +1025,9 @@ def render_pipeline_queue_page(
                     f'<span style="color:#8b93a3;font-size:10px">Visual</span>{_score_bar(float(ai_v or 0), decayed=False)}'
                     f'<span style="color:#8b93a3;font-size:10px">Conversation</span>{_score_bar(float(ai_c or 0), decayed=False)}'
                     f'<span style="color:#8b93a3;font-size:10px">Novelty</span>{_score_bar(float(ai_n or 0), decayed=False)}'
+                    + (f'<span style="color:#8b93a3;font-size:10px">&#127919; Relevance</span>{_score_bar(float(ai_r), decayed=False)}'
+                       if ai_r is not None else
+                       '<span style="color:#3a4055;font-size:10px;grid-column:1/-1">&#127919; Relevance — will score on new stories</span>')
                 )
             scores_inner += '</div>'
 

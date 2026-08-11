@@ -289,6 +289,7 @@ def assign_cluster(session: Session, normalized: NormalizedArticle, raw_headline
         cluster.ai_visual_potential = ai_scores["visual_potential"]
         cluster.ai_conversation_potential = ai_scores["conversation_potential"]
         cluster.ai_novelty = ai_scores["novelty"]
+        cluster.ai_topic_relevance = ai_scores.get("topic_relevance")
         cluster.ai_scored_at = datetime.now(timezone.utc)
 
     _recompute_cluster(session, cluster)
