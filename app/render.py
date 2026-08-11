@@ -567,6 +567,33 @@ def render_sources_page(sources: list[dict]) -> str:
     return PAGE_HEAD + body + PAGE_TAIL
 
 
+_STALE_DAYS = 14   # stories older than this are considered stale in the queue
+
+
+def _item_age_days(item: dict) -> float:
+    """Days since the item was added to the queue. Returns 0 if unknown."""
+    from datetime import datetime, timezone
+    ts = item.get("added_to_queue_at") or ""
+    if not ts:
+        return 0.0
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return max((datetime.now(timezone.utc) - dt).total_seconds() / 86400, 0.0)
+    except Exception:
+        return 0.0
+
+
+def _age_decay(age_days: float) -> float:
+    """Score multiplier based on age. Returns 1.0 for fresh, 0.0 for 14+ days."""
+    if age_days <= 1:   return 1.0
+    if age_days <= 3:   return 0.7
+    if age_days <= 7:   return 0.4
+    if age_days <= 14:  return 0.15
+    return 0.0
+
+
 def render_pipeline_queue_page(
     items: list[dict],
     msg: str = "",
@@ -575,11 +602,16 @@ def render_pipeline_queue_page(
     picks_count: int = 0,
     picks_date: str = "",
     recommendation: dict | None = None,
+    show_older: bool = False,
 ) -> str:
     pending   = [x for x in items if x.get("queue_status") == "pending"]
     approved  = [x for x in items if x.get("queue_status") == "approved"]
     used      = [x for x in items if x.get("queue_status") == "used"]
     skipped   = [x for x in items if x.get("queue_status") == "skipped"]
+
+    # Split pending into fresh (≤14 days) and older (>14 days)
+    pending_fresh = [x for x in pending if _item_age_days(x) <= _STALE_DAYS]
+    pending_old   = [x for x in pending if _item_age_days(x) >  _STALE_DAYS]
 
     # Build recommendation lookup {cluster_id: {template, reason, type}}
     rec_map: dict[int, dict] = {}
@@ -673,15 +705,25 @@ def render_pipeline_queue_page(
         )
 
     def ai_score_cell(item):
+        age_days = _item_age_days(item)
+        decay    = _age_decay(age_days)
+        if decay == 0.0:
+            age_label = f"{int(age_days)}d"
+            return f'<span style="color:#4a5568;font-size:10px;font-weight:600">STALE<br><span style="font-size:9px;font-weight:400">{age_label}</span></span>'
         ai  = item.get("ai_viral_score")
         raw = item.get("viral_score", 0)
         if ai is not None:
-            color = "#4ade80" if ai >= 70 else "#facc15" if ai >= 50 else "#8b93a3"
+            effective = round(ai * decay)
+            color = "#4ade80" if effective >= 70 else "#facc15" if effective >= 50 else "#8b93a3"
             reason = escape(item.get("ai_score_reason") or "")
             tip = f' title="{reason}"' if reason else ""
-            return f'<span style="color:{color};font-weight:600;cursor:default;font-size:13px"{tip}>{ai}</span>'
+            decay_note = f'<span style="color:#4a5568;font-size:9px"> ×{decay}</span>' if decay < 1.0 else ""
+            return f'<span style="color:{color};font-weight:600;cursor:default;font-size:13px"{tip}>{effective}</span>{decay_note}'
         if raw:
-            return f'<span style="color:#8b93a3">{raw:.0f}</span>'
+            effective = round(raw * decay)
+            color = "#4ade80" if effective >= 70 else "#facc15" if effective >= 50 else "#8b93a3"
+            decay_note = f'<span style="color:#4a5568;font-size:9px"> ×{decay}</span>' if decay < 1.0 else ""
+            return f'<span style="color:{color}">{effective:.0f}</span>{decay_note}'
         return '<span style="color:#3a4055">—</span>'
 
     def make_rows(row_items, selectable=True):
@@ -923,14 +965,19 @@ def render_pipeline_queue_page(
                 )
 
             # Scores button — inline collapsible panel, server-rendered from item data
-            def _score_bar(val, max_val=100):
-                pct = min(100, round((val / max_val) * 100)) if max_val else 0
+            _age_days_item = _item_age_days(item)
+            _decay_item    = _age_decay(_age_days_item)
+
+            def _score_bar(val, max_val=100, decayed=True):
+                effective = val * (_decay_item if decayed else 1.0)
+                pct = min(100, round((effective / max_val) * 100)) if max_val else 0
                 col = "#4ade80" if pct >= 60 else "#facc15" if pct >= 30 else "#8b93a3"
+                label = f"{effective:.0f}" + (f" ({val:.0f} raw)" if decayed and _decay_item < 1.0 else "")
                 return (
                     f'<div style="display:flex;align-items:center;gap:6px">'
                     f'<div style="flex:1;height:4px;background:#1a1f2b;border-radius:2px">'
                     f'<div style="width:{pct}%;height:100%;background:{col};border-radius:2px"></div></div>'
-                    f'<span style="color:{col};font-size:10px;width:32px;text-align:right">{val:.1f}</span>'
+                    f'<span style="color:{col};font-size:10px;width:60px;text-align:right">{label}</span>'
                     f'</div>'
                 )
 
@@ -942,7 +989,16 @@ def render_pipeline_queue_page(
             ai_c = item.get("ai_conversation_potential")
             ai_n = item.get("ai_novelty")
 
+            age_label = (f"{int(_age_days_item)}d old" if _age_days_item >= 1
+                         else f"{int(_age_days_item * 24)}h old")
+            decay_note = ""
+            if _decay_item == 0.0:
+                decay_note = '<div style="color:#f87171;font-size:10px;margin-bottom:6px">&#9888; STALE — story is over 14 days old</div>'
+            elif _decay_item < 1.0:
+                decay_note = f'<div style="color:#facc15;font-size:10px;margin-bottom:6px">&#9202; Age decay ×{_decay_item} applied ({age_label})</div>'
+
             scores_inner = (
+                f'{decay_note}'
                 f'<div style="display:grid;grid-template-columns:110px 1fr;gap:5px 8px;align-items:center">'
                 f'<span style="color:#8b93a3;font-size:10px">Viral</span>{_score_bar(vs)}'
                 f'<span style="color:#8b93a3;font-size:10px">Confidence</span>{_score_bar(cs)}'
@@ -951,11 +1007,11 @@ def render_pipeline_queue_page(
             if ai_e is not None:
                 scores_inner += (
                     f'<span style="color:#8b93a3;font-size:10px;margin-top:6px;grid-column:1/-1;'
-                    f'border-top:1px solid #1a1f2b;padding-top:5px">AI Scores</span>'
-                    f'<span style="color:#8b93a3;font-size:10px">Emotional</span>{_score_bar(float(ai_e))}'
-                    f'<span style="color:#8b93a3;font-size:10px">Visual</span>{_score_bar(float(ai_v or 0))}'
-                    f'<span style="color:#8b93a3;font-size:10px">Conversation</span>{_score_bar(float(ai_c or 0))}'
-                    f'<span style="color:#8b93a3;font-size:10px">Novelty</span>{_score_bar(float(ai_n or 0))}'
+                    f'border-top:1px solid #1a1f2b;padding-top:5px">AI Scores (no decay)</span>'
+                    f'<span style="color:#8b93a3;font-size:10px">Emotional</span>{_score_bar(float(ai_e), decayed=False)}'
+                    f'<span style="color:#8b93a3;font-size:10px">Visual</span>{_score_bar(float(ai_v or 0), decayed=False)}'
+                    f'<span style="color:#8b93a3;font-size:10px">Conversation</span>{_score_bar(float(ai_c or 0), decayed=False)}'
+                    f'<span style="color:#8b93a3;font-size:10px">Novelty</span>{_score_bar(float(ai_n or 0), decayed=False)}'
                 )
             scores_inner += '</div>'
 
@@ -966,9 +1022,9 @@ def render_pipeline_queue_page(
                 f'border:1px solid #2a3555;color:#facc15;cursor:pointer;border-radius:3px">'
                 f'&#9733; Scores</button>'
                 f'<div id="scores-{cid}" style="display:none;margin-top:8px;padding:10px;background:#0d111a;'
-                f'border:1px solid #2a3555;border-radius:4px;font-size:12px;min-width:200px">'
+                f'border:1px solid #2a3555;border-radius:4px;font-size:12px;min-width:220px">'
                 f'<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">'
-                f'Scores &middot; {src_count} source(s)</div>'
+                f'Scores &middot; {src_count} source(s) &middot; {age_label}</div>'
                 f'{scores_inner}'
                 f'</div>'
             )
@@ -1401,9 +1457,23 @@ function useCustomAngle(cid, btn) {
     </div>
   </div>"""
 
+    displayed_pending = pending if show_older else pending_fresh
+    older_toggle = ""
+    if pending_old:
+        if show_older:
+            older_toggle = (
+                f'<a href="/pipeline-queue" style="font-size:11px;color:#8b93a3;margin-left:12px">'
+                f'&#8593; Hide older stories</a>'
+            )
+        else:
+            older_toggle = (
+                f'<a href="/pipeline-queue?show_older=1" style="font-size:11px;color:#facc15;margin-left:12px">'
+                f'&#9202; Show {len(pending_old)} older stor{"y" if len(pending_old)==1 else "ies"} (&gt;14 days)</a>'
+            )
+
     pending_section = f"""
   {full_batch_btn}
-  <h2>Pending ({len(pending)})</h2>
+  <h2>Pending ({len(displayed_pending)}{f" of {len(pending)}" if not show_older and pending_old else ""})</h2>
   <p class="sub">Select stories, choose Image Card or TOBI for each, then send to generation. Tmpl badge = suggested template. &#9888; SIMILAR = story may already be posted.</p>
   <form method="post" action="/pipeline-queue/generate" id="qf">
     <div style="margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -1411,10 +1481,11 @@ function useCustomAngle(cid, btn) {
       <button type="button" onclick="document.querySelectorAll('#qf input[type=checkbox]').forEach(c=>c.checked=false)" style="font-size:11px">Clear</button>
       <button type="submit" name="action" value="generate" class="primary" style="margin-left:8px">&#9654;&nbsp;Send Selected to Generation</button>
       <button type="submit" name="action" value="remove" style="background:#3a1414;border-color:#7a2020">&#10005;&nbsp;Remove Selected</button>
+      {older_toggle}
     </div>
     <table>
       <thead><tr><th></th><th>Story</th><th>Viral</th><th>Verified</th><th>Type</th></tr></thead>
-      <tbody>{make_rows(pending)}</tbody>
+      <tbody>{make_rows(displayed_pending)}</tbody>
     </table>
   </form>
   {draft_js}"""

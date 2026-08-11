@@ -1282,7 +1282,7 @@ def _run_scoring_background() -> None:
 
 
 @app.get("/pipeline-queue", response_class=HTMLResponse)
-def pipeline_queue(background_tasks: BackgroundTasks, msg: str = "", user: dict = Depends(require_user)):
+def pipeline_queue(background_tasks: BackgroundTasks, msg: str = "", show_older: str = "", user: dict = Depends(require_user)):
     # Sync any new handoff files written since last page load
     handoff_sync = _FSN_ROOT / "handoff_queue.py"
     if handoff_sync.exists():
@@ -1326,6 +1326,7 @@ def pipeline_queue(background_tasks: BackgroundTasks, msg: str = "", user: dict 
         picks_count=picks_count,
         picks_date=picks_date,
         recommendation=recommendation,
+        show_older=bool(show_older),
     )
 
 
