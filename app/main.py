@@ -2355,11 +2355,48 @@ _FSN_AMERICA_FIRST_VOICE = (
 )
 
 
-# ── FB Scanner state (in-memory; cleared on redeploy, which is fine) ──────────
-_fb_scan_job: dict          = {"status": "idle"}
-_fb_scan_results: list      = []          # active/latest scan results
-_fb_scan_history: list[dict] = []         # up to 3 completed scans: [{job, results}]
-_FB_HISTORY_MAX = 3
+# ── FB Scanner state — persisted to /tmp so all Render workers share it ────────
+_FB_HISTORY_MAX   = 3
+_FB_JOB_PATH      = Path("/tmp/fb_scan_job.json")
+_FB_RESULTS_PATH  = Path("/tmp/fb_scan_results.json")
+_FB_HISTORY_PATH  = Path("/tmp/fb_scan_history.json")
+
+
+def _fb_read_job() -> dict:
+    try:
+        return json.loads(_FB_JOB_PATH.read_text()) if _FB_JOB_PATH.exists() else {"status": "idle"}
+    except Exception:
+        return {"status": "idle"}
+
+def _fb_write_job(job: dict) -> None:
+    try:
+        _FB_JOB_PATH.write_text(json.dumps(job))
+    except Exception:
+        pass
+
+def _fb_read_results() -> list:
+    try:
+        return json.loads(_FB_RESULTS_PATH.read_text()) if _FB_RESULTS_PATH.exists() else []
+    except Exception:
+        return []
+
+def _fb_write_results(results: list) -> None:
+    try:
+        _FB_RESULTS_PATH.write_text(json.dumps(results))
+    except Exception:
+        pass
+
+def _fb_read_history() -> list:
+    try:
+        return json.loads(_FB_HISTORY_PATH.read_text()) if _FB_HISTORY_PATH.exists() else []
+    except Exception:
+        return []
+
+def _fb_write_history(history: list) -> None:
+    try:
+        _FB_HISTORY_PATH.write_text(json.dumps(history))
+    except Exception:
+        pass
 
 
 def _get_apify_token() -> str:
@@ -2392,38 +2429,41 @@ def _load_competitor_urls() -> list[str]:
 
 
 def _fb_scan_worker(token: str, urls: list[str], days: int) -> None:
-    """Background thread: run Apify, poll, fetch results, update global state."""
-    global _fb_scan_job, _fb_scan_results, _fb_scan_history
+    """Background thread: run Apify, poll, fetch results. Writes to /tmp for cross-worker visibility."""
     try:
         run_id = _fb.start_scan(token, urls, days=days, limit_per_page=50)
-        _fb_scan_job["run_id"] = run_id
+        job = _fb_read_job()
+        job["run_id"] = run_id
+        _fb_write_job(job)
 
         deadline = time.time() + 900   # 15-minute hard cap
         while time.time() < deadline:
             time.sleep(8)
             status, dataset_id = _fb.poll_run(token, run_id)
-            _fb_scan_job["apify_status"] = status
+            job = _fb_read_job()
+            job["apify_status"] = status
+            _fb_write_job(job)
             if status == "SUCCEEDED":
                 results = _fb.fetch_results(token, dataset_id, days=days)
-                # Only keep posts with at least some engagement
                 results = [r for r in results if (r.get("engagement_score") or 0) > 0]
-                _fb_scan_results = results
-                _fb_scan_job["status"]      = "done"
-                _fb_scan_job["finished_at"] = datetime.now(timezone.utc).isoformat()
-                _fb_scan_job["count"]       = len(results)
-                # Save to history (keep last _FB_HISTORY_MAX)
-                _fb_scan_history.insert(0, {
-                    "job":     dict(_fb_scan_job),
-                    "results": list(results),
-                })
-                del _fb_scan_history[_FB_HISTORY_MAX:]
+                job["status"]      = "done"
+                job["finished_at"] = datetime.now(timezone.utc).isoformat()
+                job["count"]       = len(results)
+                _fb_write_job(job)
+                _fb_write_results(results)
+                history = _fb_read_history()
+                history.insert(0, {"job": dict(job), "results": list(results)})
+                del history[_FB_HISTORY_MAX:]
+                _fb_write_history(history)
                 return
             if status in ("FAILED", "ABORTED", "TIMED-OUT"):
                 raise RuntimeError(f"Apify run {status}")
         raise RuntimeError("Apify run did not finish within 15 minutes")
     except Exception as exc:
-        _fb_scan_job["status"] = "error"
-        _fb_scan_job["error"]  = str(exc)
+        job = _fb_read_job()
+        job["status"] = "error"
+        job["error"]  = str(exc)
+        _fb_write_job(job)
 
 
 # ── FB Scanner Routes ──────────────────────────────────────────────────────────
@@ -2431,15 +2471,14 @@ def _fb_scan_worker(token: str, urls: list[str], days: int) -> None:
 @app.get("/fb-scanner", response_class=HTMLResponse)
 def fb_scanner_page(msg: str = "", user: dict = Depends(require_user)):
     competitors = _load_competitor_urls()
-    return render_fb_scanner_page(_fb_scan_results, _fb_scan_job, competitors,
-                                  history=_fb_scan_history, flash=msg)
+    return render_fb_scanner_page(_fb_read_results(), _fb_read_job(), competitors,
+                                  history=_fb_read_history(), flash=msg)
 
 
 @app.post("/fb-scanner/scan")
 async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
                           user: dict = Depends(require_user)):
-    global _fb_scan_job, _fb_scan_results
-    if _fb_scan_job.get("status") == "running":
+    if _fb_read_job().get("status") == "running":
         return RedirectResponse("/fb-scanner?msg=Scan+already+running", status_code=303)
 
     token = _get_apify_token()
@@ -2448,7 +2487,6 @@ async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
 
     form = await request.form()
     hours = int(form.get("hours", 24) or 24)
-    # Apify uses days; convert (round up so 24h → 1 day, 48h → 2 days)
     import math
     days = max(1, math.ceil(hours / 24))
 
@@ -2456,8 +2494,8 @@ async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
     if not urls:
         return RedirectResponse("/fb-scanner?msg=No+competitor+URLs+found", status_code=303)
 
-    _fb_scan_job     = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat(), "hours": hours, "days": days}
-    _fb_scan_results = []
+    _fb_write_job({"status": "running", "started_at": datetime.now(timezone.utc).isoformat(), "hours": hours, "days": days})
+    _fb_write_results([])
 
     background_tasks.add_task(_fb_scan_worker, token, urls, days)
     return RedirectResponse("/fb-scanner", status_code=303)
@@ -2465,8 +2503,8 @@ async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
 
 @app.get("/fb-scanner/debug")
 def fb_scanner_debug(user: dict = Depends(require_user)):
-    return JSONResponse({"job": _fb_scan_job, "result_count": len(_fb_scan_results),
-                         "history_count": len(_fb_scan_history)})
+    return JSONResponse({"job": _fb_read_job(), "result_count": len(_fb_read_results()),
+                         "history_count": len(_fb_read_history())})
 
 
 @app.post("/fb-scanner/send-to-queue")
@@ -2478,10 +2516,11 @@ async def fb_scanner_send_to_queue(request: Request, user: dict = Depends(requir
     except (ValueError, TypeError):
         return RedirectResponse("/fb-scanner?msg=Invalid+post+index", status_code=303)
 
-    if idx < 0 or idx >= len(_fb_scan_results):
+    results = _fb_read_results()
+    if idx < 0 or idx >= len(results):
         return RedirectResponse("/fb-scanner?msg=Post+not+found", status_code=303)
 
-    post = _fb_scan_results[idx]
+    post = results[idx]
     text = (post.get("text") or post.get("preview") or "")[:500]
     page_name = post.get("page_name") or "Facebook"
     url  = post.get("url") or ""
