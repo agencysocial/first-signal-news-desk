@@ -27,6 +27,7 @@ from app.models import Source, NormalizedArticle, StoryCluster, StoryClusterArti
 from app.render import (
     render_wire_page, render_detail_page, render_sources_page,
     render_pipeline_queue_page, render_login_page,
+    render_story_workspace_page,
 )
 
 # ── First Signal pipeline paths ───────────────────────────────────────────────
@@ -1902,8 +1903,7 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     )
 
     system = (
-        "You are the First Signal News caption writer. America First conservative voice. "
-        "No em-dashes, no hashtags, no emojis. Name real people and real facts. "
+        _FSN_AMERICA_FIRST_VOICE + "\n\n"
         "Output ONLY the rewritten caption text — no explanation, no quotes around it."
     )
     user_msg = (
@@ -1954,9 +1954,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
     story    = item.get("text") or ""
 
     system = (
-        "You are the First Signal News caption writer. America First conservative voice. "
-        "No em-dashes, no hashtags, no emojis. Be direct, pointed, specific to the story. "
-        "Name the real people and real facts. Never fabricate. No hedging, no balance. "
+        _FSN_AMERICA_FIRST_VOICE + "\n\n"
         "Short ends with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:). "
         "Long and Extra Long are FULL FACEBOOK ARTICLES — lead with the biggest fact, "
         "build the case paragraph by paragraph, name names, cite what happened, end with the hook. "
@@ -2134,7 +2132,7 @@ async def pipeline_queue_expand_angles(request: Request, user: dict = Depends(re
     sources  = item.get("sources") or []
     source_lines = "\n".join(f"  - {s.get('source_name','')}: {s.get('headline','')}" for s in sources[:3]) or "  (no sources)"
 
-    system = """\
+    system = _FSN_VOICE_CONTEXT + "\n\n" + """\
 You are a First Signal News content strategist. Given a story, suggest 3 distinct content angles.
 Output ONLY valid JSON:
 {
@@ -2323,6 +2321,247 @@ async def pipeline_queue_apply_angle(request: Request, user: dict = Depends(requ
     item["chosen_angle_type"] = angle_type
     _save_fsn_queue(items)
     return {"ok": True}
+
+
+# ── Voice context injected into every AI generation call ──────────────────────
+_FSN_VOICE_CONTEXT = (
+    "CURRENT POLITICAL CONTEXT (2026): Donald Trump is the 47th President of the United States "
+    "(since January 20, 2025). Kamala Harris lost the 2024 presidential election. Joe Biden is "
+    "the former president. Key figures: JD Vance (VP), Elon Musk (DOGE), Marco Rubio (Secretary of State), "
+    "Pete Hegseth (Secretary of Defense), Kash Patel (FBI Director), Robert F. Kennedy Jr. (HHS Secretary). "
+    "Major ongoing issues: border security (record deportations), government spending cuts (DOGE), "
+    "tariffs/trade war, deep state accountability, immigration enforcement, economic nationalism. "
+    "Write as if today is 2026. Never reference Biden as current president. Never say 'the Biden administration' "
+    "for anything happening now."
+)
+
+_FSN_NEWS_VOICE = (
+    "You are a First Signal News writer producing straight news-style Facebook content. "
+    "Tone: factual, direct, credible. Who/what/when/where up front. "
+    "No partisan adjectives, no opinion framing, no agreement hooks. "
+    "Accurate attribution for all claims. Short punchy sentences. No em-dashes. "
+    + _FSN_VOICE_CONTEXT
+)
+
+_FSN_AMERICA_FIRST_VOICE = (
+    "You are a First Signal News writer producing America First / conservative Facebook content. "
+    "Tone: pointed, accountability-driven, pro-Trump, pro-America. Name the real people, name the real votes, "
+    "name the real consequences. Take a clear side. End captions with an agreement hook "
+    "(Do you agree? / Right? / Yes or No? / Be honest: / Who agrees?). "
+    "No em-dashes, no hashtags, no emojis. Never fabricate a quote, charge, vote, or statistic. "
+    + _FSN_VOICE_CONTEXT
+)
+
+
+# ── Story Workspace Routes ─────────────────────────────────────────────────────
+
+@app.get("/pipeline-queue/story/{cid}", response_class=HTMLResponse)
+def pipeline_queue_story(cid: str, msg: str = "", user: dict = Depends(require_user)):
+    """Dedicated workspace page for a single production queue story."""
+    if not cid.isdigit():
+        return RedirectResponse("/pipeline-queue", status_code=303)
+    cluster_id = int(cid)
+    items = _load_fsn_queue()
+    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    if not item:
+        return RedirectResponse("/pipeline-queue?msg=Story+not+found", status_code=303)
+    return render_story_workspace_page(item, flash=msg)
+
+
+@app.post("/pipeline-queue/story/{cid}/save-draft")
+async def pipeline_queue_story_save_draft(cid: str, request: Request, user: dict = Depends(require_user)):
+    """Save headline, tag, and scene for a queue item."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    headline = str(form.get("headline", "")).strip()
+    tag      = str(form.get("tag", "")).strip()
+    scene    = str(form.get("scene", "")).strip()
+
+    items = _load_fsn_queue()
+    item  = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    if not item:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    if not item.get("draft"):
+        item["draft"] = {}
+    if headline:
+        item["draft"]["headline"] = headline
+    if tag:
+        item["draft"]["tag"] = tag
+    if scene:
+        item["draft"]["scene"] = scene
+        item["scene"] = scene
+
+    _update_cluster_fsn(cluster_id, draft=item["draft"])
+    _save_fsn_queue(items)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/pipeline-queue/story/{cid}/generate-content")
+async def pipeline_queue_story_generate_content(cid: str, request: Request, user: dict = Depends(require_user)):
+    """Generate captions + first comment in either News Style or America First voice."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    voice    = str(form.get("voice", "america_first")).strip()
+    headline = str(form.get("headline", "")).strip()
+    tag      = str(form.get("tag", "")).strip()
+    scene    = str(form.get("scene", "")).strip()
+
+    key = _get_anthropic_key()
+    if not key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
+
+    items = _load_fsn_queue()
+    item  = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    if not item:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    story = item.get("text") or ""
+    if not headline:
+        headline = (item.get("draft") or {}).get("headline") or story[:120]
+
+    system = _FSN_NEWS_VOICE if voice == "news" else _FSN_AMERICA_FIRST_VOICE
+    system += (
+        "\n\nOutput ONLY valid JSON — no explanation, no markdown fences.\n"
+        "Return: {\"short\":\"...\",\"medium\":\"...\",\"long\":\"...\",\"extra_long\":\"...\",\"first_comment\":\"...\"}"
+    )
+
+    hook_note = "" if voice == "news" else "Short must end with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:).\n"
+    user_msg = (
+        f"Story: {story}\nHeadline: {headline}\nTag: {tag}\n\n"
+        "Write 4 Facebook caption variants and a first comment:\n"
+        f"{hook_note}"
+        "- short: 30-50 words\n"
+        "- medium: 80-120 words, 2-3 paragraphs\n"
+        "- long: 250-350 words, full Facebook news article\n"
+        "- extra_long: 450-600 words, complete Facebook article with background, context, and strong close\n"
+        "- first_comment: 5-15 words, invites reply\n\n"
+        'Return JSON: {"short":"...","medium":"...","long":"...","extra_long":"...","first_comment":"..."}'
+    )
+
+    try:
+        import anthropic as _ant, re as _re
+        client = _ant.Anthropic(api_key=key)
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001", max_tokens=2500,
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        raw  = resp.content[0].text.strip()
+        m    = _re.search(r'\{.*\}', raw, _re.S)
+        if not m:
+            return JSONResponse({"error": f"No JSON in response"}, status_code=500)
+        data = json.loads(m.group())
+
+        # Persist to queue
+        if not item.get("draft"):
+            item["draft"] = {}
+        item["draft"].setdefault("captions", {}).update({
+            "short":      data.get("short", ""),
+            "medium":     data.get("medium", ""),
+            "long":       data.get("long", ""),
+            "extra_long": data.get("extra_long", ""),
+        })
+        if data.get("first_comment"):
+            item["draft"]["first_comment"] = data["first_comment"]
+        _update_cluster_fsn(cluster_id, draft=item["draft"])
+        _save_fsn_queue(items)
+
+        return JSONResponse({"ok": True, "captions": item["draft"]["captions"],
+                             "first_comment": item["draft"].get("first_comment", ""),
+                             "voice": voice})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.post("/pipeline-queue/story/{cid}/regenerate-image")
+async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
+                                                background_tasks: BackgroundTasks,
+                                                user: dict = Depends(require_user)):
+    """Queue a new Kie.ai image generation for this story, overwriting the previous."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    headline = str(form.get("headline", "")).strip()
+    scene    = str(form.get("scene", "")).strip()
+
+    items = _load_fsn_queue()
+    item  = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    if not item:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    # Update draft with new headline/scene before re-generating
+    if not item.get("draft"):
+        item["draft"] = {}
+    if headline:
+        item["draft"]["headline"] = headline
+    if scene:
+        item["draft"]["scene"] = scene
+        item["scene"] = scene
+
+    # Clear old image so status shows "generating"
+    _update_cluster_fsn(cluster_id, generated_image_url="", image_gen_status="generating",
+                        kie_result_url="", draft=item["draft"])
+    item["generated_image_url"] = ""
+    item["image_gen_status"]    = "generating"
+    item["kie_result_url"]      = ""
+    _save_fsn_queue(items)
+
+    key = _get_kie_key()
+    if not key:
+        return JSONResponse({"error": "KIE_AI_API_KEY not set"}, status_code=400)
+
+    background_tasks.add_task(_generate_one_image, str(cluster_id), key, item)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/pipeline-queue/story/{cid}/approve")
+def pipeline_queue_story_approve(cid: str, user: dict = Depends(require_user)):
+    if not cid.isdigit():
+        return RedirectResponse(f"/pipeline-queue/story/{cid}", status_code=303)
+    cluster_id = int(cid)
+    items = _load_fsn_queue()
+    for item in items:
+        if item.get("cluster_id") == cluster_id:
+            item["queue_status"] = "approved"
+            item["approved_at"] = datetime.now(timezone.utc).isoformat()
+            _update_cluster_fsn(cluster_id, queue_status="approved",
+                                approved_at=item["approved_at"])
+            break
+    _save_fsn_queue(items)
+    _build_picks_from_approved_queue()
+    return RedirectResponse(f"/pipeline-queue/story/{cid}?msg=Approved", status_code=303)
+
+
+@app.post("/pipeline-queue/story/{cid}/skip")
+def pipeline_queue_story_skip(cid: str, user: dict = Depends(require_user)):
+    if not cid.isdigit():
+        return RedirectResponse("/pipeline-queue", status_code=303)
+    cluster_id = int(cid)
+    items = _load_fsn_queue()
+    for item in items:
+        if item.get("cluster_id") == cluster_id:
+            item["queue_status"] = "skipped"
+            _update_cluster_fsn(cluster_id, queue_status="skipped")
+            break
+    _save_fsn_queue(items)
+    return RedirectResponse("/pipeline-queue?msg=Story+skipped", status_code=303)
+
+
+@app.post("/pipeline-queue/story/{cid}/remove")
+def pipeline_queue_story_remove(cid: str, user: dict = Depends(require_user)):
+    if not cid.isdigit():
+        return RedirectResponse("/pipeline-queue", status_code=303)
+    cluster_id = int(cid)
+    items = [x for x in _load_fsn_queue() if x.get("cluster_id") != cluster_id]
+    _save_fsn_queue(items)
+    _update_cluster_fsn(cluster_id, queue_status="removed")
+    return RedirectResponse("/pipeline-queue?msg=Story+removed", status_code=303)
 
 
 @app.get("/pipeline-queue/image/{cid}")

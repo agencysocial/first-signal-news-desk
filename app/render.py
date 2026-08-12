@@ -1088,7 +1088,10 @@ def render_pipeline_queue_page(
           <div style="margin-top:4px">{badges}</div>
           {draft_html}{story_panel_html}
           {video_panel_html}
-          <div style="display:flex;flex-wrap:wrap;align-items:flex-start">{angles_btn} {preview_btn} {tobi_saved_btn} {video_saved_btn} {scores_btn}</div>
+          <div style="display:flex;flex-wrap:wrap;align-items:flex-start">
+            <a href="/pipeline-queue/story/{cid}" style="font-size:10px;padding:2px 7px;margin-top:4px;margin-right:4px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;border-radius:3px;text-decoration:none;display:inline-block">&#9998; Workspace</a>
+            {angles_btn} {preview_btn} {tobi_saved_btn} {video_saved_btn} {scores_btn}
+          </div>
           {gen_img_html}
         </td>
         <td data-label="Viral">{ai_score_cell(item)}</td>
@@ -2202,3 +2205,385 @@ function toggleHist(id) {
     refresh_secs = 15 if any_generating else 30
     head = _page_head(extra_meta=f'<meta http-equiv="refresh" content="{refresh_secs}">')
     return head + body + PAGE_TAIL
+
+
+# ── Story Workspace Page ───────────────────────────────────────────────────────
+
+def render_story_workspace_page(item: dict, flash: str = "") -> str:
+    """Full dedicated workspace for a single production queue story."""
+    cid       = str(item.get("cluster_id", ""))
+    text      = item.get("text") or ""
+    category  = item.get("category") or ""
+    sources   = item.get("sources") or []
+    draft     = item.get("draft") or {}
+    caps      = draft.get("captions") or {}
+    hl        = draft.get("headline") or ""
+    tag       = draft.get("tag") or ""
+    scene     = draft.get("scene") or ""
+    fc        = draft.get("first_comment") or ""
+    post_type = item.get("post_type") or "image_card"
+    img_url   = item.get("generated_image_url") or ""
+    img_status= item.get("image_gen_status") or ""
+    tobi_text = item.get("tobi_text") or ""
+    status    = item.get("queue_status") or "pending"
+    viral     = float(item.get("viral_score") or 0)
+    momentum  = float(item.get("momentum_score") or 0)
+
+    age_days  = _item_age_days(item)
+    age_label = (f"{int(age_days)}d old" if age_days >= 1 else f"{int(age_days*24)}h old")
+
+    flash_html = f'<div class="flash">{escape(flash)}</div>' if flash else ""
+
+    # Source list
+    src_rows = "".join(
+        f'<div style="padding:4px 0;border-bottom:1px solid #1a1f2b;font-size:12px">'
+        f'<span style="color:#facc15">{escape(s.get("source_name","") or "")}</span>'
+        f' &mdash; <a href="{escape(s.get("url","") or "")}" target="_blank" rel="noopener" style="color:#8b93a3">'
+        f'{escape((s.get("headline","") or "")[:120])}</a></div>'
+        for s in sources[:5]
+    ) or '<div style="color:#8b93a3;font-size:12px">No sources</div>'
+
+    def cap_block(label, key, rows=4):
+        val = escape(caps.get(key) or "")
+        return (
+            f'<div style="margin-bottom:14px">'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
+            f'<label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px">{label}</label>'
+            f'<div style="display:flex;gap:6px">'
+            f'<button type="button" onclick="regenCap(\'{cid}\',\'{key}\')" '
+            f'style="font-size:10px;padding:2px 8px;background:#0a1020;border:1px solid #2a3555;color:#facc15;cursor:pointer;border-radius:3px">&#8635; Rewrite</button>'
+            f'<button type="button" onclick="copyField(\'cap-{key}-{cid}\')" '
+            f'style="font-size:10px;padding:2px 8px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;cursor:pointer;border-radius:3px">&#10064; Copy</button>'
+            f'</div></div>'
+            f'<textarea id="cap-{key}-{cid}" rows="{rows}" '
+            f'style="width:100%;box-sizing:border-box;background:#0d111a;border:1px solid #2a3555;'
+            f'color:#e6e8ec;font-size:12px;border-radius:4px;padding:8px;font-family:inherit;resize:vertical">{val}</textarea>'
+            f'</div>'
+        )
+
+    if img_url:
+        img_html = f'<img src="{escape(img_url)}" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:10px">'
+        regen_label = "&#8635; Regenerate Image"
+    elif img_status == "generating":
+        img_html = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px;margin-bottom:10px">Generating...</div>'
+        regen_label = "&#8635; Regenerate"
+    else:
+        img_html = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px;margin-bottom:10px">No image yet</div>'
+        regen_label = "&#9654; Generate Image"
+
+    tobi_block = ""
+    if post_type == "tobi" or tobi_text:
+        tobi_block = (
+            f'<div style="background:#0d111a;border:1px solid #2a3555;border-radius:6px;padding:14px;margin-bottom:16px">'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+            f'<span style="color:#4ade80;font-size:12px;font-weight:600">&#128196; TOBI Text Post</span>'
+            f'<button type="button" onclick="regenTOBI(\'{cid}\')" style="font-size:10px;padding:2px 8px;background:#0a1020;border:1px solid #2a3555;color:#facc15;cursor:pointer;border-radius:3px">&#8635; New Options</button>'
+            f'</div>'
+            f'<textarea id="tobi-text-{cid}" rows="3" '
+            f'style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#e6e8ec;font-size:13px;border-radius:4px;padding:8px;font-family:inherit;resize:vertical">{escape(tobi_text)}</textarea>'
+            f'<div id="tobi-options-{cid}" style="margin-top:8px"></div>'
+            f'</div>'
+        )
+
+    status_bg   = {"pending": "#3a3a00", "approved": "#0a2800", "skipped": "#1a1a1a"}.get(status, "#1a1f2b")
+    status_fg   = {"pending": "#facc15", "approved": "#4ade80", "skipped": "#8b93a3"}.get(status, "#e6e8ec")
+    status_badge = f'<span style="background:{status_bg};color:{status_fg};padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600">{status.upper()}</span>'
+
+    type_img  = "selected" if post_type == "image_card"    else ""
+    type_tobi = "selected" if post_type == "tobi"          else ""
+    type_vid  = "selected" if post_type == "video_package" else ""
+
+    body = f"""
+<div style="max-width:1200px;margin:0 auto">
+<a class="back" href="/pipeline-queue">&larr; Back to Queue</a>
+{flash_html}
+
+<div style="margin:16px 0 20px 0;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+  <div style="flex:1;min-width:240px">
+    <h1 style="margin:0 0 6px 0;font-size:16px">{escape(text[:200])}</h1>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      {status_badge}
+      <span style="color:#8b93a3;font-size:12px">{escape(category)}</span>
+      <span style="color:#8b93a3;font-size:12px">{age_label}</span>
+      <span style="color:#facc15;font-size:12px">&#9733; {viral:.0f} viral</span>
+      <span style="color:#60a5fa;font-size:12px">&#8679; {momentum:.0f} momentum</span>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:4px">
+    <form method="post" action="/pipeline-queue/story/{cid}/approve" style="margin:0">
+      <button type="submit" class="primary" style="padding:7px 18px;font-size:13px">&#10003; Approve</button>
+    </form>
+    <form method="post" action="/pipeline-queue/story/{cid}/skip" style="margin:0">
+      <button type="submit" style="padding:7px 14px;font-size:13px">Skip</button>
+    </form>
+    <form method="post" action="/pipeline-queue/story/{cid}/remove" style="margin:0">
+      <button type="submit" style="background:#3a1414;border-color:#7a2020;padding:7px 14px;font-size:13px">&#10005; Remove</button>
+    </form>
+  </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+  <!-- LEFT -->
+  <div>
+
+    <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
+      <div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Source Stories</div>
+      {src_rows}
+    </div>
+
+    <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="color:#c7cbd4;font-size:13px;font-weight:600">Story Angles</span>
+        <button type="button" id="angles-btn-{cid}" onclick="getAngles('{cid}')"
+          style="font-size:11px;padding:4px 12px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:4px">
+          &#128269; Get Angles</button>
+      </div>
+      <div id="angles-{cid}">
+        <div style="color:#8b93a3;font-size:12px">Click "Get Angles" to generate 3 content angles for this story.</div>
+      </div>
+    </div>
+
+    <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
+      <div style="color:#c7cbd4;font-size:13px;font-weight:600;margin-bottom:10px">Draft</div>
+      <div style="margin-bottom:10px">
+        <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Headline (yellow image text)</label>
+        <input type="text" id="draft-hl-{cid}" value="{escape(hl)}" maxlength="120"
+          style="width:100%;box-sizing:border-box;color:#FFDE59;font-size:14px;font-weight:600;padding:8px">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div>
+          <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">3-Word Tag (red pill)</label>
+          <input type="text" id="draft-tag-{cid}" value="{escape(tag)}" maxlength="40"
+            style="width:100%;box-sizing:border-box;color:#f87171;font-size:13px;font-weight:600;padding:8px">
+        </div>
+        <div>
+          <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Post Type</label>
+          <select id="draft-type-{cid}" onchange="onTypeChange('{cid}',this)" style="width:100%;padding:8px">
+            <option value="image_card" {type_img}>Image Card</option>
+            <option value="tobi" {type_tobi}>TOBI (Text Post)</option>
+            <option value="video_package" {type_vid}>Video Package</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Image Scene</label>
+        <textarea id="draft-scene-{cid}" rows="2"
+          style="width:100%;box-sizing:border-box;background:#11151f;border:1px solid #2a3555;color:#e6e8ec;font-size:12px;border-radius:4px;padding:8px;font-family:inherit;resize:vertical">{escape(scene)}</textarea>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button type="button" onclick="saveDraft('{cid}')"
+          style="padding:6px 14px;background:#1a3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:4px;font-size:12px">
+          &#10003; Save Draft</button>
+        <span id="draft-save-status-{cid}" style="font-size:11px;color:#4ade80;align-self:center"></span>
+      </div>
+
+      <div style="border-top:1px solid #2a3555;padding-top:12px">
+        <div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Generate Full Content</div>
+        <div style="display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+          <button type="button" onclick="genContent('{cid}','news')"
+            style="padding:6px 14px;background:#0d1a2a;border:1px solid #1e3a8a;color:#93c5fd;cursor:pointer;border-radius:4px;font-size:12px">
+            &#128240; News Style</button>
+          <button type="button" onclick="genContent('{cid}','america_first')"
+            style="padding:6px 14px;background:#1a0a00;border:1px solid #7a3010;color:#fb923c;cursor:pointer;border-radius:4px;font-size:12px">
+            &#127777; America First</button>
+          <span id="content-gen-status-{cid}" style="font-size:11px;color:#8b93a3;align-self:center"></span>
+        </div>
+        <div style="color:#3a4055;font-size:10px">News Style = straight who/what/when/where. America First = pointed, accountability, pro-Trump framing.</div>
+      </div>
+    </div>
+
+    {tobi_block}
+  </div>
+
+  <!-- RIGHT -->
+  <div>
+    <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="color:#c7cbd4;font-size:13px;font-weight:600">Image</span>
+        <button type="button" onclick="regenImage('{cid}')"
+          style="font-size:11px;padding:4px 12px;background:#1a0a00;border:1px solid #7a3010;color:#fb923c;cursor:pointer;border-radius:4px">
+          {regen_label}</button>
+      </div>
+      <div id="img-wrap-{cid}">{img_html}</div>
+      <div id="img-status-{cid}" style="font-size:11px;color:#8b93a3;margin-top:4px">{"Generating... refresh in ~60s" if img_status=="generating" else ""}</div>
+    </div>
+
+    <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="color:#c7cbd4;font-size:13px;font-weight:600">Captions</span>
+        <button type="button" onclick="regenAllCaps('{cid}')"
+          style="font-size:10px;padding:3px 10px;background:#0a1020;border:1px solid #2a3555;color:#facc15;cursor:pointer;border-radius:3px">
+          &#8635; Rewrite All</button>
+      </div>
+      {cap_block("Short (30-50 words)", "short", 3)}
+      {cap_block("Medium (80-120 words)", "medium", 5)}
+      {cap_block("Long (250-350 words)", "long", 8)}
+      {cap_block("Extra Long (450-600 words)", "extra_long", 12)}
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid #2a3555">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px">First Comment</label>
+          <button type="button" onclick="copyField('cap-first_comment-{cid}')"
+            style="font-size:10px;padding:2px 8px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;cursor:pointer;border-radius:3px">&#10064; Copy</button>
+        </div>
+        <textarea id="cap-first_comment-{cid}" rows="2"
+          style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#e6e8ec;font-size:12px;border-radius:4px;padding:8px;font-family:inherit;resize:vertical">{escape(fc)}</textarea>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+<script>
+function copyField(id) {{
+  var el = document.getElementById(id);
+  if (!el) return;
+  var text = (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') ? el.value : el.innerText;
+  if (!text) {{ alert('Nothing here yet.'); return; }}
+  navigator.clipboard.writeText(text).then(function() {{
+    var prev = el.style.borderColor;
+    el.style.borderColor = '#4ade80';
+    setTimeout(function(){{ el.style.borderColor = prev; }}, 700);
+  }});
+}}
+function onTypeChange(cid, sel) {{
+  fetch('/pipeline-queue/set-post-type', {{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&post_type='+encodeURIComponent(sel.value)}});
+}}
+function saveDraft(cid) {{
+  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value || '';
+  var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value || '';
+  var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value || '';
+  var st    = document.getElementById('draft-save-status-'+cid);
+  if (st) st.textContent = 'Saving...';
+  fetch('/pipeline-queue/story/'+cid+'/save-draft',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)
+  }}).then(r=>r.json()).then(d=>{{
+    if (st) {{ st.textContent = d.ok ? 'Saved!' : ('Error: '+(d.error||'?')); }}
+    if (d.ok) setTimeout(function(){{ if(st) st.textContent=''; }},2000);
+  }});
+}}
+var _ws_angles = {{}};
+function getAngles(cid) {{
+  var btn = document.getElementById('angles-btn-'+cid);
+  var div = document.getElementById('angles-'+cid);
+  if (btn) btn.textContent = 'Loading...';
+  if (div) div.innerHTML = '<div style="color:#8b93a3;font-size:12px">Getting angles...</div>';
+  fetch('/pipeline-queue/expand-angles',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid}})
+  .then(r=>r.json()).then(function(d) {{
+    if (btn) btn.textContent = '&#8635; Refresh Angles';
+    if (d.error) {{ if(div) div.innerHTML='<div style="color:#f87171">'+d.error+'</div>'; return; }}
+    _ws_angles[cid] = d.angles || [];
+    var typeC = {{accountability:'#f87171',outrage:'#fb923c',breaking:'#facc15',vindication:'#4ade80',poll:'#60a5fa',analysis:'#c084fc'}};
+    var html = _ws_angles[cid].map(function(a,i){{
+      return '<div style="background:#11151f;border:1px solid #2a3555;border-radius:5px;padding:10px;margin-bottom:8px">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+        +'<span style="color:'+(typeC[a.angle_type]||'#8b93a3')+';font-size:10px;font-weight:700;text-transform:uppercase">'+a.angle_type+'</span>'
+        +'<button type="button" onclick="applyAngle(\''+cid+'\','+i+')" style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use This Angle</button>'
+        +'</div>'
+        +'<div style="color:#facc15;font-size:13px;font-weight:600;margin-bottom:4px">'+a.hook+'</div>'
+        +'<div style="color:#e6e8ec;font-size:12px;margin-bottom:4px">'+a.caption_lead+'</div>'
+        +'<div style="display:flex;gap:10px;font-size:11px;color:#8b93a3;flex-wrap:wrap">'
+        +'<span>Tag: <b style="color:#f87171">'+a.tag+'</b></span>'
+        +'<span>Scene: '+a.image_scene+'</span>'
+        +'</div>'
+        +'<div style="color:#8b93a3;font-size:11px;font-style:italic;margin-top:4px">'+a.why+'</div>'
+        +'</div>';
+    }}).join('');
+    if (div) div.innerHTML = html || '<div style="color:#f87171">No angles returned</div>';
+  }});
+}}
+function applyAngle(cid, idx) {{
+  var a = (_ws_angles[cid]||[])[idx];
+  if (!a) return;
+  var hlEl = document.getElementById('draft-hl-'+cid);
+  var tagEl = document.getElementById('draft-tag-'+cid);
+  var scEl  = document.getElementById('draft-scene-'+cid);
+  if (hlEl) hlEl.value = a.hook;
+  if (tagEl) tagEl.value = a.tag;
+  if (scEl)  scEl.value = a.image_scene;
+  saveDraft(cid);
+}}
+function genContent(cid, voice) {{
+  var st = document.getElementById('content-gen-status-'+cid);
+  if (st) st.textContent = voice==='news' ? 'Writing News Style...' : 'Writing America First...';
+  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
+  var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  fetch('/pipeline-queue/story/'+cid+'/generate-content',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'voice='+voice+'&headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)
+  }}).then(r=>r.json()).then(function(d){{
+    if (st) st.textContent = '';
+    if (d.error) {{ if(st) st.textContent='Error: '+d.error; return; }}
+    var keys = ['short','medium','long','extra_long'];
+    keys.forEach(function(k){{ var el=document.getElementById('cap-'+k+'-'+cid); if(el&&d.captions&&d.captions[k]) el.value=d.captions[k]; }});
+    var fcEl=document.getElementById('cap-first_comment-'+cid);
+    if(fcEl&&d.first_comment) fcEl.value=d.first_comment;
+    if(st){{ st.textContent=voice==='news'?'News Style loaded':'America First loaded'; setTimeout(function(){{st.textContent='';}},3000); }}
+  }});
+}}
+function regenCap(cid, variant) {{
+  var el = document.getElementById('cap-'+variant+'-'+cid);
+  if (!el) return;
+  var hl = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  el.style.opacity='0.4';
+  fetch('/pipeline-queue/rewrite-caption',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'cluster_id='+cid+'&variant='+variant+'&headline='+encodeURIComponent(hl)
+  }}).then(r=>r.json()).then(function(d){{ el.style.opacity='1'; if(d.text) el.value=d.text; }});
+}}
+function regenAllCaps(cid) {{
+  var hl = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var st = document.getElementById('content-gen-status-'+cid);
+  if(st) st.textContent='Rewriting all captions...';
+  fetch('/pipeline-queue/generate-all-captions',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'cluster_id='+cid+'&headline='+encodeURIComponent(hl)
+  }}).then(r=>r.json()).then(function(d){{
+    if(st) st.textContent='';
+    if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
+    var keys=['short','medium','long','extra_long'];
+    keys.forEach(function(k){{ var el=document.getElementById('cap-'+k+'-'+cid); if(el&&d.captions&&d.captions[k]) el.value=d.captions[k]; }});
+    var fcEl=document.getElementById('cap-first_comment-'+cid);
+    if(fcEl&&d.first_comment) fcEl.value=d.first_comment;
+    if(st){{ st.textContent='Done!'; setTimeout(function(){{st.textContent='';}},2000); }}
+  }});
+}}
+function regenImage(cid) {{
+  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var st    = document.getElementById('img-status-'+cid);
+  var wrap  = document.getElementById('img-wrap-'+cid);
+  if (!hl && !scene) {{ alert('Enter a headline or scene first.'); return; }}
+  if (st) st.textContent = 'Queued...';
+  if (wrap) wrap.innerHTML='<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
+  fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'headline='+encodeURIComponent(hl)+'&scene='+encodeURIComponent(scene)
+  }}).then(r=>r.json()).then(function(d){{
+    if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
+    if(st) st.textContent='Generating... refresh page in ~60s to see result';
+  }});
+}}
+var _tobi_opts = {{}};
+function regenTOBI(cid) {{
+  var div = document.getElementById('tobi-options-'+cid);
+  if(div) div.innerHTML='<div style="color:#8b93a3;font-size:12px">Writing options...</div>';
+  fetch('/pipeline-queue/write-tobi',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid}})
+  .then(r=>r.json()).then(function(d){{
+    if(d.error){{ if(div) div.innerHTML='<div style="color:#f87171">'+d.error+'</div>'; return; }}
+    _tobi_opts[cid] = d.options||[];
+    var html = _tobi_opts[cid].map(function(t,i){{
+      return '<div style="background:#11151f;border:1px solid #2a3555;border-radius:4px;padding:8px;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px">'
+        +'<div style="flex:1;font-size:12px;color:#e6e8ec">'+t+'</div>'
+        +'<button type="button" onclick="useTOBIopt(\''+cid+'\','+i+')" style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px;white-space:nowrap">Use</button>'
+        +'</div>';
+    }}).join('');
+    if(div) div.innerHTML = html||'No options returned';
+  }});
+}}
+function useTOBIopt(cid, idx) {{
+  var t = (_tobi_opts[cid]||[])[idx];
+  if(!t) return;
+  var el = document.getElementById('tobi-text-'+cid);
+  if(el) el.value = t;
+  fetch('/pipeline-queue/apply-tobi',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&tobi_text='+encodeURIComponent(t)}});
+}}
+</script>
+"""
+    return PAGE_HEAD + body + PAGE_TAIL
