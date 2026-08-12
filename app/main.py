@@ -2356,8 +2356,10 @@ _FSN_AMERICA_FIRST_VOICE = (
 
 
 # ── FB Scanner state (in-memory; cleared on redeploy, which is fine) ──────────
-_fb_scan_job: dict     = {"status": "idle"}
-_fb_scan_results: list = []
+_fb_scan_job: dict          = {"status": "idle"}
+_fb_scan_results: list      = []          # active/latest scan results
+_fb_scan_history: list[dict] = []         # up to 3 completed scans: [{job, results}]
+_FB_HISTORY_MAX = 3
 
 
 def _get_apify_token() -> str:
@@ -2391,9 +2393,9 @@ def _load_competitor_urls() -> list[str]:
 
 def _fb_scan_worker(token: str, urls: list[str], days: int) -> None:
     """Background thread: run Apify, poll, fetch results, update global state."""
-    global _fb_scan_job, _fb_scan_results
+    global _fb_scan_job, _fb_scan_results, _fb_scan_history
     try:
-        run_id = _fb.start_scan(token, urls, days=days, limit_per_page=30)
+        run_id = _fb.start_scan(token, urls, days=days, limit_per_page=50)
         _fb_scan_job["run_id"] = run_id
 
         deadline = time.time() + 900   # 15-minute hard cap
@@ -2403,9 +2405,18 @@ def _fb_scan_worker(token: str, urls: list[str], days: int) -> None:
             _fb_scan_job["apify_status"] = status
             if status == "SUCCEEDED":
                 results = _fb.fetch_results(token, dataset_id, days=days)
+                # Only keep posts with at least some engagement
+                results = [r for r in results if (r.get("engagement_score") or 0) > 0]
                 _fb_scan_results = results
                 _fb_scan_job["status"]      = "done"
                 _fb_scan_job["finished_at"] = datetime.now(timezone.utc).isoformat()
+                _fb_scan_job["count"]       = len(results)
+                # Save to history (keep last _FB_HISTORY_MAX)
+                _fb_scan_history.insert(0, {
+                    "job":     dict(_fb_scan_job),
+                    "results": list(results),
+                })
+                del _fb_scan_history[_FB_HISTORY_MAX:]
                 return
             if status in ("FAILED", "ABORTED", "TIMED-OUT"):
                 raise RuntimeError(f"Apify run {status}")
@@ -2420,7 +2431,8 @@ def _fb_scan_worker(token: str, urls: list[str], days: int) -> None:
 @app.get("/fb-scanner", response_class=HTMLResponse)
 def fb_scanner_page(msg: str = "", user: dict = Depends(require_user)):
     competitors = _load_competitor_urls()
-    return render_fb_scanner_page(_fb_scan_results, _fb_scan_job, competitors, flash=msg)
+    return render_fb_scanner_page(_fb_scan_results, _fb_scan_job, competitors,
+                                  history=_fb_scan_history, flash=msg)
 
 
 @app.post("/fb-scanner/scan")
