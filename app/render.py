@@ -2478,19 +2478,20 @@ function getAngles(cid) {{
     if (d.error) {{ if(div) div.innerHTML='<div style="color:#f87171">Error: '+d.error+'</div>'; return; }}
     _ws_angles[cid] = d.angles || [];
     var typeC = {{accountability:'#f87171',outrage:'#fb923c',breaking:'#facc15',vindication:'#4ade80',poll:'#60a5fa',analysis:'#c084fc'}};
+    function _esc(s){{ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }}
     var html = _ws_angles[cid].map(function(a,i){{
       return '<div style="background:#11151f;border:1px solid #2a3555;border-radius:5px;padding:10px;margin-bottom:8px">'
         +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-        +'<span style="color:'+(typeC[a.angle_type]||'#8b93a3')+';font-size:10px;font-weight:700;text-transform:uppercase">'+a.angle_type+'</span>'
-        +'<button type="button" onclick="applyAngle(\''+cid+'\','+i+')" style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use This Angle</button>'
+        +'<span style="color:'+(typeC[a.angle_type]||'#8b93a3')+';font-size:10px;font-weight:700;text-transform:uppercase">'+_esc(a.angle_type)+'</span>'
+        +'<button type="button" data-cid="'+_esc(cid)+'" data-idx="'+i+'" class="apply-angle-btn" style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use This Angle</button>'
         +'</div>'
-        +'<div style="color:#facc15;font-size:13px;font-weight:600;margin-bottom:4px">'+a.hook+'</div>'
-        +'<div style="color:#e6e8ec;font-size:12px;margin-bottom:4px">'+a.caption_lead+'</div>'
+        +'<div style="color:#facc15;font-size:13px;font-weight:600;margin-bottom:4px">'+_esc(a.hook)+'</div>'
+        +'<div style="color:#e6e8ec;font-size:12px;margin-bottom:4px">'+_esc(a.caption_lead)+'</div>'
         +'<div style="display:flex;gap:10px;font-size:11px;color:#8b93a3;flex-wrap:wrap">'
-        +'<span>Tag: <b style="color:#f87171">'+a.tag+'</b></span>'
-        +'<span>Scene: '+a.image_scene+'</span>'
+        +'<span>Tag: <b style="color:#f87171">'+_esc(a.tag)+'</b></span>'
+        +'<span>Scene: '+_esc(a.image_scene)+'</span>'
         +'</div>'
-        +'<div style="color:#8b93a3;font-size:11px;font-style:italic;margin-top:4px">'+a.why+'</div>'
+        +'<div style="color:#8b93a3;font-size:11px;font-style:italic;margin-top:4px">'+_esc(a.why)+'</div>'
         +'</div>';
     }}).join('');
     if (div) div.innerHTML = html || '<div style="color:#f87171">No angles returned</div>';
@@ -2577,8 +2578,9 @@ function regenTOBI(cid) {{
     if(d.error){{ if(div) div.innerHTML='<div style="color:#f87171">'+d.error+'</div>'; return; }}
     _tobi_opts[cid] = d.options||[];
     var html = _tobi_opts[cid].map(function(t,i){{
+      var tSafe = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       return '<div style="background:#11151f;border:1px solid #2a3555;border-radius:4px;padding:8px;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px">'
-        +'<div style="flex:1;font-size:12px;color:#e6e8ec">'+t+'</div>'
+        +'<div style="flex:1;font-size:12px;color:#e6e8ec">'+tSafe+'</div>'
         +'<button type="button" onclick="useTOBIopt(\''+cid+'\','+i+')" style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px;white-space:nowrap">Use</button>'
         +'</div>';
     }}).join('');
@@ -2592,6 +2594,12 @@ function useTOBIopt(cid, idx) {{
   if(el) el.value = t;
   fetch('/pipeline-queue/apply-tobi',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&tobi_text='+encodeURIComponent(t)}});
 }}
+// Delegated handler for dynamically-created "Use This Angle" buttons
+document.addEventListener('click', function(e) {{
+  var btn = e.target.closest('.apply-angle-btn');
+  if (!btn) return;
+  applyAngle(btn.getAttribute('data-cid'), parseInt(btn.getAttribute('data-idx')));
+}});
 </script>
 """
     return PAGE_HEAD + body + PAGE_TAIL
