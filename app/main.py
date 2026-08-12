@@ -167,17 +167,23 @@ def _is_local() -> bool:
     return _FSN_ROOT.exists()
 
 def _get_anthropic_key() -> str | None:
-    """Return ANTHROPIC_API_KEY from env var (Render) or FSN .env file (local)."""
+    """Return ANTHROPIC_API_KEY from env var (Render) or local .env files."""
     import os as _os
     key = _os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if key:
         return key
-    env_path = _FSN_ROOT / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if line.startswith("ANTHROPIC_API_KEY="):
-                return line.split("=", 1)[1].strip()
+    # Check AIM repo .env first, then FSN pipeline .env
+    for env_path in [
+        Path(__file__).parent.parent / ".env",
+        _FSN_ROOT / ".env",
+    ]:
+        if env_path.exists():
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line.startswith("ANTHROPIC_API_KEY="):
+                    val = line.split("=", 1)[1].strip()
+                    if val:
+                        return val
     return None
 
 def _load_fsn_queue() -> list[dict]:

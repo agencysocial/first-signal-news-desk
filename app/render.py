@@ -2472,9 +2472,10 @@ function getAngles(cid) {{
   if (btn) btn.textContent = 'Loading...';
   if (div) div.innerHTML = '<div style="color:#8b93a3;font-size:12px">Getting angles...</div>';
   fetch('/pipeline-queue/expand-angles',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid}})
-  .then(r=>r.json()).then(function(d) {{
+  .then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
+  .then(function(d) {{
     if (btn) btn.textContent = '&#8635; Refresh Angles';
-    if (d.error) {{ if(div) div.innerHTML='<div style="color:#f87171">'+d.error+'</div>'; return; }}
+    if (d.error) {{ if(div) div.innerHTML='<div style="color:#f87171">Error: '+d.error+'</div>'; return; }}
     _ws_angles[cid] = d.angles || [];
     var typeC = {{accountability:'#f87171',outrage:'#fb923c',breaking:'#facc15',vindication:'#4ade80',poll:'#60a5fa',analysis:'#c084fc'}};
     var html = _ws_angles[cid].map(function(a,i){{
@@ -2493,6 +2494,9 @@ function getAngles(cid) {{
         +'</div>';
     }}).join('');
     if (div) div.innerHTML = html || '<div style="color:#f87171">No angles returned</div>';
+  }}).catch(function(err) {{
+    if (btn) btn.textContent = '&#9888; Error — retry';
+    if (div) div.innerHTML = '<div style="color:#f87171">Error: '+err.message+'</div>';
   }});
 }}
 function applyAngle(cid, idx) {{
