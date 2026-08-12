@@ -2445,7 +2445,6 @@ def _fb_scan_worker(token: str, urls: list[str], days: int) -> None:
             _fb_write_job(job)
             if status == "SUCCEEDED":
                 results = _fb.fetch_results(token, dataset_id, days=days)
-                results = [r for r in results if (r.get("engagement_score") or 0) > 0]
                 job["status"]      = "done"
                 job["finished_at"] = datetime.now(timezone.utc).isoformat()
                 job["count"]       = len(results)
@@ -2503,8 +2502,31 @@ async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
 
 @app.get("/fb-scanner/debug")
 def fb_scanner_debug(user: dict = Depends(require_user)):
-    return JSONResponse({"job": _fb_read_job(), "result_count": len(_fb_read_results()),
-                         "history_count": len(_fb_read_history())})
+    results = _fb_read_results()
+    return JSONResponse({"job": _fb_read_job(), "result_count": len(results),
+                         "history_count": len(_fb_read_history()),
+                         "sample": results[:2] if results else []})
+
+
+@app.get("/fb-scanner/raw")
+def fb_scanner_raw(user: dict = Depends(require_user)):
+    """Fetch a raw Apify sample to inspect field names."""
+    job = _fb_read_job()
+    token = _get_apify_token()
+    dataset_id = job.get("run_id")  # we don't store dataset_id separately — fetch via run
+    if not token or not job.get("run_id"):
+        return JSONResponse({"error": "no completed run"})
+    try:
+        run_id = job["run_id"]
+        r = httpx.get(f"https://api.apify.com/v2/actor-runs/{run_id}?token={token}", timeout=15)
+        d = r.json()["data"]
+        did = d.get("defaultDatasetId")
+        if not did:
+            return JSONResponse({"error": "no dataset", "run": d})
+        r2 = httpx.get(f"https://api.apify.com/v2/datasets/{did}/items?token={token}&limit=2", timeout=30)
+        return JSONResponse({"raw_items": r2.json()})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)})
 
 
 @app.post("/fb-scanner/send-to-queue")
