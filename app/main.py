@@ -2463,6 +2463,12 @@ async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
     return RedirectResponse("/fb-scanner", status_code=303)
 
 
+@app.get("/fb-scanner/debug")
+def fb_scanner_debug(user: dict = Depends(require_user)):
+    return JSONResponse({"job": _fb_scan_job, "result_count": len(_fb_scan_results),
+                         "history_count": len(_fb_scan_history)})
+
+
 @app.post("/fb-scanner/send-to-queue")
 async def fb_scanner_send_to_queue(request: Request, user: dict = Depends(require_user)):
     """Create a StoryCluster from a scanned FB post and add it to the production queue."""
