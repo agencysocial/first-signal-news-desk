@@ -2191,6 +2191,10 @@ function toggleHist(id) {
 </details>"""
 
     body = f"""
+  <div class="nav" style="margin-bottom:12px">
+    <a href="/pipeline-queue" style="color:#e6e8ec;font-weight:600">&#9654; Production Queue</a>
+    <a href="/fb-scanner">&#128269; FB Scanner</a>
+  </div>
   <h1>&#9654; First Signal Production Queue</h1>
   <p class="sub">Stories sent from the News Desk via "Send to First Signal Pipeline". Select and assign type, then send to generation. Page refreshes every 30 seconds.</p>
   {flash}
@@ -2587,3 +2591,164 @@ function useTOBIopt(cid, idx) {{
 </script>
 """
     return PAGE_HEAD + body + PAGE_TAIL
+
+
+# ── FB Scanner Page ────────────────────────────────────────────────────────────
+
+def render_fb_scanner_page(
+    results: list[dict],
+    job: dict,
+    competitors: list[str],
+    flash: str = "",
+) -> str:
+    """Facebook competitor scanner page."""
+    status   = job.get("status", "idle")
+    started  = job.get("started_at", "")
+    finished = job.get("finished_at", "")
+    days     = job.get("days", 14)
+    count    = len(results)
+    err      = job.get("error", "")
+
+    flash_html = f'<div class="flash">{escape(flash)}</div>' if flash else ""
+
+    if status == "running":
+        elapsed = ""
+        if started:
+            try:
+                from datetime import datetime as _dt, timezone as _tz
+                s = _dt.fromisoformat(started.replace("Z", "+00:00"))
+                elapsed = f" — {int((_dt.now(_tz.utc) - s).total_seconds())}s elapsed"
+            except Exception:
+                pass
+        status_html = (
+            f'<div style="background:#1a1800;border:1px solid #5a5000;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px">'
+            f'&#9203; Scanning Facebook pages{elapsed} &nbsp;<span style="color:#8b93a3;font-size:11px">(page refreshes every 10s)</span></div>'
+        )
+        page_meta = '<meta http-equiv="refresh" content="10">'
+    elif status == "error":
+        status_html = (
+            f'<div style="background:#1a0000;border:1px solid #7a0000;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#f87171">'
+            f'&#9888; Scan failed: {escape(err[:300])}</div>'
+        )
+        page_meta = ""
+    elif status == "done" and results:
+        status_html = (
+            f'<div style="background:#0a1800;border:1px solid #1a5000;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px">'
+            f'&#10003; {count} posts ranked by engagement'
+            + (f' &middot; <span style="color:#8b93a3">{finished[:16].replace("T"," ")}</span>' if finished else "")
+            + '</div>'
+        )
+        page_meta = ""
+    else:
+        status_html = ""
+        page_meta   = ""
+
+    comp_pills = " ".join(
+        f'<span style="background:#11151f;border:1px solid #2a3040;border-radius:10px;padding:2px 8px;font-size:11px;color:#8b93a3">{escape(c.rstrip("/").split("/")[-1])}</span>'
+        for c in competitors[:24]
+    )
+
+    scan_form = (
+        f'<form method="post" action="/fb-scanner/scan" style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap">'
+        f'<select name="days" style="font-size:12px;padding:5px 8px">'
+        f'<option value="7" {"selected" if days==7 else ""}>Last 7 days</option>'
+        f'<option value="14" {"selected" if days==14 else ""}>Last 14 days</option>'
+        f'<option value="30" {"selected" if days==30 else ""}>Last 30 days</option>'
+        f'<option value="0" {"selected" if days==0 else ""}>All time</option>'
+        f'</select>'
+        f'<button type="submit" class="primary" style="padding:6px 18px;font-size:13px"'
+        + (' disabled' if status == "running" else '') + '>'
+        + ('&#9203; Scanning...' if status == "running" else '&#128269; Scan Competitors')
+        + '</button></form>'
+    )
+
+    if not results:
+        if status not in ("running", "error"):
+            results_html = '<div style="color:#8b93a3;padding:24px 0">No results yet. Click <b>Scan Competitors</b> to pull the latest posts from all competitor pages.</div>'
+        else:
+            results_html = ""
+    else:
+        rows = []
+        for i, p in enumerate(results[:60], 1):
+            preview   = escape((p.get("preview") or "")[:200])
+            img       = escape(p.get("image_url") or "")
+            url       = escape(p.get("url") or "")
+            page_name = escape(p.get("page_name") or "")
+            score     = int(p.get("engagement_score") or 0)
+            reactions = int(p.get("reactions") or 0)
+            shares    = int(p.get("shares") or 0)
+            comments  = int(p.get("comments") or 0)
+            pub       = (p.get("published_at") or "")[:10]
+            score_col = "#4ade80" if score > 5000 else "#facc15" if score > 1000 else "#8b93a3"
+            thumb = (f'<img src="{img}" style="width:72px;height:56px;object-fit:cover;border-radius:4px;display:block">'
+                     if img else '<div style="width:72px;height:56px;background:#1a1f2b;border-radius:4px"></div>')
+            full_text = escape((p.get("text") or "")[:800])
+            rows.append(
+                f'<tr>'
+                f'<td style="width:80px;padding:8px 6px;vertical-align:top">'
+                f'<a href="{url}" target="_blank" rel="noopener">{thumb}</a></td>'
+                f'<td style="vertical-align:top;padding:8px 10px">'
+                f'<div style="font-size:11px;color:#facc15;margin-bottom:3px">{page_name}</div>'
+                f'<div style="font-size:13px;line-height:1.4;color:#e6e8ec">{preview}</div>'
+                f'<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">'
+                f'<button type="button" onclick="toggleFull({i})" '
+                f'style="font-size:10px;padding:2px 7px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;cursor:pointer;border-radius:3px">&#9660; Full Text</button>'
+                f'<a href="{url}" target="_blank" rel="noopener" '
+                f'style="font-size:10px;padding:2px 7px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:3px;text-decoration:none">&#128279; View Post</a>'
+                f'</div>'
+                f'<div id="full-{i}" style="display:none;margin-top:6px;font-size:12px;color:#c7cbd4;line-height:1.5;white-space:pre-wrap;background:#060910;padding:8px;border-radius:4px;border:1px solid #1a1f2b">{full_text}</div>'
+                f'<div style="font-size:10px;color:#3a4055;margin-top:4px">{pub}</div>'
+                f'</td>'
+                f'<td style="white-space:nowrap;text-align:right;padding:8px 10px;vertical-align:top">'
+                f'<div style="color:{score_col};font-size:15px;font-weight:700">{score:,}</div>'
+                f'<div style="color:#8b93a3;font-size:10px">score</div>'
+                f'<div style="margin-top:4px;font-size:10px;color:#8b93a3">'
+                f'{reactions:,} react &middot; {shares:,} share &middot; {comments:,} cmt</div>'
+                f'</td>'
+                f'<td style="padding:8px 10px;vertical-align:top;width:130px">'
+                f'<form method="post" action="/fb-scanner/send-to-queue" style="margin:0">'
+                f'<input type="hidden" name="idx" value="{i-1}">'
+                f'<button type="submit" class="primary" style="font-size:11px;padding:5px 10px;width:100%;margin-bottom:4px">&#43; Send to Queue</button>'
+                f'</form>'
+                f'</td>'
+                f'</tr>'
+            )
+        results_html = (
+            f'<table style="font-size:13px">'
+            f'<thead><tr><th style="width:80px"></th><th>Post</th>'
+            f'<th style="text-align:right">Engagement</th><th style="width:130px"></th></tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table>'
+        )
+
+    body = f"""
+{flash_html}
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+  <div>
+    <h1 style="margin:0 0 4px 0">&#128240; Facebook Competitor Scanner</h1>
+    <div style="color:#8b93a3;font-size:13px">Ranked by reactions + (shares&times;3) + (comments&times;2) &mdash; same formula as the pipeline</div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    {scan_form}
+    <a href="/pipeline-queue" style="font-size:12px;color:#8b93a3;padding:6px 12px;border:1px solid #2a3040;border-radius:4px">&#8592; Queue</a>
+  </div>
+</div>
+
+{status_html}
+
+<div style="margin-bottom:16px">
+  <div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Scanning {len(competitors)} pages</div>
+  <div style="display:flex;flex-wrap:wrap;gap:4px">{comp_pills}</div>
+</div>
+
+{results_html}
+
+<script>
+function toggleFull(i) {{
+  var el = document.getElementById('full-'+i);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}}
+</script>
+"""
+    head = _page_head(extra_meta=page_meta)
+    return head + body + PAGE_TAIL

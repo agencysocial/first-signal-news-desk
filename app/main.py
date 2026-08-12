@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -27,8 +28,9 @@ from app.models import Source, NormalizedArticle, StoryCluster, StoryClusterArti
 from app.render import (
     render_wire_page, render_detail_page, render_sources_page,
     render_pipeline_queue_page, render_login_page,
-    render_story_workspace_page,
+    render_story_workspace_page, render_fb_scanner_page,
 )
+from app import fb_scanner as _fb
 
 # ── First Signal pipeline paths ───────────────────────────────────────────────
 _FSN_ROOT = Path(
@@ -2351,6 +2353,173 @@ _FSN_AMERICA_FIRST_VOICE = (
     "No em-dashes, no hashtags, no emojis. Never fabricate a quote, charge, vote, or statistic. "
     + _FSN_VOICE_CONTEXT
 )
+
+
+# ── FB Scanner state (in-memory; cleared on redeploy, which is fine) ──────────
+_fb_scan_job: dict     = {"status": "idle"}
+_fb_scan_results: list = []
+
+
+def _get_apify_token() -> str:
+    """Read APIFY_TOKEN from the AIM .env or the FSN pipeline .env."""
+    token = os.environ.get("APIFY_TOKEN", "").strip()
+    if not token:
+        # Fall back to FSN pipeline .env
+        fsn_env = _FSN_ROOT / ".env"
+        if fsn_env.exists():
+            for line in fsn_env.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("APIFY_TOKEN"):
+                    _, _, val = line.partition("=")
+                    token = val.strip().strip('"').strip("'")
+                    if token:
+                        break
+    return token
+
+
+def _load_competitor_urls() -> list[str]:
+    comp_file = _FSN_ROOT / "input" / "competitors.txt"
+    if not comp_file.exists():
+        return []
+    return [
+        ln.strip() for ln in comp_file.read_text(encoding="utf-8").splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
+
+
+def _fb_scan_worker(token: str, urls: list[str], days: int) -> None:
+    """Background thread: run Apify, poll, fetch results, update global state."""
+    global _fb_scan_job, _fb_scan_results
+    try:
+        run_id = _fb.start_scan(token, urls, days=days, limit_per_page=30)
+        _fb_scan_job["run_id"] = run_id
+
+        deadline = time.time() + 900   # 15-minute hard cap
+        while time.time() < deadline:
+            time.sleep(8)
+            status, dataset_id = _fb.poll_run(token, run_id)
+            _fb_scan_job["apify_status"] = status
+            if status == "SUCCEEDED":
+                results = _fb.fetch_results(token, dataset_id, days=days)
+                _fb_scan_results = results
+                _fb_scan_job["status"]      = "done"
+                _fb_scan_job["finished_at"] = datetime.now(timezone.utc).isoformat()
+                return
+            if status in ("FAILED", "ABORTED", "TIMED-OUT"):
+                raise RuntimeError(f"Apify run {status}")
+        raise RuntimeError("Apify run did not finish within 15 minutes")
+    except Exception as exc:
+        _fb_scan_job["status"] = "error"
+        _fb_scan_job["error"]  = str(exc)
+
+
+# ── FB Scanner Routes ──────────────────────────────────────────────────────────
+
+@app.get("/fb-scanner", response_class=HTMLResponse)
+def fb_scanner_page(msg: str = "", user: dict = Depends(require_user)):
+    competitors = _load_competitor_urls()
+    return render_fb_scanner_page(_fb_scan_results, _fb_scan_job, competitors, flash=msg)
+
+
+@app.post("/fb-scanner/scan")
+async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
+                          user: dict = Depends(require_user)):
+    global _fb_scan_job, _fb_scan_results
+    if _fb_scan_job.get("status") == "running":
+        return RedirectResponse("/fb-scanner?msg=Scan+already+running", status_code=303)
+
+    token = _get_apify_token()
+    if not token:
+        return RedirectResponse("/fb-scanner?msg=APIFY_TOKEN+not+set+in+.env", status_code=303)
+
+    form = await request.form()
+    days = int(form.get("days", 14) or 14)
+
+    urls = _load_competitor_urls()
+    if not urls:
+        return RedirectResponse("/fb-scanner?msg=No+competitor+URLs+found", status_code=303)
+
+    _fb_scan_job     = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat(), "days": days}
+    _fb_scan_results = []
+
+    background_tasks.add_task(_fb_scan_worker, token, urls, days)
+    return RedirectResponse("/fb-scanner", status_code=303)
+
+
+@app.post("/fb-scanner/send-to-queue")
+async def fb_scanner_send_to_queue(request: Request, user: dict = Depends(require_user)):
+    """Create a StoryCluster from a scanned FB post and add it to the production queue."""
+    form = await request.form()
+    try:
+        idx = int(form.get("idx", -1))
+    except (ValueError, TypeError):
+        return RedirectResponse("/fb-scanner?msg=Invalid+post+index", status_code=303)
+
+    if idx < 0 or idx >= len(_fb_scan_results):
+        return RedirectResponse("/fb-scanner?msg=Post+not+found", status_code=303)
+
+    post = _fb_scan_results[idx]
+    text = (post.get("text") or post.get("preview") or "")[:500]
+    page_name = post.get("page_name") or "Facebook"
+    url  = post.get("url") or ""
+
+    if not text:
+        return RedirectResponse("/fb-scanner?msg=Post+has+no+text", status_code=303)
+
+    now = datetime.now(timezone.utc)
+    fsn_state = {
+        "queue_status":  "pending",
+        "post_type":     "image_card",
+        "source":        "fb_scanner",
+        "source_page":   page_name,
+        "source_url":    url,
+        "engagement_score": post.get("engagement_score", 0),
+        "fb_reactions":  post.get("reactions", 0),
+        "fb_shares":     post.get("shares", 0),
+        "fb_comments":   post.get("comments", 0),
+    }
+
+    db = SessionLocal()
+    try:
+        cluster = StoryCluster(
+            canonical_headline=text[:300],
+            status="New",
+            category="Politics",
+            handoff_sent_at=now,
+            first_detected_at=now,
+            last_updated_at=now,
+            fsn_state=json.dumps(fsn_state, ensure_ascii=False),
+        )
+        db.add(cluster)
+        db.commit()
+        db.refresh(cluster)
+        new_id = cluster.id
+    finally:
+        db.close()
+
+    if _is_local():
+        items = _load_fsn_queue()
+        items.append({
+            "cluster_id":      new_id,
+            "text":            text,
+            "category":        "Politics",
+            "sources":         [{"source_name": page_name, "url": url, "headline": text[:120]}],
+            "source_count":    1,
+            "viral_score":     0,
+            "confidence_score": 0,
+            "momentum_score":  0,
+            "queue_status":    "pending",
+            "post_type":       "image_card",
+            "added_to_queue_at": now.isoformat(),
+            "draft":           {},
+            "source":          "fb_scanner",
+        })
+        _save_fsn_queue(items)
+
+    page_slug = page_name.replace(" ", "+")
+    return RedirectResponse(
+        f"/fb-scanner?msg={page_slug}+post+added+to+queue+%28ID+{new_id}%29",
+        status_code=303,
+    )
 
 
 # ── Story Workspace Routes ─────────────────────────────────────────────────────
