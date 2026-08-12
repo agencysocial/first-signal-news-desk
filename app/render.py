@@ -2661,33 +2661,77 @@ def render_fb_scanner_page(
         + '</button></form>'
     )
 
+    # Collect unique page names for filter pills
+    page_names = []
+    seen_pages: set[str] = set()
+    for p in results[:60]:
+        pn = p.get("page_name") or ""
+        if pn and pn not in seen_pages:
+            page_names.append(pn)
+            seen_pages.add(pn)
+
     if not results:
         if status not in ("running", "error"):
             results_html = '<div style="color:#8b93a3;padding:24px 0">No results yet. Click <b>Scan Competitors</b> to pull the latest posts from all competitor pages.</div>'
         else:
             results_html = ""
+        page_filter_html = ""
     else:
+        # Page filter pills
+        filter_pills = ''.join(
+            f'<button type="button" class="pg-pill" data-page="{escape(pn)}" '
+            f'onclick="filterPage(this)" '
+            f'style="font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid #2a3040;background:#11151f;color:#8b93a3;cursor:pointer;white-space:nowrap">'
+            f'{escape(pn)}</button>'
+            for pn in page_names
+        )
+        page_filter_html = (
+            f'<div style="margin-bottom:14px">'
+            f'<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Filter by page</div>'
+            f'<div style="display:flex;flex-wrap:wrap;gap:5px">'
+            f'<button type="button" id="pill-all" onclick="filterPage(this)" data-page="__all__" '
+            f'style="font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid #4ade80;background:#0a2010;color:#4ade80;cursor:pointer">All pages</button>'
+            f'{filter_pills}</div></div>'
+        )
+
         rows = []
         for i, p in enumerate(results[:60], 1):
             preview   = escape((p.get("preview") or "")[:200])
             img       = escape(p.get("image_url") or "")
             url       = escape(p.get("url") or "")
             page_name = escape(p.get("page_name") or "")
+            page_key  = escape(p.get("page_name") or "")
             score     = int(p.get("engagement_score") or 0)
             reactions = int(p.get("reactions") or 0)
             shares    = int(p.get("shares") or 0)
             comments  = int(p.get("comments") or 0)
             pub       = (p.get("published_at") or "")[:10]
             score_col = "#4ade80" if score > 5000 else "#facc15" if score > 1000 else "#8b93a3"
-            thumb = (f'<img src="{img}" style="width:72px;height:56px;object-fit:cover;border-radius:4px;display:block">'
-                     if img else '<div style="width:72px;height:56px;background:#1a1f2b;border-radius:4px"></div>')
             full_text = escape((p.get("text") or "")[:800])
+            full_text_js = (p.get("text") or "")[:500].replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${")
+
+            # Thumbnail with hover preview
+            if img:
+                thumb_html = (
+                    f'<div class="thumb-wrap" style="position:relative;display:inline-block;cursor:pointer"'
+                    f' onmouseenter="showPreview(event,{i})" onmouseleave="hidePreview({i})">'
+                    f'<img src="{img}" style="width:80px;height:62px;object-fit:cover;border-radius:4px;display:block">'
+                    f'<div id="prev-{i}" style="display:none;position:fixed;z-index:999;pointer-events:none;'
+                    f'background:#0b0e14;border:1px solid #2a3040;border-radius:8px;padding:10px;'
+                    f'box-shadow:0 8px 32px rgba(0,0,0,.8);max-width:320px;width:320px">'
+                    f'<img src="{img}" style="width:100%;border-radius:4px;display:block;margin-bottom:8px">'
+                    f'<div style="font-size:11px;color:#facc15;margin-bottom:4px;font-weight:600">{page_name}</div>'
+                    f'<div style="font-size:12px;color:#c7cbd4;line-height:1.5">{preview}</div>'
+                    f'</div></div>'
+                )
+            else:
+                thumb_html = '<div style="width:80px;height:62px;background:#1a1f2b;border-radius:4px"></div>'
+
             rows.append(
-                f'<tr>'
-                f'<td style="width:80px;padding:8px 6px;vertical-align:top">'
-                f'<a href="{url}" target="_blank" rel="noopener">{thumb}</a></td>'
+                f'<tr class="scan-row" data-page="{page_key}">'
+                f'<td style="width:90px;padding:8px 6px;vertical-align:top">{thumb_html}</td>'
                 f'<td style="vertical-align:top;padding:8px 10px">'
-                f'<div style="font-size:11px;color:#facc15;margin-bottom:3px">{page_name}</div>'
+                f'<div style="font-size:11px;color:#facc15;font-weight:600;margin-bottom:3px">{page_name}</div>'
                 f'<div style="font-size:13px;line-height:1.4;color:#e6e8ec">{preview}</div>'
                 f'<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">'
                 f'<button type="button" onclick="toggleFull({i})" '
@@ -2699,10 +2743,13 @@ def render_fb_scanner_page(
                 f'<div style="font-size:10px;color:#3a4055;margin-top:4px">{pub}</div>'
                 f'</td>'
                 f'<td style="white-space:nowrap;text-align:right;padding:8px 10px;vertical-align:top">'
-                f'<div style="color:{score_col};font-size:15px;font-weight:700">{score:,}</div>'
-                f'<div style="color:#8b93a3;font-size:10px">score</div>'
-                f'<div style="margin-top:4px;font-size:10px;color:#8b93a3">'
-                f'{reactions:,} react &middot; {shares:,} share &middot; {comments:,} cmt</div>'
+                f'<div style="color:{score_col};font-size:17px;font-weight:700;margin-bottom:2px">{score:,}</div>'
+                f'<div style="color:#8b93a3;font-size:9px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">eng. score</div>'
+                f'<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">'
+                f'<span style="background:#1a2e1a;color:#4ade80;border-radius:4px;padding:2px 7px;font-size:12px;font-weight:600">&#128077; {reactions:,}</span>'
+                f'<span style="background:#1a1a2e;color:#60a5fa;border-radius:4px;padding:2px 7px;font-size:12px;font-weight:600">&#128257; {shares:,}</span>'
+                f'<span style="background:#2e1a1a;color:#f87171;border-radius:4px;padding:2px 7px;font-size:12px;font-weight:600">&#128172; {comments:,}</span>'
+                f'</div>'
                 f'</td>'
                 f'<td style="padding:8px 10px;vertical-align:top;width:130px">'
                 f'<form method="post" action="/fb-scanner/send-to-queue" style="margin:0">'
@@ -2713,9 +2760,10 @@ def render_fb_scanner_page(
                 f'</tr>'
             )
         results_html = (
-            f'<table style="font-size:13px">'
-            f'<thead><tr><th style="width:80px"></th><th>Post</th>'
-            f'<th style="text-align:right">Engagement</th><th style="width:130px"></th></tr></thead>'
+            f'<table id="scan-table" style="font-size:13px">'
+            f'<thead><tr><th style="width:90px"></th><th>Post</th>'
+            f'<th style="text-align:right;white-space:nowrap">Reactions &nbsp; Shares &nbsp; Comments</th>'
+            f'<th style="width:130px"></th></tr></thead>'
             f'<tbody>{"".join(rows)}</tbody></table>'
         )
 
@@ -2739,6 +2787,8 @@ def render_fb_scanner_page(
   <div style="display:flex;flex-wrap:wrap;gap:4px">{comp_pills}</div>
 </div>
 
+{page_filter_html}
+
 {results_html}
 
 <script>
@@ -2747,6 +2797,51 @@ function toggleFull(i) {{
   if (!el) return;
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }}
+
+function filterPage(btn) {{
+  var page = btn.getAttribute('data-page');
+  // update pill styles
+  document.querySelectorAll('.pg-pill, #pill-all').forEach(function(b) {{
+    b.style.background = '#11151f'; b.style.color = '#8b93a3'; b.style.borderColor = '#2a3040';
+  }});
+  btn.style.background = '#0a2010'; btn.style.color = '#4ade80'; btn.style.borderColor = '#4ade80';
+  // show/hide rows
+  document.querySelectorAll('.scan-row').forEach(function(row) {{
+    if (page === '__all__' || row.getAttribute('data-page') === page) {{
+      row.style.display = '';
+    }} else {{
+      row.style.display = 'none';
+    }}
+  }});
+}}
+
+function showPreview(e, i) {{
+  var el = document.getElementById('prev-'+i);
+  if (!el) return;
+  el.style.display = 'block';
+  _positionPreview(e, el);
+}}
+
+function _positionPreview(e, el) {{
+  var x = e.clientX + 16, y = e.clientY - 20;
+  var vw = window.innerWidth, vh = window.innerHeight;
+  if (x + 330 > vw) x = e.clientX - 336;
+  if (y + 300 > vh) y = vh - 310;
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+}}
+
+function hidePreview(i) {{
+  var el = document.getElementById('prev-'+i);
+  if (el) el.style.display = 'none';
+}}
+
+// Reposition on mouse move so preview follows cursor slightly
+document.addEventListener('mousemove', function(e) {{
+  document.querySelectorAll('[id^="prev-"]').forEach(function(el) {{
+    if (el.style.display !== 'none') _positionPreview(e, el);
+  }});
+}});
 </script>
 """
     head = _page_head(extra_meta=page_meta)
