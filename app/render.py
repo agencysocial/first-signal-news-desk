@@ -2605,7 +2605,7 @@ def render_fb_scanner_page(
     status   = job.get("status", "idle")
     started  = job.get("started_at", "")
     finished = job.get("finished_at", "")
-    days     = job.get("days", 14)
+    hours    = job.get("hours", 24)
     count    = len(results)
     err      = job.get("error", "")
 
@@ -2650,11 +2650,10 @@ def render_fb_scanner_page(
 
     scan_form = (
         f'<form method="post" action="/fb-scanner/scan" style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap">'
-        f'<select name="days" style="font-size:12px;padding:5px 8px">'
-        f'<option value="7" {"selected" if days==7 else ""}>Last 7 days</option>'
-        f'<option value="14" {"selected" if days==14 else ""}>Last 14 days</option>'
-        f'<option value="30" {"selected" if days==30 else ""}>Last 30 days</option>'
-        f'<option value="0" {"selected" if days==0 else ""}>All time</option>'
+        f'<select name="hours" style="font-size:12px;padding:5px 8px">'
+        f'<option value="24" {"selected" if hours==24 else ""}>Last 24 hours</option>'
+        f'<option value="48" {"selected" if hours==48 else ""}>Last 48 hours</option>'
+        f'<option value="72" {"selected" if hours==72 else ""}>Last 72 hours</option>'
         f'</select>'
         f'<button type="submit" class="primary" style="padding:6px 18px;font-size:13px"'
         + (' disabled' if status == "running" else '') + '>'

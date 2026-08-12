@@ -2377,7 +2377,10 @@ def _get_apify_token() -> str:
 
 
 def _load_competitor_urls() -> list[str]:
-    comp_file = _FSN_ROOT / "input" / "competitors.txt"
+    # Look in the AIM repo first (works on Render), fall back to FSN pipeline path locally
+    aim_comp = Path(__file__).parent.parent / "input" / "competitors.txt"
+    fsn_comp = _FSN_ROOT / "input" / "competitors.txt"
+    comp_file = aim_comp if aim_comp.exists() else fsn_comp
     if not comp_file.exists():
         return []
     return [
@@ -2432,13 +2435,16 @@ async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
         return RedirectResponse("/fb-scanner?msg=APIFY_TOKEN+not+set+in+.env", status_code=303)
 
     form = await request.form()
-    days = int(form.get("days", 14) or 14)
+    hours = int(form.get("hours", 24) or 24)
+    # Apify uses days; convert (round up so 24h → 1 day, 48h → 2 days)
+    import math
+    days = max(1, math.ceil(hours / 24))
 
     urls = _load_competitor_urls()
     if not urls:
         return RedirectResponse("/fb-scanner?msg=No+competitor+URLs+found", status_code=303)
 
-    _fb_scan_job     = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat(), "days": days}
+    _fb_scan_job     = {"status": "running", "started_at": datetime.now(timezone.utc).isoformat(), "hours": hours, "days": days}
     _fb_scan_results = []
 
     background_tasks.add_task(_fb_scan_worker, token, urls, days)
