@@ -49,20 +49,33 @@ def _normalize(raw: dict) -> dict:
         m0 = media[0] or {}
         image_url = (
             (m0.get("large_share_image") or {}).get("uri")
+            or m0.get("uri")
             or m0.get("thumbnail")
+            or m0.get("url")
             or ""
         )
     text = (raw.get("text") or raw.get("postText") or "")[:2000]
+    # Total reactions = likes + all reaction types (fall back to likes alone)
+    reactions = int(raw.get("likes") or raw.get("reactionCount") or 0)
+    for rk in ("reactionLikeCount","reactionLoveCount","reactionCareCount",
+               "reactionHahaCount","reactionWowCount","reactionSadCount","reactionAngryCount"):
+        if raw.get(rk):
+            reactions = max(reactions, int(raw.get(rk) or 0))
+    # Use topReactionsCount as total if available and bigger
+    top = int(raw.get("topReactionsCount") or 0)
+    if top > reactions:
+        reactions = top
+
     return {
-        "url":          raw.get("url") or raw.get("postUrl") or "",
+        "url":          raw.get("url") or raw.get("topLevelUrl") or "",
         "text":         text,
         "preview":      text[:160].replace("\n", " "),
         "image_url":    image_url,
-        "reactions":    int(raw.get("reactionCount") or 0),
-        "comments":     int(raw.get("commentsCount") or 0),
-        "shares":       int(raw.get("sharesCount") or 0),
+        "reactions":    reactions,
+        "comments":     int(raw.get("comments") or raw.get("commentsCount") or 0),
+        "shares":       int(raw.get("shares") or raw.get("sharesCount") or 0),
         "published_at": raw.get("time") or raw.get("publishedTime") or "",
-        "page_name":    raw.get("pageName") or raw.get("ownerName") or "",
+        "page_name":    raw.get("pageName") or (raw.get("user") or {}).get("name") or "",
     }
 
 
@@ -103,11 +116,13 @@ def fetch_results(token: str, dataset_id: str,
     """Download, normalize, filter and rank results from a finished run."""
     import httpx
     r = httpx.get(
-        f"{_APIFY_BASE}/datasets/{dataset_id}/items?token={token}",
+        f"{_APIFY_BASE}/datasets/{dataset_id}/items?token={token}&limit=200",
         timeout=60,
     )
     r.raise_for_status()
     raw_items: list[dict] = r.json()
+    if not isinstance(raw_items, list):
+        raw_items = []
 
     normalized = []
     for raw in raw_items:

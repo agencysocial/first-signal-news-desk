@@ -2448,6 +2448,7 @@ def _fb_scan_worker(token: str, urls: list[str], days: int) -> None:
                 job["status"]      = "done"
                 job["finished_at"] = datetime.now(timezone.utc).isoformat()
                 job["count"]       = len(results)
+                job["dataset_id"]  = dataset_id
                 _fb_write_job(job)
                 _fb_write_results(results)
                 history = _fb_read_history()
@@ -2513,17 +2514,17 @@ def fb_scanner_raw(user: dict = Depends(require_user)):
     """Fetch a raw Apify sample to inspect field names."""
     job = _fb_read_job()
     token = _get_apify_token()
-    dataset_id = job.get("run_id")  # we don't store dataset_id separately — fetch via run
     if not token or not job.get("run_id"):
         return JSONResponse({"error": "no completed run"})
     try:
-        run_id = job["run_id"]
-        r = httpx.get(f"https://api.apify.com/v2/actor-runs/{run_id}?token={token}", timeout=15)
-        d = r.json()["data"]
-        did = d.get("defaultDatasetId")
+        # Use stored dataset_id if available, otherwise look it up
+        did = job.get("dataset_id")
         if not did:
-            return JSONResponse({"error": "no dataset", "run": d})
-        r2 = httpx.get(f"https://api.apify.com/v2/datasets/{did}/items?token={token}&limit=2", timeout=30)
+            r = httpx.get(f"https://api.apify.com/v2/actor-runs/{job['run_id']}?token={token}", timeout=15)
+            did = r.json()["data"].get("defaultDatasetId")
+        if not did:
+            return JSONResponse({"error": "no dataset id found"})
+        r2 = httpx.get(f"https://api.apify.com/v2/datasets/{did}/items?token={token}&limit=1", timeout=30)
         return JSONResponse({"raw_items": r2.json()})
     except Exception as exc:
         return JSONResponse({"error": str(exc)})
