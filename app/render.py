@@ -2581,7 +2581,7 @@ function regenTOBI(cid) {{
       var tSafe = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
       return '<div style="background:#11151f;border:1px solid #2a3555;border-radius:4px;padding:8px;margin-bottom:6px;display:flex;align-items:flex-start;gap:8px">'
         +'<div style="flex:1;font-size:12px;color:#e6e8ec">'+tSafe+'</div>'
-        +'<button type="button" onclick="useTOBIopt(\''+cid+'\','+i+')" style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px;white-space:nowrap">Use</button>'
+        +'<button type="button" data-cid="'+cid+'" data-idx="'+i+'" class="use-tobi-btn" style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px;white-space:nowrap">Use</button>'
         +'</div>';
     }}).join('');
     if(div) div.innerHTML = html||'No options returned';
@@ -2594,11 +2594,12 @@ function useTOBIopt(cid, idx) {{
   if(el) el.value = t;
   fetch('/pipeline-queue/apply-tobi',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&tobi_text='+encodeURIComponent(t)}});
 }}
-// Delegated handler for dynamically-created "Use This Angle" buttons
+// Delegated handlers for dynamically-created buttons (avoids quote-escaping in onclick)
 document.addEventListener('click', function(e) {{
   var btn = e.target.closest('.apply-angle-btn');
-  if (!btn) return;
-  applyAngle(btn.getAttribute('data-cid'), parseInt(btn.getAttribute('data-idx')));
+  if (btn) {{ applyAngle(btn.getAttribute('data-cid'), parseInt(btn.getAttribute('data-idx'))); return; }}
+  var tbtn = e.target.closest('.use-tobi-btn');
+  if (tbtn) {{ useTOBIopt(tbtn.getAttribute('data-cid'), parseInt(tbtn.getAttribute('data-idx'))); return; }}
 }});
 </script>
 """
