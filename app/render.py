@@ -2501,6 +2501,7 @@ function getAngles(cid) {{
   }});
 }}
 function applyAngle(cid, idx) {{
+  console.log('applyAngle called cid='+cid+' idx='+idx+' stored='+JSON.stringify(_ws_angles));
   var a = (_ws_angles[cid]||[])[idx];
   if (!a) {{ console.error('applyAngle: no angle found. cid='+cid+' idx='+idx+' keys='+Object.keys(_ws_angles)+' len='+((_ws_angles[cid]||[]).length)); return; }}
   var hlEl = document.getElementById('draft-hl-'+cid);
