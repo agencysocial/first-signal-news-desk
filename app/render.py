@@ -2510,6 +2510,14 @@ function applyAngle(cid, idx) {{
   if (tagEl) tagEl.value = a.tag;
   if (scEl)  scEl.value = a.image_scene;
   saveDraft(cid);
+  // Flash fields green and scroll to headline
+  [hlEl, tagEl, scEl].forEach(function(el) {{
+    if (!el) return;
+    el.style.transition = 'background 0.2s';
+    el.style.background = '#14532d';
+    setTimeout(function() {{ el.style.background = ''; }}, 1200);
+  }});
+  if (hlEl) hlEl.scrollIntoView({{behavior:'smooth', block:'center'}});
 }}
 function genContent(cid, voice) {{
   var st = document.getElementById('content-gen-status-'+cid);
