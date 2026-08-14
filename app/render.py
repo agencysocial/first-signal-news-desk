@@ -2474,7 +2474,7 @@ function getAngles(cid) {{
   fetch('/pipeline-queue/expand-angles',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid}})
   .then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
   .then(function(d) {{
-    if (btn) btn.textContent = '&#8635; Refresh Angles';
+    if (btn) btn.innerHTML = '&#8635; Refresh Angles';
     if (d.error) {{ if(div) div.innerHTML='<div style="color:#f87171">Error: '+d.error+'</div>'; return; }}
     _ws_angles[cid] = d.angles || [];
     var typeC = {{accountability:'#f87171',outrage:'#fb923c',breaking:'#facc15',vindication:'#4ade80',poll:'#60a5fa',analysis:'#c084fc'}};
@@ -2496,13 +2496,13 @@ function getAngles(cid) {{
     }}).join('');
     if (div) div.innerHTML = html || '<div style="color:#f87171">No angles returned</div>';
   }}).catch(function(err) {{
-    if (btn) btn.textContent = '&#9888; Error — retry';
+    if (btn) btn.innerHTML = '&#9888; Error — retry';
     if (div) div.innerHTML = '<div style="color:#f87171">Error: '+err.message+'</div>';
   }});
 }}
 function applyAngle(cid, idx) {{
   var a = (_ws_angles[cid]||[])[idx];
-  if (!a) return;
+  if (!a) {{ console.error('applyAngle: no angle found. cid='+cid+' idx='+idx+' keys='+Object.keys(_ws_angles)+' len='+((_ws_angles[cid]||[]).length)); return; }}
   var hlEl = document.getElementById('draft-hl-'+cid);
   var tagEl = document.getElementById('draft-tag-'+cid);
   var scEl  = document.getElementById('draft-scene-'+cid);
