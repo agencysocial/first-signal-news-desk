@@ -2510,12 +2510,16 @@ function applyAngle(cid, idx) {{
   if (tagEl) tagEl.value = a.tag;
   if (scEl)  scEl.value = a.image_scene;
   saveDraft(cid);
-  // Flash fields green and scroll to headline
-  [hlEl, tagEl, scEl].forEach(function(el) {{
+  // Flash fields green then restore original backgrounds, and scroll to headline
+  var origBg = ['', '', '#11151f'];
+  [hlEl, tagEl, scEl].forEach(function(el, i) {{
     if (!el) return;
     el.style.transition = 'background 0.2s';
     el.style.background = '#14532d';
-    setTimeout(function() {{ el.style.background = ''; }}, 1200);
+    setTimeout(function() {{
+      el.style.transition = 'background 0.6s';
+      el.style.background = origBg[i];
+    }}, 1200);
   }});
   if (hlEl) hlEl.scrollIntoView({{behavior:'smooth', block:'center'}});
 }}
