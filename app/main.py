@@ -2578,11 +2578,13 @@ async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
     import math
     days = max(1, math.ceil(hours / 24))
 
-    urls = _load_competitor_urls()
+    # Use checked pages from the form; fall back to all competitors if none submitted
+    selected = form.getlist("page_url")
+    urls = [u for u in selected if u.strip()] if selected else _load_competitor_urls()
     if not urls:
-        return RedirectResponse("/fb-scanner?msg=No+competitor+URLs+found", status_code=303)
+        return RedirectResponse("/fb-scanner?msg=No+competitor+URLs+selected", status_code=303)
 
-    _fb_write_job({"status": "running", "started_at": datetime.now(timezone.utc).isoformat(), "hours": hours, "days": days})
+    _fb_write_job({"status": "running", "started_at": datetime.now(timezone.utc).isoformat(), "hours": hours, "days": days, "page_count": len(urls)})
     _fb_write_results([])
 
     background_tasks.add_task(_fb_scan_worker, token, urls, days)

@@ -2935,22 +2935,38 @@ def render_fb_scanner_page(
         status_html = ""
         page_meta   = ""
 
-    comp_pills = " ".join(
-        f'<span style="background:#11151f;border:1px solid #2a3040;border-radius:10px;padding:2px 8px;font-size:11px;color:#8b93a3">{escape(c.rstrip("/").split("/")[-1])}</span>'
-        for c in competitors[:24]
-    )
+    # Checkbox list of competitor pages — all checked by default
+    comp_checks = ""
+    for c in competitors[:50]:
+        label = escape(c.rstrip("/").split("/")[-1])
+        url_e = escape(c)
+        comp_checks += (
+            f'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#c8cdd8;'
+            f'padding:4px 8px;border:1px solid #2a3040;border-radius:5px;cursor:pointer;white-space:nowrap">'
+            f'<input type="checkbox" name="page_url" value="{url_e}" checked style="accent-color:#3b82f6"> '
+            f'{label}</label>'
+        )
 
+    is_running = status == "running"
     scan_form = (
-        f'<form method="post" action="/fb-scanner/scan" style="display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap">'
+        f'<form method="post" action="/fb-scanner/scan">'
+        f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
         f'<select name="hours" style="font-size:12px;padding:5px 8px">'
         f'<option value="24" {"selected" if hours==24 else ""}>Last 24 hours</option>'
         f'<option value="48" {"selected" if hours==48 else ""}>Last 48 hours</option>'
         f'<option value="72" {"selected" if hours==72 else ""}>Last 72 hours</option>'
         f'</select>'
+        f'<button type="button" onclick="toggleAll(true)" style="font-size:11px;padding:3px 8px">All</button>'
+        f'<button type="button" onclick="toggleAll(false)" style="font-size:11px;padding:3px 8px">None</button>'
         f'<button type="submit" class="primary" style="padding:6px 18px;font-size:13px"'
-        + (' disabled' if status == "running" else '') + '>'
-        + ('&#9203; Scanning...' if status == "running" else '&#128269; Scan Competitors')
-        + '</button></form>'
+        + (' disabled' if is_running else '') + '>'
+        + ('&#9203; Scanning...' if is_running else '&#128269; Scan Selected')
+        + f'</button>'
+        f'<a href="/pipeline-queue" style="font-size:12px;color:#8b93a3;padding:6px 12px;border:1px solid #2a3040;border-radius:4px">&#8592; Queue</a>'
+        f'</div>'
+        f'<div id="comp-checks" style="display:flex;flex-wrap:wrap;gap:6px">{comp_checks}</div>'
+        f'</form>'
+        f'<script>function toggleAll(v){{document.querySelectorAll(\'#comp-checks input[type=checkbox]\').forEach(function(c){{c.checked=v;}})}}</script>'
     )
 
     if not results:
@@ -2990,17 +3006,13 @@ def render_fb_scanner_page(
     <h1 style="margin:0 0 4px 0">&#128240; Facebook Competitor Scanner</h1>
     <div style="color:#8b93a3;font-size:13px">Ranked by reactions + (shares&times;3) + (comments&times;2) &mdash; same formula as the pipeline</div>
   </div>
-  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-    {scan_form}
-    <a href="/pipeline-queue" style="font-size:12px;color:#8b93a3;padding:6px 12px;border:1px solid #2a3040;border-radius:4px">&#8592; Queue</a>
-  </div>
+  <div></div>
 </div>
 
 {status_html}
 
-<div style="margin-bottom:16px">
-  <div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Scanning {len(competitors)} pages</div>
-  <div style="display:flex;flex-wrap:wrap;gap:4px">{comp_pills}</div>
+<div style="margin-bottom:20px">
+{scan_form}
 </div>
 
 {latest_html}
