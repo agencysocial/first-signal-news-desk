@@ -1559,7 +1559,7 @@ def _generate_one_image(cid: str, key: str, item: dict) -> None:
     draft = item.get("draft") or {}
     headline = draft.get("headline") or item.get("text") or ""
     tag      = draft.get("tag") or "BREAKING NEWS"
-    scene    = draft.get("image_scene") or "United States Capitol building exterior, wide establishing shot"
+    scene    = draft.get("scene") or draft.get("image_scene") or item.get("suggested_scene") or "United States Capitol building exterior, wide establishing shot"
     try:
         prompt = _build_image_prompt(headline, tag, scene)
         task_id = _kie_submit(prompt, key)
