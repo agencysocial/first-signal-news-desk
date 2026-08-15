@@ -2722,9 +2722,9 @@ function _startImagePoll(cid) {{
               var rev = d.history.slice().reverse();
               rev.forEach(function(u, i) {{
                 html += '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
-                  +'<img src="'+u+'" style="width:80px;height:100px;object-fit:cover;border-radius:4px;border:1px solid #2a3555;cursor:pointer" onclick="useHistoryImage(\''+cid+'\',\''+u+'\')" title="Click to use this version">'
+                  +'<img src="'+u+'" style="width:80px;height:100px;object-fit:cover;border-radius:4px;border:1px solid #2a3555;cursor:pointer" onclick="useHistoryImage(\\''+cid+'\\',\\''+u+'\\')" title="Click to use this version">'
                   +'<div style="display:flex;gap:4px">'
-                  +'<button type="button" onclick="useHistoryImage(\''+cid+'\',\''+u+'\')" style="font-size:9px;padding:2px 6px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use</button>'
+                  +'<button type="button" onclick="useHistoryImage(\\''+cid+'\\',\\''+u+'\\')" style="font-size:9px;padding:2px 6px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use</button>'
                   +'<a href="'+u+'" download target="_blank" style="font-size:9px;padding:2px 6px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:3px;text-decoration:none">&#11015;</a>'
                   +'</div>'
                   +'<span style="font-size:9px;color:#8b93a3">v'+(i+1)+'</span>'
@@ -2778,9 +2778,9 @@ function useHistoryImage(cid, kieUrl) {{
         var html = '<div style="margin-top:10px"><div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Previous versions</div><div style="display:flex;flex-wrap:wrap;gap:8px">';
         d.history.slice().reverse().forEach(function(u, i) {{
           html += '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
-            +'<img src="'+u+'" style="width:80px;height:100px;object-fit:cover;border-radius:4px;border:1px solid #2a3555;cursor:pointer" onclick="useHistoryImage(\''+cid+'\',\''+u+'\')" title="Click to use">'
+            +'<img src="'+u+'" style="width:80px;height:100px;object-fit:cover;border-radius:4px;border:1px solid #2a3555;cursor:pointer" onclick="useHistoryImage(\\''+cid+'\\',\\''+u+'\\')" title="Click to use">'
             +'<div style="display:flex;gap:4px">'
-            +'<button type="button" onclick="useHistoryImage(\''+cid+'\',\''+u+'\')" style="font-size:9px;padding:2px 6px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use</button>'
+            +'<button type="button" onclick="useHistoryImage(\\''+cid+'\\',\\''+u+'\\')" style="font-size:9px;padding:2px 6px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use</button>'
             +'<a href="'+u+'" download target="_blank" style="font-size:9px;padding:2px 6px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:3px;text-decoration:none">&#11015;</a>'
             +'</div><span style="font-size:9px;color:#8b93a3">v'+(i+1)+'</span></div>';
         }});
