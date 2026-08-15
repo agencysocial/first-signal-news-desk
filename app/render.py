@@ -2198,7 +2198,7 @@ function toggleHist(id) {
   <h1>&#9654; First Signal Production Queue</h1>
   <p class="sub">Stories sent from the News Desk via "Send to First Signal Pipeline". Select and assign type, then send to generation. Page refreshes every 30 seconds.</p>
   {flash}
-  {gen_panel}{gen_panel_js}
+  <!-- gen_panel hidden: bulk generation replaced by per-workspace Generate Image -->
   {manual_add_panel}
   {pending_section}
   {approved_section}
