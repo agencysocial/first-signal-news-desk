@@ -2570,6 +2570,40 @@ function regenAllCaps(cid) {{
     if(st){{ st.textContent='Done!'; setTimeout(function(){{st.textContent='';}},2000); }}
   }});
 }}
+var _imgPollTimer = {{}};
+function _startImagePoll(cid) {{
+  if (_imgPollTimer[cid]) clearTimeout(_imgPollTimer[cid]);
+  var st = document.getElementById('img-status-'+cid);
+  var wrap = document.getElementById('img-wrap-'+cid);
+  var secs = 90;
+  function countdown() {{
+    if (st && !document.getElementById('img-wrap-'+cid).querySelector('img')) {{
+      st.textContent = 'Checking in ' + secs + 's…';
+      secs = Math.max(0, secs - 5);
+    }}
+  }}
+  var countTimer = setInterval(countdown, 5000);
+  countdown();
+  function poll() {{
+    fetch('/pipeline-queue/story/'+cid+'/image-status')
+      .then(function(r) {{ return r.json(); }})
+      .then(function(d) {{
+        if (d.url) {{
+          clearInterval(countTimer);
+          if (wrap) wrap.innerHTML = '<img src="'+d.url+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
+            + '<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
+          if (st) st.textContent = '';
+        }} else if (d.status === 'generating' || d.status === '') {{
+          _imgPollTimer[cid] = setTimeout(poll, 5000);
+        }} else {{
+          clearInterval(countTimer);
+          if (st) st.textContent = d.status;
+        }}
+      }})
+      .catch(function() {{ _imgPollTimer[cid] = setTimeout(poll, 10000); }});
+  }}
+  _imgPollTimer[cid] = setTimeout(poll, 5000);
+}}
 function regenImage(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
   var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
@@ -2577,12 +2611,12 @@ function regenImage(cid) {{
   var wrap  = document.getElementById('img-wrap-'+cid);
   if (!hl && !scene) {{ alert('Enter a headline or scene first.'); return; }}
   if (st) st.textContent = 'Queued...';
-  if (wrap) wrap.innerHTML='<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
+  if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'headline='+encodeURIComponent(hl)+'&scene='+encodeURIComponent(scene)
   }}).then(r=>r.json()).then(function(d){{
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
-    if(st) st.textContent='Generating... refresh page in ~60s to see result';
+    _startImagePoll(cid);
   }});
 }}
 var _tobi_opts = {{}};
@@ -2617,33 +2651,10 @@ document.addEventListener('click', function(e) {{
   var tbtn = e.target.closest('.use-tobi-btn');
   if (tbtn) {{ useTOBIopt(tbtn.getAttribute('data-cid'), parseInt(tbtn.getAttribute('data-idx'))); return; }}
 }});
-// Auto-poll for image completion — updates the image div without a page reload
+// Auto-start image polling on page load if image is still generating
 (function() {{
-  var cid = '{cid}';
-  var wrap = document.getElementById('img-wrap-'+cid);
-  var statusEl = document.getElementById('img-status-'+cid);
-  if (!wrap) return;
-  // Only poll if currently showing a generating placeholder (no <img> yet)
-  if (wrap.querySelector('img')) return;
-  var timer = null;
-  function checkImage() {{
-    fetch('/pipeline-queue/story/'+cid+'/image-status')
-      .then(function(r) {{ return r.json(); }})
-      .then(function(d) {{
-        if (d.url) {{
-          wrap.innerHTML = '<img src="'+d.url+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
-            + '<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
-          if (statusEl) statusEl.textContent = '';
-        }} else if (d.status === 'generating') {{
-          timer = setTimeout(checkImage, 6000);
-        }} else {{
-          if (statusEl && d.status) statusEl.textContent = d.status;
-        }}
-      }})
-      .catch(function() {{ timer = setTimeout(checkImage, 10000); }});
-  }}
-  // Start polling after a short delay
-  timer = setTimeout(checkImage, 5000);
+  var wrap = document.getElementById('img-wrap-{cid}');
+  if (wrap && !wrap.querySelector('img')) {{ _startImagePoll('{cid}'); }}
 }})();
 </script>
 """
