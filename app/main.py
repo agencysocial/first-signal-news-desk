@@ -632,8 +632,6 @@ def prune_old_stories():
         old_clusters = session.execute(
             select(StoryCluster).where(
                 StoryCluster.first_detected_at < cutoff,
-                StoryCluster.status.notin_(["Covered"]),
-                StoryCluster.handoff_sent_at.is_(None),
             )
         ).scalars().all()
         if not old_clusters:
@@ -641,6 +639,10 @@ def prune_old_stories():
             return
         ids = [c.id for c in old_clusters]
         # Delete child rows first (FK constraints)
+        session.execute(
+            _sql_text("DELETE FROM covered_posts WHERE cluster_id = ANY(:ids)"),
+            {"ids": ids},
+        )
         session.execute(
             _sql_text("DELETE FROM story_cluster_articles WHERE cluster_id = ANY(:ids)"),
             {"ids": ids},
@@ -865,7 +867,7 @@ def _wire_response(
     effective_status = forced_status or status
     session = SessionLocal()
     try:
-        query = select(StoryCluster).where(StoryCluster.status.notin_(["Dismissed", "Archived"]))
+        query = select(StoryCluster).where(StoryCluster.status.notin_(["Dismissed", "Archived", "Covered"]))
         if category:
             query = query.where(StoryCluster.category == category)
         if effective_status:
