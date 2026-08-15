@@ -117,6 +117,7 @@ NAV = """
       <a href="/watchlist">Watchlist</a>
       <a href="/sources">Sources</a>
       <a href="/pipeline-queue">&#9654; Production Queue</a>
+      <a href="/fb-scanner">&#128269; FB Scanner</a>
     </div>
     <form method="post" action="/logout" class="inline-form">
       <button type="submit" style="font-size:11px">Logout</button>
