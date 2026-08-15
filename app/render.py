@@ -2913,8 +2913,11 @@ def render_fb_scanner_page(
             except Exception:
                 pass
         status_html = (
-            f'<div style="background:#1a1800;border:1px solid #5a5000;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px">'
-            f'&#9203; Scanning Facebook pages{elapsed} &nbsp;<span style="color:#8b93a3;font-size:11px">(page refreshes every 10s)</span></div>'
+            f'<div style="background:#1a1800;border:1px solid #5a5000;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:12px">'
+            f'<span>&#9203; Scanning Facebook pages{elapsed} &nbsp;<span style="color:#8b93a3;font-size:11px">(page refreshes every 10s)</span></span>'
+            f'<form method="post" action="/fb-scanner/reset" style="margin:0">'
+            f'<button type="submit" style="font-size:11px;padding:3px 10px;background:#3a1414;border-color:#7a2020;color:#f87171">&#9726; Reset</button>'
+            f'</form></div>'
         )
         page_meta = '<meta http-equiv="refresh" content="10">'
     elif status == "error":

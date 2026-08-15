@@ -2580,8 +2580,22 @@ def fb_scanner_page(msg: str = "", user: dict = Depends(require_user)):
 @app.post("/fb-scanner/scan")
 async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
                           user: dict = Depends(require_user)):
-    if _fb_read_job().get("status") == "running":
-        return RedirectResponse("/fb-scanner?msg=Scan+already+running", status_code=303)
+    job = _fb_read_job()
+    if job.get("status") == "running":
+        # Auto-reset if the job has been running for more than 20 minutes —
+        # the background thread was likely killed by a Render worker restart.
+        started = job.get("started_at", "")
+        stuck = True
+        if started:
+            try:
+                age = (datetime.now(timezone.utc) -
+                       datetime.fromisoformat(started.replace("Z", "+00:00"))).total_seconds()
+                stuck = age > 1200  # 20 minutes
+            except Exception:
+                pass
+        if not stuck:
+            return RedirectResponse("/fb-scanner?msg=Scan+already+running", status_code=303)
+        # Stuck — reset and allow the new scan to proceed
 
     token = _get_apify_token()
     if not token:
@@ -2603,6 +2617,12 @@ async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
 
     background_tasks.add_task(_fb_scan_worker, token, urls, days)
     return RedirectResponse("/fb-scanner", status_code=303)
+
+
+@app.post("/fb-scanner/reset")
+def fb_scanner_reset(user: dict = Depends(require_user)):
+    _fb_write_job({"status": "idle"})
+    return RedirectResponse("/fb-scanner?msg=Scan+reset", status_code=303)
 
 
 @app.post("/fb-scanner/competitors/add")
