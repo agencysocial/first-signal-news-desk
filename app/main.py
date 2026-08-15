@@ -2785,6 +2785,22 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
     return JSONResponse({"ok": True})
 
 
+@app.get("/pipeline-queue/story/{cid}/image-status")
+def pipeline_queue_story_image_status(cid: str, user: dict = Depends(require_user)):
+    """Lightweight poll endpoint for workspace image generation status."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    items = _load_fsn_queue()
+    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    if not item:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({
+        "status": item.get("image_gen_status") or "",
+        "url":    item.get("generated_image_url") or "",
+    })
+
+
 @app.post("/pipeline-queue/story/{cid}/approve")
 def pipeline_queue_story_approve(cid: str, user: dict = Depends(require_user)):
     if not cid.isdigit():

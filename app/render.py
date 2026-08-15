@@ -2617,6 +2617,34 @@ document.addEventListener('click', function(e) {{
   var tbtn = e.target.closest('.use-tobi-btn');
   if (tbtn) {{ useTOBIopt(tbtn.getAttribute('data-cid'), parseInt(tbtn.getAttribute('data-idx'))); return; }}
 }});
+// Auto-poll for image completion — updates the image div without a page reload
+(function() {{
+  var cid = '{cid}';
+  var wrap = document.getElementById('img-wrap-'+cid);
+  var statusEl = document.getElementById('img-status-'+cid);
+  if (!wrap) return;
+  // Only poll if currently showing a generating placeholder (no <img> yet)
+  if (wrap.querySelector('img')) return;
+  var timer = null;
+  function checkImage() {{
+    fetch('/pipeline-queue/story/'+cid+'/image-status')
+      .then(function(r) {{ return r.json(); }})
+      .then(function(d) {{
+        if (d.url) {{
+          wrap.innerHTML = '<img src="'+d.url+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
+            + '<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
+          if (statusEl) statusEl.textContent = '';
+        }} else if (d.status === 'generating') {{
+          timer = setTimeout(checkImage, 6000);
+        }} else {{
+          if (statusEl && d.status) statusEl.textContent = d.status;
+        }}
+      }})
+      .catch(function() {{ timer = setTimeout(checkImage, 10000); }});
+  }}
+  // Start polling after a short delay
+  timer = setTimeout(checkImage, 5000);
+}})();
 </script>
 """
     return PAGE_HEAD + body + PAGE_TAIL
