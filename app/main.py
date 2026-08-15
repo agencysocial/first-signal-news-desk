@@ -2765,9 +2765,10 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         item["draft"] = {}
     if headline:
         item["draft"]["headline"] = headline
-    if scene:
-        item["draft"]["scene"] = scene
-        item["scene"] = scene
+    # Use submitted scene, or fall back to whatever is already in draft/suggested
+    effective_scene = scene or (item.get("draft") or {}).get("scene") or item.get("suggested_scene") or ""
+    item["draft"]["scene"] = effective_scene
+    item["scene"] = effective_scene
 
     # Clear old image so status shows "generating"
     _update_cluster_fsn(cluster_id, generated_image_url="", image_gen_status="generating",
