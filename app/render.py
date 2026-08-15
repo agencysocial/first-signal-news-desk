@@ -2266,7 +2266,11 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
         )
 
     if img_url:
-        img_html = f'<img src="{escape(img_url)}" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:10px">'
+        img_html = (
+            f'<img src="{escape(img_url)}" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
+            f'<a href="{escape(img_url)}" download target="_blank" '
+            f'style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>'
+        )
         regen_label = "&#8635; Regenerate Image"
     elif img_status == "generating":
         img_html = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px;margin-bottom:10px">Generating...</div>'

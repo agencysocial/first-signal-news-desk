@@ -375,7 +375,11 @@ def _build_picks_from_approved_queue() -> dict | None:
             })
 
     picks = {"batch_date": date_str, "posts": posts}
-    _FSN_PICKS_PATH.write_text(json.dumps(picks, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        _FSN_PICKS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _FSN_PICKS_PATH.write_text(json.dumps(picks, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception as exc:
+        logger.warning("_build_picks_from_approved_queue: could not write picks file: %s", exc)
     return picks
 
 
