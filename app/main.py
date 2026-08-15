@@ -1258,9 +1258,17 @@ def split(cluster_id: int, article_ids: list[int] = Form(...), user: dict = Depe
 
 @app.get("/sources", response_class=HTMLResponse)
 def sources_list(user: dict = Depends(require_user)):
+    from sqlalchemy import func as sqlfunc
     session = SessionLocal()
     try:
         rows = session.execute(select(Source).order_by(Source.polling_tier, Source.name)).scalars().all()
+        cutoff_7d = datetime.now(timezone.utc) - timedelta(days=7)
+        # Count articles per source in last 7 days
+        counts_7d = dict(session.execute(
+            select(NormalizedArticle.source_id, sqlfunc.count(NormalizedArticle.id))
+            .where(NormalizedArticle.published_at >= cutoff_7d)
+            .group_by(NormalizedArticle.source_id)
+        ).all())
         source_rows = [{
             "id": s.id,
             "name": s.name,
@@ -1272,7 +1280,9 @@ def sources_list(user: dict = Depends(require_user)):
             "show_in_main_feed": getattr(s, "show_in_main_feed", True),
             "user_agent": s.user_agent,
             "last_fetch_at": s.last_fetch_at.strftime("%Y-%m-%d %H:%M UTC") if s.last_fetch_at else "never",
+            "last_fetch_at_raw": s.last_fetch_at,
             "last_error": s.last_error,
+            "articles_7d": counts_7d.get(s.id, 0),
         } for s in rows]
         return HTMLResponse(render_sources_page(source_rows))
     finally:
@@ -2595,13 +2605,35 @@ def _fb_scan_worker(token: str, urls: list[str], days: int) -> None:
         _fb_write_job(job)
 
 
+def _fb_top_posts(limit: int = 50) -> list[dict]:
+    """Aggregate and deduplicate posts across all stored scan history, ranked by engagement."""
+    history = _fb_read_history()
+    # Include current results too
+    all_entries = list(_fb_read_results())
+    seen_urls: set[str] = set()
+    for entry in all_entries:
+        u = entry.get("url") or ""
+        if u:
+            seen_urls.add(u)
+    for scan in history:
+        for post in scan.get("results", []):
+            u = post.get("url") or ""
+            if u and u not in seen_urls:
+                seen_urls.add(u)
+                all_entries.append(post)
+    all_entries.sort(key=lambda p: int(p.get("engagement_score") or 0), reverse=True)
+    return all_entries[:limit]
+
+
 # ── FB Scanner Routes ──────────────────────────────────────────────────────────
 
 @app.get("/fb-scanner", response_class=HTMLResponse)
-def fb_scanner_page(msg: str = "", user: dict = Depends(require_user)):
+def fb_scanner_page(msg: str = "", tab: str = "latest", user: dict = Depends(require_user)):
     competitors = _load_competitor_urls()
+    top_posts = _fb_top_posts(50) if tab == "top" else None
     return render_fb_scanner_page(_fb_read_results(), _fb_read_job(), competitors,
-                                  history=_fb_read_history(), flash=msg)
+                                  history=_fb_read_history(), flash=msg,
+                                  active_tab=tab, top_posts=top_posts)
 
 
 @app.post("/fb-scanner/scan")

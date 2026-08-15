@@ -537,9 +537,36 @@ _TIER_OPTIONS = [1, 2, 3, 4, 5]
 _POLLING_OPTIONS = ["priority", "standard", "low"]
 
 
+def _source_health(s: dict) -> tuple[str, str, str]:
+    """Return (dot_color, label, tooltip) for a source's health indicator."""
+    if not s.get("enabled"):
+        return "#3a4055", "disabled", "Source is disabled"
+    if s.get("last_error"):
+        return "#f87171", "error", escape(s["last_error"][:120])
+    raw = s.get("last_fetch_at_raw")
+    if raw is None:
+        return "#facc15", "never fetched", "This source has never been fetched"
+    from datetime import datetime, timezone, timedelta
+    if hasattr(raw, "tzinfo") and raw.tzinfo is None:
+        raw = raw.replace(tzinfo=timezone.utc)
+    age_h = (datetime.now(timezone.utc) - raw).total_seconds() / 3600
+    if age_h > 48:
+        return "#facc15", "stale", f"Last fetched {int(age_h // 24)}d ago"
+    if s.get("articles_7d", 0) == 0:
+        return "#facc15", "no stories", "Fetched OK but 0 stories in last 7 days"
+    return "#4ade80", "ok", f"{s['articles_7d']} stories (7d)"
+
+
 def render_sources_page(sources: list[dict]) -> str:
+    # Summary counts
+    n_ok      = sum(1 for s in sources if _source_health(s)[0] == "#4ade80")
+    n_warn    = sum(1 for s in sources if _source_health(s)[0] == "#facc15")
+    n_err     = sum(1 for s in sources if _source_health(s)[0] == "#f87171")
+    n_dis     = sum(1 for s in sources if not s.get("enabled"))
+
     rows = []
     for s in sources:
+        dot_color, health_label, health_tip = _source_health(s)
         type_options = "".join(
             f'<option value="{t}" {"selected" if s["type"] == t else ""}>{label}</option>'
             for t, label in _TYPE_OPTIONS
@@ -552,13 +579,23 @@ def render_sources_page(sources: list[dict]) -> str:
             f'<option value="{p}" {"selected" if s["polling_tier"] == p else ""}>{p}</option>'
             for p in _POLLING_OPTIONS
         )
-        error_html = f'<div class="dup-flag">{escape(s["last_error"])}</div>' if s["last_error"] else ""
+        arts = s.get("articles_7d", 0)
+        arts_color = "#4ade80" if arts >= 10 else "#facc15" if arts >= 1 else "#f87171"
+        arts_html = f'<span style="color:{arts_color};font-size:12px;font-weight:600">{arts}</span><span style="color:#3a4055;font-size:10px"> stories/7d</span>'
 
         rows.append(f"""
       <tr>
-        <td data-label="Name"><a href="/?source_id={s['id']}">{escape(s['name'])}</a><div class="dup-flag">{escape(s['type'])}</div></td>
-        <td data-label="Last error">{error_html or '-'}</td>
-        <td data-label="Last fetch">{escape(s['last_fetch_at'])}</td>
+        <td data-label="Health" style="text-align:center;width:36px">
+          <span title="{health_tip}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{dot_color};cursor:help;flex-shrink:0"></span>
+        </td>
+        <td data-label="Name">
+          <a href="/?source_id={s['id']}">{escape(s['name'])}</a>
+          <div style="font-size:10px;color:#3a4055;margin-top:1px">{escape(s['type'])}</div>
+        </td>
+        <td data-label="7d" style="white-space:nowrap">{arts_html}</td>
+        <td data-label="Status" style="font-size:11px;color:#8b93a3;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          {'<span style="color:#f87171">' + escape((s['last_error'] or '')[:80]) + '</span>' if s['last_error'] else escape(s['last_fetch_at'])}
+        </td>
         <td data-label="Edit">
           <form method="post" action="/sources/{s['id']}/update" class="inline-form">
             <input type="text" name="category" value="{escape(s['category'] or '')}" style="width:90px" placeholder="category">
@@ -581,7 +618,25 @@ def render_sources_page(sources: list[dict]) -> str:
 
     body = f"""
   <h1>Sources</h1>
-  <div class="sub">{len(sources)} sources &middot; add, edit, enable/disable, and re-prioritize below &middot; disabling removes a source from the polling schedule without deleting its history</div>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:18px;align-items:center">
+    <span style="font-size:13px;color:#8b93a3">{len(sources)} sources</span>
+    <span style="display:flex;align-items:center;gap:5px;font-size:12px">
+      <span style="width:9px;height:9px;border-radius:50%;background:#4ade80;display:inline-block"></span>
+      <span style="color:#c7cbd4">{n_ok} delivering</span>
+    </span>
+    <span style="display:flex;align-items:center;gap:5px;font-size:12px">
+      <span style="width:9px;height:9px;border-radius:50%;background:#facc15;display:inline-block"></span>
+      <span style="color:#c7cbd4">{n_warn} warning</span>
+    </span>
+    <span style="display:flex;align-items:center;gap:5px;font-size:12px">
+      <span style="width:9px;height:9px;border-radius:50%;background:#f87171;display:inline-block"></span>
+      <span style="color:#c7cbd4">{n_err} error</span>
+    </span>
+    <span style="display:flex;align-items:center;gap:5px;font-size:12px">
+      <span style="width:9px;height:9px;border-radius:50%;background:#3a4055;display:inline-block"></span>
+      <span style="color:#c7cbd4">{n_dis} disabled</span>
+    </span>
+  </div>
 
   <h2>Add a source</h2>
   <form method="post" action="/sources">
@@ -596,7 +651,7 @@ def render_sources_page(sources: list[dict]) -> str:
 
   <h2>All sources</h2>
   <table>
-    <thead><tr><th>Name</th><th>Last error</th><th>Last fetch</th><th style="width:50%">Edit</th></tr></thead>
+    <thead><tr><th style="width:36px"></th><th>Name</th><th style="white-space:nowrap">Stories 7d</th><th>Status / Last error</th><th style="width:45%">Edit</th></tr></thead>
     <tbody>{''.join(rows)}</tbody>
   </table>
 """
@@ -2966,6 +3021,8 @@ def render_fb_scanner_page(
     competitors: list[str],
     history: list[dict] | None = None,
     flash: str = "",
+    active_tab: str = "latest",
+    top_posts: list[dict] | None = None,
 ) -> str:
     """Facebook competitor scanner page."""
     status   = job.get("status", "idle")
@@ -3076,6 +3133,28 @@ def render_fb_scanner_page(
                 f'</details>'
             )
 
+    # Tab bar
+    tab_style_active   = "padding:7px 18px;font-size:13px;border-radius:4px 4px 0 0;border:1px solid #2a3040;border-bottom:none;background:#0d111a;color:#facc15;cursor:pointer;font-weight:600"
+    tab_style_inactive = "padding:7px 18px;font-size:13px;border-radius:4px 4px 0 0;border:1px solid transparent;background:none;color:#8b93a3;cursor:pointer"
+    n_top = len(top_posts) if top_posts else (sum(len(e.get("results", [])) for e in (history or [])) + len(results))
+    tab_bar = (
+        f'<div style="display:flex;gap:0;border-bottom:1px solid #2a3040;margin-bottom:20px">'
+        f'<a href="/fb-scanner?tab=latest" style="{tab_style_active if active_tab=="latest" else tab_style_inactive};text-decoration:none">'
+        f'&#128240; Latest Scan</a>'
+        f'<a href="/fb-scanner?tab=top" style="{tab_style_active if active_tab=="top" else tab_style_inactive};text-decoration:none">'
+        f'&#128293; Top Posts (all scans)</a>'
+        f'</div>'
+    )
+
+    # Top posts tab content
+    if active_tab == "top" and top_posts is not None:
+        top_html = _fb_results_html(top_posts, id_offset=9000)
+        if not top_posts:
+            top_html = '<div style="color:#8b93a3;padding:24px 0">No scan history yet. Run at least one scan first.</div>'
+        tab_content = top_html
+    else:
+        tab_content = f"{latest_html}\n{history_html}"
+
     body = f"""
 {flash_html}
 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
@@ -3092,8 +3171,8 @@ def render_fb_scanner_page(
 {scan_form}
 </div>
 
-{latest_html}
-{history_html}
+{tab_bar}
+{tab_content}
 
 <details open style="margin-top:28px;border:1px solid #1a1f2b;border-radius:6px">
   <summary style="padding:10px 16px;cursor:pointer;font-size:13px;color:#8b93a3;list-style:none;display:flex;justify-content:space-between;align-items:center">
