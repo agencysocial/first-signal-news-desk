@@ -1370,6 +1370,21 @@ def fetch_source_now(source_id: int, user: dict = Depends(require_user)):
         session.close()
 
 
+@app.post("/sources/{source_id}/delete")
+def delete_source(source_id: int, user: dict = Depends(require_user)):
+    session = SessionLocal()
+    try:
+        source = session.get(Source, source_id)
+        if not source:
+            return RedirectResponse("/sources?msg=Source+not+found", status_code=303)
+        name = source.name
+        session.delete(source)
+        session.commit()
+        return RedirectResponse(f"/sources?msg={name}+deleted", status_code=303)
+    finally:
+        session.close()
+
+
 # ── First Signal Pipeline Queue ───────────────────────────────────────────────
 
 def _run_scoring_background() -> None:
