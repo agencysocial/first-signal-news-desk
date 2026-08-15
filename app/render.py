@@ -251,6 +251,11 @@ def render_wire_page(clusters: list[dict], error_sources: list[tuple[str, str]],
         cls = "active" if active else ""
         return f'<a href="{base_path}?{qs}" class="{cls}">{escape(label)}</a>'
 
+    category_chips = [f'<a href="{base_path}?sort={escape(sort)}" class="{"active" if not f.get("category") else ""}">All Topics</a>']
+    for cat in categories:
+        category_chips.append(chip(cat.title(), f.get("category") == cat, category=cat))
+    category_chips_html = "".join(category_chips)
+
     chip_list = [
         f'<a href="{base_path}?sort={escape(sort)}" class="{"active" if not any(f.values()) else ""}">All</a>',
         chip("Last 15m", f.get("window") == "15m", window="15m"),
@@ -307,6 +312,7 @@ def render_wire_page(clusters: list[dict], error_sources: list[tuple[str, str]],
       <a href="{base_path}?sort=latest" class="{latest_active}">Latest</a>
       <a href="{base_path}?sort=viral" class="{viral_active}">Highest Viral</a>
     </div>
+    <div class="chips" style="margin-bottom:4px"><span style="font-size:10px;color:#8b93a3;text-transform:uppercase;letter-spacing:.5px;margin-right:6px">Topic</span>{category_chips_html}</div>
     <div class="chips">{chips_html}</div>
     <form method="get" action="{base_path}" class="filter-form">
       <input type="hidden" name="sort" value="{escape(sort)}">
@@ -532,6 +538,7 @@ def render_sources_page(sources: list[dict]) -> str:
             <select name="polling_tier">{polling_options}</select>
             <input type="text" name="user_agent" value="{escape(s.get('user_agent') or '')}" style="width:110px" placeholder="UA override (blank=default)">
             <label><input type="checkbox" name="enabled" value="true" {"checked" if s['enabled'] else ""}> enabled</label>
+            <label><input type="checkbox" name="show_in_main_feed" value="true" {"checked" if s.get('show_in_main_feed', True) else ""}> main feed</label>
             <button type="submit">Save</button>
           </form>
           <form method="post" action="/sources/{s['id']}/fetch" class="inline-form">

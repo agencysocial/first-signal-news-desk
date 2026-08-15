@@ -660,6 +660,9 @@ async def lifespan(app: FastAPI):
             _conn.execute(_sql_text(
                 "ALTER TABLE story_clusters ADD COLUMN IF NOT EXISTS ai_topic_relevance FLOAT"
             ))
+            _conn.execute(_sql_text(
+                "ALTER TABLE sources ADD COLUMN IF NOT EXISTS show_in_main_feed BOOLEAN NOT NULL DEFAULT TRUE"
+            ))
             _conn.commit()
     except Exception as _e:
         logger.warning("schema migration skipped: %s", _e)
@@ -837,6 +840,13 @@ def _wire_response(
                 NormalizedArticle, NormalizedArticle.id == StoryClusterArticle.normalized_article_id
             ).where(NormalizedArticle.source_id == source_id).distinct()
             query = query.where(StoryCluster.id.in_(source_cluster_ids))
+        else:
+            # Exclude clusters whose only sources are hidden from the main feed
+            hidden_source_ids = select(Source.id).where(Source.show_in_main_feed.is_(False))
+            visible_cluster_ids = select(StoryClusterArticle.cluster_id).join(
+                NormalizedArticle, NormalizedArticle.id == StoryClusterArticle.normalized_article_id
+            ).where(NormalizedArticle.source_id.notin_(hidden_source_ids)).distinct()
+            query = query.where(StoryCluster.id.in_(visible_cluster_ids))
 
         order_column = StoryCluster.latest_update_at if sort == "latest" else StoryCluster.viral_score
         clusters = session.execute(query.order_by(order_column.desc()).limit(200)).scalars().all()
@@ -1184,6 +1194,7 @@ def sources_list(user: dict = Depends(require_user)):
             "credibility_tier": s.credibility_tier,
             "polling_tier": s.polling_tier,
             "enabled": s.enabled,
+            "show_in_main_feed": getattr(s, "show_in_main_feed", True),
             "user_agent": s.user_agent,
             "last_fetch_at": s.last_fetch_at.strftime("%Y-%m-%d %H:%M UTC") if s.last_fetch_at else "never",
             "last_error": s.last_error,
@@ -1232,6 +1243,7 @@ def update_source(
     polling_tier: str = Form(...),
     category: str = Form(""),
     enabled: bool = Form(False),
+    show_in_main_feed: bool = Form(False),
     user_agent: str = Form(""),
 ):
     session = SessionLocal()
@@ -1243,6 +1255,7 @@ def update_source(
         source.polling_tier = polling_tier
         source.category = category or None
         source.enabled = enabled
+        source.show_in_main_feed = show_in_main_feed
         source.user_agent = user_agent.strip() or None
         session.commit()
         return RedirectResponse("/sources?msg=Source+updated", status_code=303)
