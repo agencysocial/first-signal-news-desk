@@ -326,6 +326,18 @@ def _queue_item_for(cluster_id: int) -> dict | None:
         session.close()
 
 
+def _resolve_queue_item(cluster_id: int) -> tuple[list, dict | None]:
+    """Load file queue and find item; if missing, fall back to DB and append to list.
+    Returns (items, item) so callers can pass items to _save_fsn_queue after mutating item."""
+    items = _load_fsn_queue()
+    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    if item is None:
+        item = _queue_item_for(cluster_id)
+        if item is not None:
+            items.append(item)
+    return items, item
+
+
 def _update_cluster_fsn(cid: int | str, **kwargs) -> None:
     """Patch specific FSN state fields for one cluster directly in DB. Fast, no full queue load."""
     session = SessionLocal()
@@ -2961,8 +2973,7 @@ async def pipeline_queue_story_save_draft(cid: str, request: Request, user: dict
     tag      = str(form.get("tag", "")).strip()
     scene    = str(form.get("scene", "")).strip()
 
-    items = _load_fsn_queue()
-    item  = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    items, item = _resolve_queue_item(cluster_id)
     if not item:
         return JSONResponse({"error": "not found"}, status_code=404)
 
@@ -2997,8 +3008,7 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
     if not key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
 
-    items = _load_fsn_queue()
-    item  = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    items, item = _resolve_queue_item(cluster_id)
     if not item:
         return JSONResponse({"error": "not found"}, status_code=404)
 
@@ -3072,8 +3082,7 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
     headline = str(form.get("headline", "")).strip()
     scene    = str(form.get("scene", "")).strip()
 
-    items = _load_fsn_queue()
-    item  = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    items, item = _resolve_queue_item(cluster_id)
     if not item:
         return JSONResponse({"error": "not found"}, status_code=404)
 
@@ -3109,8 +3118,7 @@ def pipeline_queue_story_image_status(cid: str, user: dict = Depends(require_use
     if not cid.isdigit():
         return JSONResponse({"error": "invalid id"}, status_code=400)
     cluster_id = int(cid)
-    items = _load_fsn_queue()
-    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    item = _queue_item_for(cluster_id)
     if not item:
         return JSONResponse({"error": "not found"}, status_code=404)
     return JSONResponse({
@@ -3135,8 +3143,7 @@ async def pipeline_queue_story_set_image(cid: str, request: Request, user: dict 
         r.raise_for_status()
         _stamp_logo(r.content, cid)
         # Swap history: push current kie_result_url into history, set new as current
-        items = _load_fsn_queue()
-        item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+        item = _queue_item_for(cluster_id)
         history = list(item.get("image_history") or []) if item else []
         old_kie = (item or {}).get("kie_result_url") or ""
         if old_kie and old_kie != kie_url and old_kie not in history:
@@ -3156,15 +3163,12 @@ def pipeline_queue_story_approve(cid: str, user: dict = Depends(require_user)):
     if not cid.isdigit():
         return RedirectResponse(f"/pipeline-queue/story/{cid}", status_code=303)
     cluster_id = int(cid)
-    items = _load_fsn_queue()
-    for item in items:
-        if item.get("cluster_id") == cluster_id:
-            item["queue_status"] = "approved"
-            item["approved_at"] = datetime.now(timezone.utc).isoformat()
-            _update_cluster_fsn(cluster_id, queue_status="approved",
-                                approved_at=item["approved_at"])
-            break
-    _save_fsn_queue(items)
+    items, item = _resolve_queue_item(cluster_id)
+    if item:
+        item["queue_status"] = "approved"
+        item["approved_at"] = datetime.now(timezone.utc).isoformat()
+        _update_cluster_fsn(cluster_id, queue_status="approved", approved_at=item["approved_at"])
+        _save_fsn_queue(items)
     _build_picks_from_approved_queue()
     return RedirectResponse(f"/pipeline-queue/story/{cid}?msg=Approved", status_code=303)
 
@@ -3174,13 +3178,11 @@ def pipeline_queue_story_skip(cid: str, user: dict = Depends(require_user)):
     if not cid.isdigit():
         return RedirectResponse("/pipeline-queue", status_code=303)
     cluster_id = int(cid)
-    items = _load_fsn_queue()
-    for item in items:
-        if item.get("cluster_id") == cluster_id:
-            item["queue_status"] = "skipped"
-            _update_cluster_fsn(cluster_id, queue_status="skipped")
-            break
-    _save_fsn_queue(items)
+    items, item = _resolve_queue_item(cluster_id)
+    if item:
+        item["queue_status"] = "skipped"
+        _update_cluster_fsn(cluster_id, queue_status="skipped")
+        _save_fsn_queue(items)
     return RedirectResponse("/pipeline-queue?msg=Story+skipped", status_code=303)
 
 
