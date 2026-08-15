@@ -709,6 +709,11 @@ async def lifespan(app: FastAPI):
     except Exception as _e:
         logger.warning("schema migration skipped: %s", _e)
 
+    # Seed competitor URL list into /tmp on every startup so the FB Scanner
+    # page always has a list to render — without this, the first page load
+    # after a cold start shows no checkboxes because /tmp is empty.
+    _load_competitor_urls()
+
     for tier, minutes in TIER_MINUTES.items():
         scheduler.add_job(
             poll_tier, "interval", minutes=minutes, args=[tier],
