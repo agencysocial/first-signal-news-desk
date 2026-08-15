@@ -290,6 +290,42 @@ def _save_fsn_queue(items: list[dict]) -> None:
         session.close()
 
 
+def _queue_item_for(cluster_id: int) -> dict | None:
+    """Return the queue dict for a cluster_id, falling back to DB when not in the local file.
+    Always returns a dict with at least 'cluster_id' and 'text' so callers don't need to
+    branch on local vs Render — they just check for None on total miss."""
+    items = _load_fsn_queue()
+    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    if item:
+        return item
+    # Render path: queue lives in DB
+    session = SessionLocal()
+    try:
+        c = session.get(StoryCluster, cluster_id)
+        if not c:
+            return None
+        fsn: dict = {}
+        if c.fsn_state:
+            try:
+                fsn = json.loads(c.fsn_state)
+            except Exception:
+                pass
+        return {
+            "cluster_id": cluster_id,
+            "text": c.canonical_headline or "",
+            "sources": fsn.get("sources") or ([{
+                "source_name": fsn.get("source_page", ""),
+                "headline":    c.canonical_headline or "",
+                "url":         fsn.get("source_url", ""),
+            }] if fsn.get("source_page") else []),
+            "draft":    fsn.get("draft") or {},
+            "category": c.category or "Politics",
+            **fsn,
+        }
+    finally:
+        session.close()
+
+
 def _update_cluster_fsn(cid: int | str, **kwargs) -> None:
     """Patch specific FSN state fields for one cluster directly in DB. Fast, no full queue load."""
     session = SessionLocal()
@@ -2027,8 +2063,7 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     if not key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
 
-    items = _load_fsn_queue()
-    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    item = _queue_item_for(cluster_id)
     if not item:
         return JSONResponse({"error": "Item not found"}, status_code=404)
 
@@ -2085,8 +2120,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
     if not key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
 
-    items = _load_fsn_queue()
-    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    item = _queue_item_for(cluster_id)
     if not item:
         return JSONResponse({"error": "Item not found"}, status_code=404)
 
@@ -2209,8 +2243,7 @@ async def pipeline_queue_write_video_script(request: Request, user: dict = Depen
     if not key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
 
-    items = _load_fsn_queue()
-    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    item = _queue_item_for(cluster_id)
     if not item:
         return JSONResponse({"error": "Item not found"}, status_code=404)
 
@@ -2265,8 +2298,7 @@ async def pipeline_queue_expand_angles(request: Request, user: dict = Depends(re
     if not key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
 
-    items = _load_fsn_queue()
-    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    item = _queue_item_for(cluster_id)
     if not item:
         return JSONResponse({"error": "Item not found"}, status_code=404)
 
