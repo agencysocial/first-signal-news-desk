@@ -2591,6 +2591,37 @@ async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
     return RedirectResponse("/fb-scanner", status_code=303)
 
 
+def _competitors_path() -> Path:
+    aim = Path(__file__).parent.parent / "input" / "competitors.txt"
+    fsn = _FSN_ROOT / "input" / "competitors.txt"
+    return aim if aim.exists() else fsn
+
+
+@app.post("/fb-scanner/competitors/add")
+async def fb_competitor_add(request: Request, user: dict = Depends(require_user)):
+    form = await request.form()
+    url = (form.get("url") or "").strip().rstrip("/")
+    if not url.startswith("https://www.facebook.com/"):
+        return RedirectResponse("/fb-scanner?msg=Invalid+Facebook+URL", status_code=303)
+    path = _competitors_path()
+    lines = [l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    if url not in lines:
+        lines.append(url)
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return RedirectResponse("/fb-scanner?msg=Source+added", status_code=303)
+
+
+@app.post("/fb-scanner/competitors/delete")
+async def fb_competitor_delete(request: Request, user: dict = Depends(require_user)):
+    form = await request.form()
+    url = (form.get("url") or "").strip()
+    path = _competitors_path()
+    lines = [l.strip() for l in path.read_text(encoding="utf-8").splitlines()
+             if l.strip() and l.strip() != url]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return RedirectResponse("/fb-scanner?msg=Source+removed", status_code=303)
+
+
 @app.get("/fb-scanner/debug")
 def fb_scanner_debug(user: dict = Depends(require_user)):
     results = _fb_read_results()

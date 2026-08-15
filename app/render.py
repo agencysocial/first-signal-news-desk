@@ -3018,6 +3018,32 @@ def render_fb_scanner_page(
 {latest_html}
 {history_html}
 
+<details style="margin-top:28px;border:1px solid #1a1f2b;border-radius:6px">
+  <summary style="padding:10px 16px;cursor:pointer;font-size:13px;color:#8b93a3;list-style:none;display:flex;justify-content:space-between;align-items:center">
+    <span>&#9881; Manage FB Sources ({len(competitors)} pages)</span>
+    <span style="font-size:11px">&#9660; expand</span>
+  </summary>
+  <div style="padding:14px 16px">
+    <form method="post" action="/fb-scanner/competitors/add" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <input name="url" type="url" placeholder="https://www.facebook.com/pagename"
+             style="flex:1;min-width:260px;font-size:13px;padding:6px 10px;background:#0d111a;border:1px solid #2a3040;border-radius:4px;color:#e6e8ec">
+      <button type="submit" class="primary" style="padding:6px 14px;font-size:13px">+ Add Source</button>
+    </form>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      {''.join(
+        f'<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;'
+        f'background:#0d111a;border:1px solid #1a2030;border-radius:4px">'
+        f'<span style="font-size:12px;color:#c8cdd8">{escape(c)}</span>'
+        f'<form method="post" action="/fb-scanner/competitors/delete" style="margin:0">'
+        f'<input type="hidden" name="url" value="{escape(c)}">'
+        f'<button type="submit" style="background:#3a1414;border-color:#7a2020;font-size:11px;padding:2px 8px;color:#f87171">Remove</button>'
+        f'</form></div>'
+        for c in competitors
+      )}
+    </div>
+  </div>
+</details>
+
 <script>
 function toggleFull(i) {{
   var el = document.getElementById('full-'+i);
