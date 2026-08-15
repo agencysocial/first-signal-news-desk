@@ -2213,6 +2213,32 @@ function toggleHist(id) {
 
 # ── Story Workspace Page ───────────────────────────────────────────────────────
 
+def _render_img_history(history: list, cid: str) -> str:
+    if not history:
+        return ""
+    items_html = ""
+    for i, kie_url in enumerate(reversed(history), 1):
+        items_html += (
+            f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
+            f'<img src="{escape(kie_url)}" style="width:80px;height:100px;object-fit:cover;border-radius:4px;border:1px solid #2a3555;cursor:pointer" '
+            f'onclick="useHistoryImage(\'{cid}\',\'{escape(kie_url)}\')" title="Click to use this version">'
+            f'<div style="display:flex;gap:4px">'
+            f'<button type="button" onclick="useHistoryImage(\'{cid}\',\'{escape(kie_url)}\')" '
+            f'style="font-size:9px;padding:2px 6px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use</button>'
+            f'<a href="{escape(kie_url)}" download target="_blank" '
+            f'style="font-size:9px;padding:2px 6px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:3px;text-decoration:none">&#11015;</a>'
+            f'</div>'
+            f'<span style="font-size:9px;color:#8b93a3">v{i}</span>'
+            f'</div>'
+        )
+    return (
+        f'<div style="margin-top:10px">'
+        f'<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Previous versions</div>'
+        f'<div style="display:flex;flex-wrap:wrap;gap:8px">{items_html}</div>'
+        f'</div>'
+    )
+
+
 def render_story_workspace_page(item: dict, flash: str = "") -> str:
     """Full dedicated workspace for a single production queue story."""
     cid       = str(item.get("cluster_id", ""))
@@ -2226,8 +2252,9 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
     scene     = draft.get("scene") or item.get("suggested_scene") or ""
     fc        = draft.get("first_comment") or ""
     post_type = item.get("post_type") or "image_card"
-    img_url   = item.get("generated_image_url") or ""
-    img_status= item.get("image_gen_status") or ""
+    img_url      = item.get("generated_image_url") or ""
+    img_status   = item.get("image_gen_status") or ""
+    img_history  = item.get("image_history") or []
     tobi_text = item.get("tobi_text") or ""
     status    = item.get("queue_status") or "pending"
     viral     = float(item.get("viral_score") or 0)
@@ -2415,6 +2442,7 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
       </div>
       <div id="img-wrap-{cid}">{img_html}</div>
       <div id="img-status-{cid}" style="font-size:11px;color:#8b93a3;margin-top:4px">{"Generating... refresh in ~60s" if img_status=="generating" else ""}</div>
+      <div id="img-history-{cid}">{_render_img_history(img_history, cid)}</div>
     </div>
 
     <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
@@ -2593,6 +2621,25 @@ function _startImagePoll(cid) {{
           if (wrap) wrap.innerHTML = '<img src="'+d.url+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
             + '<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
           if (st) st.textContent = '';
+          if (d.history && d.history.length) {{
+            var histDiv = document.getElementById('img-history-'+cid);
+            if (histDiv) {{
+              var html = '<div style="margin-top:10px"><div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Previous versions</div><div style="display:flex;flex-wrap:wrap;gap:8px">';
+              var rev = d.history.slice().reverse();
+              rev.forEach(function(u, i) {{
+                html += '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
+                  +'<img src="'+u+'" style="width:80px;height:100px;object-fit:cover;border-radius:4px;border:1px solid #2a3555;cursor:pointer" onclick="useHistoryImage(\''+cid+'\',\''+u+'\')" title="Click to use this version">'
+                  +'<div style="display:flex;gap:4px">'
+                  +'<button type="button" onclick="useHistoryImage(\''+cid+'\',\''+u+'\')" style="font-size:9px;padding:2px 6px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use</button>'
+                  +'<a href="'+u+'" download target="_blank" style="font-size:9px;padding:2px 6px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:3px;text-decoration:none">&#11015;</a>'
+                  +'</div>'
+                  +'<span style="font-size:9px;color:#8b93a3">v'+(i+1)+'</span>'
+                  +'</div>';
+              }});
+              html += '</div></div>';
+              histDiv.innerHTML = html;
+            }}
+          }}
         }} else if (d.status === 'generating' || d.status === '') {{
           _imgPollTimer[cid] = setTimeout(poll, 5000);
         }} else {{
@@ -2618,6 +2665,34 @@ function regenImage(cid) {{
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
     _startImagePoll(cid);
   }});
+}}
+function useHistoryImage(cid, kieUrl) {{
+  var wrap = document.getElementById('img-wrap-'+cid);
+  var st   = document.getElementById('img-status-'+cid);
+  if (st) st.textContent = 'Swapping...';
+  fetch('/pipeline-queue/story/'+cid+'/set-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'kie_url='+encodeURIComponent(kieUrl)}})
+    .then(function(r){{ return r.json(); }})
+    .then(function(d){{
+      if (d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
+      if (wrap) wrap.innerHTML = '<img src="'+d.url+'?t='+Date.now()+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
+        + '<a href="'+kieUrl+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
+      if (st) st.textContent = '';
+      // Rebuild history thumbnails excluding the one just selected
+      var histDiv = document.getElementById('img-history-'+cid);
+      if (histDiv && d.history) {{
+        if (!d.history.length) {{ histDiv.innerHTML = ''; return; }}
+        var html = '<div style="margin-top:10px"><div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Previous versions</div><div style="display:flex;flex-wrap:wrap;gap:8px">';
+        d.history.slice().reverse().forEach(function(u, i) {{
+          html += '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
+            +'<img src="'+u+'" style="width:80px;height:100px;object-fit:cover;border-radius:4px;border:1px solid #2a3555;cursor:pointer" onclick="useHistoryImage(\''+cid+'\',\''+u+'\')" title="Click to use">'
+            +'<div style="display:flex;gap:4px">'
+            +'<button type="button" onclick="useHistoryImage(\''+cid+'\',\''+u+'\')" style="font-size:9px;padding:2px 6px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use</button>'
+            +'<a href="'+u+'" download target="_blank" style="font-size:9px;padding:2px 6px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:3px;text-decoration:none">&#11015;</a>'
+            +'</div><span style="font-size:9px;color:#8b93a3">v'+(i+1)+'</span></div>';
+        }});
+        histDiv.innerHTML = html + '</div></div>';
+      }}
+    }});
 }}
 var _tobi_opts = {{}};
 function regenTOBI(cid) {{

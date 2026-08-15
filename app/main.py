@@ -262,7 +262,7 @@ def _load_fsn_queue() -> list[dict]:
 
 
 _FSN_STATE_KEYS = {"queue_status", "post_type", "draft", "approved_at",
-                   "generated_image_url", "image_gen_status", "tobi_text", "output_file",
+                   "generated_image_url", "image_gen_status", "image_history", "tobi_text", "output_file",
                    "video_titles", "reels_description", "script_short", "script_medium",
                    "script_long", "poll_question", "video_first_comment"}
 
@@ -1570,9 +1570,26 @@ def _generate_one_image(cid: str, key: str, item: dict) -> None:
         r.raise_for_status()
         _stamp_logo(r.content, cid)
 
+        # Push previous CDN URL into image_history before overwriting
+        session = SessionLocal()
+        history: list = []
+        try:
+            c = session.get(StoryCluster, int(cid))
+            if c and c.fsn_state:
+                prev = json.loads(c.fsn_state)
+                history = prev.get("image_history") or []
+                old_kie = prev.get("kie_result_url") or ""
+                if old_kie and old_kie not in history:
+                    history.append(old_kie)
+        except Exception:
+            pass
+        finally:
+            session.close()
+
         # Store the served URL (ephemeral on Render; kie_result_url is the CDN fallback)
         served_url = f"/pipeline-queue/image/{cid}"
-        _update_cluster_fsn(cid, generated_image_url=served_url, kie_result_url=kie_url, image_gen_status="done")
+        _update_cluster_fsn(cid, generated_image_url=served_url, kie_result_url=kie_url,
+                            image_gen_status="done", image_history=history)
         logger.info("cloud image gen cluster %s: done -> %s", cid, served_url)
     except Exception as exc:
         _update_cluster_fsn(cid, image_gen_status=f"error: {exc}")
@@ -2797,9 +2814,41 @@ def pipeline_queue_story_image_status(cid: str, user: dict = Depends(require_use
     if not item:
         return JSONResponse({"error": "not found"}, status_code=404)
     return JSONResponse({
-        "status": item.get("image_gen_status") or "",
-        "url":    item.get("generated_image_url") or "",
+        "status":  item.get("image_gen_status") or "",
+        "url":     item.get("generated_image_url") or "",
+        "history": item.get("image_history") or [],
     })
+
+
+@app.post("/pipeline-queue/story/{cid}/set-image")
+async def pipeline_queue_story_set_image(cid: str, request: Request, user: dict = Depends(require_user)):
+    """Swap a history image to be the current image (downloads and re-stamps logo)."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    kie_url = str(form.get("kie_url", "")).strip()
+    if not kie_url:
+        return JSONResponse({"error": "no url"}, status_code=400)
+    try:
+        r = httpx.get(kie_url, timeout=60, follow_redirects=True)
+        r.raise_for_status()
+        _stamp_logo(r.content, cid)
+        # Swap history: push current kie_result_url into history, set new as current
+        items = _load_fsn_queue()
+        item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+        history = list(item.get("image_history") or []) if item else []
+        old_kie = (item or {}).get("kie_result_url") or ""
+        if old_kie and old_kie != kie_url and old_kie not in history:
+            history.append(old_kie)
+        if kie_url in history:
+            history.remove(kie_url)
+        served_url = f"/pipeline-queue/image/{cid}"
+        _update_cluster_fsn(cluster_id, generated_image_url=served_url,
+                            kie_result_url=kie_url, image_history=history)
+        return JSONResponse({"ok": True, "url": served_url, "history": history})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @app.post("/pipeline-queue/story/{cid}/approve")
