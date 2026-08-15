@@ -2944,8 +2944,7 @@ def pipeline_queue_story(cid: str, msg: str = "", user: dict = Depends(require_u
     if not cid.isdigit():
         return RedirectResponse("/pipeline-queue", status_code=303)
     cluster_id = int(cid)
-    items = _load_fsn_queue()
-    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    item = _queue_item_for(cluster_id)
     if not item:
         return RedirectResponse("/pipeline-queue?msg=Story+not+found", status_code=303)
     return render_story_workspace_page(item, flash=msg)
