@@ -616,6 +616,46 @@ def poll_tier(tier: str):
         session.close()
 
 
+_PRUNE_DAYS = 14  # stories older than this are deleted from the DB
+
+
+def prune_old_stories():
+    """Delete story clusters (and their child rows) older than 14 days.
+
+    Covered stories are kept forever — they're the record of what was posted.
+    Stories in the FSN pipeline queue (handoff_sent_at set, or fsn_state
+    with queue_status != None) are kept until they age out naturally.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=_PRUNE_DAYS)
+    session = SessionLocal()
+    try:
+        old_clusters = session.execute(
+            select(StoryCluster).where(
+                StoryCluster.first_detected_at < cutoff,
+                StoryCluster.status.notin_(["Covered"]),
+                StoryCluster.handoff_sent_at.is_(None),
+            )
+        ).scalars().all()
+        if not old_clusters:
+            logger.info("prune_old_stories: nothing to prune")
+            return
+        ids = [c.id for c in old_clusters]
+        # Delete child rows first (FK constraints)
+        session.execute(
+            _sql_text("DELETE FROM story_cluster_articles WHERE cluster_id = ANY(:ids)"),
+            {"ids": ids},
+        )
+        for c in old_clusters:
+            session.delete(c)
+        session.commit()
+        logger.info("prune_old_stories: deleted %d clusters older than %d days", len(ids), _PRUNE_DAYS)
+    except Exception as exc:
+        session.rollback()
+        logger.warning("prune_old_stories failed: %s", exc)
+    finally:
+        session.close()
+
+
 def run_full_scan():
     if _scan_state["running"]:
         return
@@ -672,7 +712,13 @@ async def lifespan(app: FastAPI):
             poll_tier, "interval", minutes=minutes, args=[tier],
             id=f"poll_{tier}", replace_existing=True,
         )
+    # Run once at startup (clears backlog on redeploy) then daily
+    scheduler.add_job(prune_old_stories, "interval", hours=24,
+                      id="prune_old_stories", replace_existing=True)
     scheduler.start()
+    # Run an initial prune in a background thread so startup doesn't block
+    import threading as _threading
+    _threading.Thread(target=prune_old_stories, daemon=True).start()
     logger.info("Scheduler started: %s", TIER_MINUTES)
     yield
     scheduler.shutdown(wait=False)
