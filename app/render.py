@@ -153,6 +153,7 @@ def _page_head(extra_meta: str = "") -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AIM News Desk &mdash; Phase 1f</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M1 9l2 2c2.76-2.76 6.57-4.47 10.78-4.47 4.21 0 8.02 1.71 10.78 4.47l2-2C23.55 6.07 18.66 4 13.78 4c-4.88 0-9.77 2.07-12.78 5zm10.78 10.78l1.22 1.22 1.22-1.22c-.67-.67-1.77-.67-2.44 0zm-3.66-3.66l2 2c.9-.9 2.15-1.46 3.44-1.46 1.29 0 2.54.56 3.44 1.46l2-2c-1.45-1.45-3.45-2.34-5.44-2.34-1.99 0-3.99.89-5.44 2.34zm-3.66-3.66l2 2C8.41 12.51 11 11.34 13.78 11.34c2.78 0 5.37 1.17 7.32 3.12l2-2C20.89 10.25 17.53 9 13.78 9 10.03 9 6.67 10.25 4.46 12.46z'/%3E%3C/svg%3E">
   {extra_meta}
   <style>{STYLE}</style>
 </head>
