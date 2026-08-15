@@ -3018,7 +3018,7 @@ def render_fb_scanner_page(
 {latest_html}
 {history_html}
 
-<details style="margin-top:28px;border:1px solid #1a1f2b;border-radius:6px">
+<details open style="margin-top:28px;border:1px solid #1a1f2b;border-radius:6px">
   <summary style="padding:10px 16px;cursor:pointer;font-size:13px;color:#8b93a3;list-style:none;display:flex;justify-content:space-between;align-items:center">
     <span>&#9881; Manage FB Sources ({len(competitors)} pages)</span>
     <span style="font-size:11px">&#9660; expand</span>

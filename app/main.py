@@ -2444,10 +2444,37 @@ _FSN_AMERICA_FIRST_VOICE = (
 
 
 # ── FB Scanner state — persisted to /tmp so all Render workers share it ────────
-_FB_HISTORY_MAX   = 3
-_FB_JOB_PATH      = Path("/tmp/fb_scan_job.json")
-_FB_RESULTS_PATH  = Path("/tmp/fb_scan_results.json")
-_FB_HISTORY_PATH  = Path("/tmp/fb_scan_history.json")
+_FB_HISTORY_MAX        = 3
+_FB_JOB_PATH           = Path("/tmp/fb_scan_job.json")
+_FB_RESULTS_PATH       = Path("/tmp/fb_scan_results.json")
+_FB_HISTORY_PATH       = Path("/tmp/fb_scan_history.json")
+_FB_COMPETITORS_PATH   = Path("/tmp/fb_competitors.json")
+
+
+def _load_competitor_urls() -> list[str]:
+    """Load competitor URLs from /tmp (persisted across workers).
+    Seeds from the repo file on first call after a cold start."""
+    if _FB_COMPETITORS_PATH.exists():
+        try:
+            data = json.loads(_FB_COMPETITORS_PATH.read_text())
+            if isinstance(data, list):
+                return data
+        except Exception:
+            pass
+    # Seed from file in repo
+    aim_comp = Path(__file__).parent.parent / "input" / "competitors.txt"
+    fsn_comp = _FSN_ROOT / "input" / "competitors.txt"
+    comp_file = aim_comp if aim_comp.exists() else (fsn_comp if fsn_comp.exists() else None)
+    urls: list[str] = []
+    if comp_file:
+        urls = [l.strip() for l in comp_file.read_text(encoding="utf-8").splitlines()
+                if l.strip() and not l.strip().startswith("#")]
+    _FB_COMPETITORS_PATH.write_text(json.dumps(urls))
+    return urls
+
+
+def _save_competitor_urls(urls: list[str]) -> None:
+    _FB_COMPETITORS_PATH.write_text(json.dumps(urls))
 
 
 def _fb_read_job() -> dict:
@@ -2501,19 +2528,6 @@ def _get_apify_token() -> str:
                     if token:
                         break
     return token
-
-
-def _load_competitor_urls() -> list[str]:
-    # Look in the AIM repo first (works on Render), fall back to FSN pipeline path locally
-    aim_comp = Path(__file__).parent.parent / "input" / "competitors.txt"
-    fsn_comp = _FSN_ROOT / "input" / "competitors.txt"
-    comp_file = aim_comp if aim_comp.exists() else fsn_comp
-    if not comp_file.exists():
-        return []
-    return [
-        ln.strip() for ln in comp_file.read_text(encoding="utf-8").splitlines()
-        if ln.strip() and not ln.strip().startswith("#")
-    ]
 
 
 def _fb_scan_worker(token: str, urls: list[str], days: int) -> None:
@@ -2591,23 +2605,16 @@ async def fb_scanner_scan(request: Request, background_tasks: BackgroundTasks,
     return RedirectResponse("/fb-scanner", status_code=303)
 
 
-def _competitors_path() -> Path:
-    aim = Path(__file__).parent.parent / "input" / "competitors.txt"
-    fsn = _FSN_ROOT / "input" / "competitors.txt"
-    return aim if aim.exists() else fsn
-
-
 @app.post("/fb-scanner/competitors/add")
 async def fb_competitor_add(request: Request, user: dict = Depends(require_user)):
     form = await request.form()
     url = (form.get("url") or "").strip().rstrip("/")
     if not url.startswith("https://www.facebook.com/"):
         return RedirectResponse("/fb-scanner?msg=Invalid+Facebook+URL", status_code=303)
-    path = _competitors_path()
-    lines = [l.strip() for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
-    if url not in lines:
-        lines.append(url)
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    urls = _load_competitor_urls()
+    if url not in urls:
+        urls.append(url)
+        _save_competitor_urls(urls)
     return RedirectResponse("/fb-scanner?msg=Source+added", status_code=303)
 
 
@@ -2615,10 +2622,8 @@ async def fb_competitor_add(request: Request, user: dict = Depends(require_user)
 async def fb_competitor_delete(request: Request, user: dict = Depends(require_user)):
     form = await request.form()
     url = (form.get("url") or "").strip()
-    path = _competitors_path()
-    lines = [l.strip() for l in path.read_text(encoding="utf-8").splitlines()
-             if l.strip() and l.strip() != url]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    urls = [u for u in _load_competitor_urls() if u != url]
+    _save_competitor_urls(urls)
     return RedirectResponse("/fb-scanner?msg=Source+removed", status_code=303)
 
 
