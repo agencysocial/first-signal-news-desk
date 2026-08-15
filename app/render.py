@@ -610,7 +610,7 @@ def render_sources_page(sources: list[dict]) -> str:
             <button type="submit">Fetch now</button>
           </form>
           <form method="post" action="/sources/{s['id']}/delete" class="inline-form"
-                onsubmit="return confirm('Delete {escape(s[\"name\"])}? This cannot be undone.')">
+                onsubmit="return confirm('Delete this source? This cannot be undone.')">
             <button type="submit" style="background:#3a1414;border-color:#7a2020;color:#f87171">Delete</button>
           </form>
         </td>
