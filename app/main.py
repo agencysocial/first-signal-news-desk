@@ -796,6 +796,26 @@ def health():
         session.close()
 
 
+@app.get("/api/queue-counts")
+def api_queue_counts(user: dict = Depends(require_user)):
+    """Return counts of FSN queue items by status for the header status bar."""
+    from fastapi.responses import JSONResponse
+    counts = {"queued": 0, "generating": 0, "approved": 0}
+    try:
+        items = _load_fsn_queue()
+        for item in items:
+            qs = (item.get("queue_status") or "").lower()
+            if qs == "pending":
+                counts["queued"] += 1
+            elif qs in ("generating", "in_progress"):
+                counts["generating"] += 1
+            elif qs == "approved":
+                counts["approved"] += 1
+    except Exception:
+        pass
+    return JSONResponse(counts)
+
+
 @app.get("/api/handoffs")
 def api_handoffs(request: Request):
     """Return all sent-handoff clusters as JSON for the local FSN pipeline.
@@ -1179,7 +1199,7 @@ def update_status(
 
 
 @app.post("/stories/{cluster_id}/handoff")
-def handoff(cluster_id: int, user: dict = Depends(require_user)):
+def handoff(cluster_id: int, return_to: str = Form("/"), user: dict = Depends(require_user)):
     session = SessionLocal()
     try:
         cluster = session.get(StoryCluster, cluster_id)
@@ -1197,6 +1217,8 @@ def handoff(cluster_id: int, user: dict = Depends(require_user)):
         write_handoff(cluster, articles)
         cluster.handoff_sent_at = datetime.now(timezone.utc)
         session.commit()
+        if return_to and return_to != "/stories/" + str(cluster_id):
+            return RedirectResponse(f"{return_to}?msg=Queued", status_code=303)
         return RedirectResponse(
             f"/stories/{cluster_id}?msg=Sent+to+First+Signal+Pipeline", status_code=303
         )
@@ -2757,6 +2779,82 @@ async def fb_scanner_send_to_queue(request: Request, user: dict = Depends(requir
         f"/fb-scanner?msg={page_slug}+post+added+to+queue+%28ID+{new_id}%29",
         status_code=303,
     )
+
+
+@app.post("/fb-scanner/send-selected")
+async def fb_scanner_send_selected(request: Request, user: dict = Depends(require_user)):
+    """Batch-queue multiple scanned FB posts by index."""
+    from fastapi.responses import JSONResponse
+    form = await request.form()
+    raw_idxs = form.getlist("idx")
+    results = _fb_read_results()
+    now = datetime.now(timezone.utc)
+    queued = 0
+    skipped = 0
+    db = SessionLocal()
+    try:
+        for raw in raw_idxs:
+            try:
+                idx = int(raw)
+            except (ValueError, TypeError):
+                skipped += 1
+                continue
+            if idx < 0 or idx >= len(results):
+                skipped += 1
+                continue
+            post = results[idx]
+            text = (post.get("text") or post.get("preview") or "")[:500]
+            if not text:
+                skipped += 1
+                continue
+            page_name = post.get("page_name") or "Facebook"
+            url = post.get("url") or ""
+            fsn_state = {
+                "queue_status":     "pending",
+                "post_type":        "image_card",
+                "source":           "fb_scanner",
+                "source_page":      page_name,
+                "source_url":       url,
+                "engagement_score": post.get("engagement_score", 0),
+                "fb_reactions":     post.get("reactions", 0),
+                "fb_shares":        post.get("shares", 0),
+                "fb_comments":      post.get("comments", 0),
+            }
+            cluster = StoryCluster(
+                canonical_headline=text[:300],
+                status="New",
+                category="Politics",
+                handoff_sent_at=now,
+                first_detected_at=now,
+                last_updated_at=now,
+                fsn_state=json.dumps(fsn_state, ensure_ascii=False),
+            )
+            db.add(cluster)
+            db.flush()
+            new_id = cluster.id
+            if _is_local():
+                items = _load_fsn_queue()
+                items.append({
+                    "cluster_id":        new_id,
+                    "text":              text,
+                    "category":          "Politics",
+                    "sources":           [{"source_name": page_name, "url": url, "headline": text[:120]}],
+                    "source_count":      1,
+                    "viral_score":       0,
+                    "confidence_score":  0,
+                    "momentum_score":    0,
+                    "queue_status":      "pending",
+                    "post_type":         "image_card",
+                    "added_to_queue_at": now.isoformat(),
+                    "draft":             {},
+                    "source":            "fb_scanner",
+                })
+                _save_fsn_queue(items)
+            queued += 1
+        db.commit()
+    finally:
+        db.close()
+    return JSONResponse({"queued": queued, "skipped": skipped})
 
 
 # ── Story Workspace Routes ─────────────────────────────────────────────────────

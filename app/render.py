@@ -119,10 +119,31 @@ NAV = """
       <a href="/pipeline-queue">&#9654; Production Queue</a>
       <a href="/fb-scanner">&#128269; FB Scanner</a>
     </div>
-    <form method="post" action="/logout" class="inline-form">
-      <button type="submit" style="font-size:11px">Logout</button>
-    </form>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="_qcounts" style="font-size:11px;color:#8b93a3;letter-spacing:.3px"></span>
+      <form method="post" action="/logout" class="inline-form">
+        <button type="submit" style="font-size:11px">Logout</button>
+      </form>
+    </div>
   </div>
+  <script>
+  (function(){
+    function _loadCounts(){
+      fetch('/api/queue-counts').then(function(r){return r.ok?r.json():null;}).then(function(d){
+        if(!d)return;
+        var el=document.getElementById('_qcounts');
+        if(!el)return;
+        var parts=[];
+        if(d.queued)parts.push(d.queued+' queued');
+        if(d.generating)parts.push(d.generating+' generating');
+        if(d.approved)parts.push(d.approved+' approved');
+        el.textContent=parts.length?parts.join(' · '):'';
+      }).catch(function(){});
+    }
+    _loadCounts();
+    setInterval(_loadCounts,30000);
+  })();
+  </script>
 """
 
 def _page_head(extra_meta: str = "") -> str:
@@ -213,6 +234,12 @@ def render_wire_page(clusters: list[dict], error_sources: list[tuple[str, str]],
         <td data-label="Age">{escape(c['age'])}</td>
         <td data-label="Updated" class="{fresh_class}">{escape(c.get('updated_ago', '-'))}{' <span class="new-dot">&bull;</span>' if c.get('is_fresh') else ''}</td>
         <td data-label="Status"><span class="badge status-{escape(c['status'])}">{escape(c['status'])}</span></td>
+        <td data-label="Queue" style="white-space:nowrap">
+          <form method="post" action="/stories/{c['id']}/handoff" style="margin:0">
+            <input type="hidden" name="return_to" value="/">
+            <button type="submit" style="font-size:10px;padding:2px 8px;background:#0a1a28;border:1px solid #1a3a5a;color:#60a5fa;border-radius:3px;cursor:pointer;white-space:nowrap">&#43; Queue</button>
+          </form>
+        </td>
       </tr>""")
 
     errors_html = ""
@@ -346,7 +373,7 @@ def render_wire_page(clusters: list[dict], error_sources: list[tuple[str, str]],
     <thead>
       <tr>
         <th>Viral*</th><th>Confidence</th><th>Momentum</th><th style="width:32%">Headline</th>
-        <th>Category</th><th>Sources</th><th>Age</th><th>Updated</th><th>Status</th>
+        <th>Category</th><th>Sources</th><th>Age</th><th>Updated</th><th>Status</th><th></th>
       </tr>
     </thead>
     <tbody>{''.join(rows)}
@@ -2817,6 +2844,10 @@ def _fb_results_html(results: list[dict], id_offset: int = 0) -> str:
 
         rows.append(
             f'<tr class="scan-row-{uid}" data-page="{page_key}" data-score="{score}">'
+            f'<td style="width:26px;padding:8px 6px;vertical-align:top;text-align:center">'
+            f'<input type="checkbox" class="scan-chk-{uid}" data-idx="{i - id_offset - 1}" '
+            f'onchange="updateBatchBtn_{uid}()" style="cursor:pointer;width:14px;height:14px">'
+            f'</td>'
             f'<td style="width:90px;padding:8px 6px;vertical-align:top">{thumb_html}</td>'
             f'<td style="vertical-align:top;padding:8px 10px">'
             f'<div style="font-size:11px;color:#facc15;font-weight:600;margin-bottom:3px">{page_name}</div>'
@@ -2856,8 +2887,17 @@ def _fb_results_html(results: list[dict], id_offset: int = 0) -> str:
         f'onclick="filterPage_{uid}(this)" '
         f'style="font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid #4ade80;background:#0a2010;color:#4ade80;cursor:pointer">All pages</button>'
         f'{filter_pills}</div></div>'
+        f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+        f'<button type="button" id="batch-btn-{uid}" onclick="batchSend_{uid}()" '
+        f'style="font-size:12px;padding:5px 14px;background:#0a2010;border:1px solid #4ade80;color:#4ade80;border-radius:4px;cursor:pointer;display:none">'
+        f'&#43; Send Selected (<span id="batch-cnt-{uid}">0</span>)</button>'
+        f'<button type="button" onclick="selectAll_{uid}()" '
+        f'style="font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid #2a3040;background:#11151f;color:#8b93a3;cursor:pointer">Select All</button>'
+        f'<button type="button" onclick="selectNone_{uid}()" '
+        f'style="font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid #2a3040;background:#11151f;color:#8b93a3;cursor:pointer">Clear</button>'
+        f'</div>'
         f'<table id="scan-table-{uid}" style="font-size:13px">'
-        f'<thead><tr><th style="width:90px"></th><th>Post</th>'
+        f'<thead><tr><th style="width:26px"></th><th style="width:90px"></th><th>Post</th>'
         f'<th style="text-align:right;white-space:nowrap">👍 Reactions &nbsp; 🔄 Shares &nbsp; 💬 Comments</th>'
         f'<th style="width:130px"></th></tr></thead>'
         f'<tbody>{"".join(rows)}</tbody></table>'
@@ -2880,6 +2920,40 @@ def _fb_results_html(results: list[dict], id_offset: int = 0) -> str:
         f'  document.querySelectorAll(".thr-btn-{uid}").forEach(function(b){{b.style.background="#11151f";b.style.color="#8b93a3";b.style.borderColor="#2a3040";}});'
         f'  btn.style.background="#0a2010";btn.style.color="#4ade80";btn.style.borderColor="#4ade80";'
         f'  _applyFilters_{uid}();'
+        f'}}'
+        f'function updateBatchBtn_{uid}(){{'
+        f'  var chks=document.querySelectorAll(".scan-chk-{uid}:checked");'
+        f'  var n=chks.length;'
+        f'  var btn=document.getElementById("batch-btn-{uid}");'
+        f'  var cnt=document.getElementById("batch-cnt-{uid}");'
+        f'  if(cnt)cnt.textContent=n;'
+        f'  if(btn)btn.style.display=n>0?"":"none";'
+        f'}}'
+        f'function selectAll_{uid}(){{'
+        f'  document.querySelectorAll(".scan-chk-{uid}").forEach(function(c){{c.checked=true;}});'
+        f'  updateBatchBtn_{uid}();'
+        f'}}'
+        f'function selectNone_{uid}(){{'
+        f'  document.querySelectorAll(".scan-chk-{uid}").forEach(function(c){{c.checked=false;}});'
+        f'  updateBatchBtn_{uid}();'
+        f'}}'
+        f'function batchSend_{uid}(){{'
+        f'  var idxs=[];'
+        f'  document.querySelectorAll(".scan-chk-{uid}:checked").forEach(function(c){{idxs.push(c.getAttribute("data-idx"));}});'
+        f'  if(!idxs.length)return;'
+        f'  var fd=new FormData();'
+        f'  idxs.forEach(function(v){{fd.append("idx",v);}});'
+        f'  fd.append("id_offset","{id_offset}");'
+        f'  fetch("/fb-scanner/send-selected",{{method:"POST",body:fd}})'
+        f'    .then(function(r){{return r.json();}})'
+        f'    .then(function(d){{'
+        f'      var msg=d.queued+" post"+(d.queued!==1?"s":"")+" queued";'
+        f'      if(d.skipped)msg+=" ("+d.skipped+" skipped)";'
+        f'      alert(msg);'
+        f'      document.querySelectorAll(".scan-chk-{uid}:checked").forEach(function(c){{c.checked=false;}});'
+        f'      updateBatchBtn_{uid}();'
+        f'    }})'
+        f'    .catch(function(){{alert("Error sending to queue");}});'
         f'}}'
         f'</script>'
     )
