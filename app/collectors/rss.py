@@ -3,6 +3,7 @@ Generic RSS/Atom collector. Google News RSS is just an RSS feed at a search URL,
 so app/collectors/google_news.py builds the URL and this same function fetches it --
 no separate parser needed.
 """
+import gzip
 import json
 import time
 import urllib.request
@@ -51,13 +52,20 @@ def _fetch_feed(url: str, user_agent: str | None = None):
         "User-Agent": user_agent or _USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
+        # No Accept-Encoding — urllib doesn't auto-decompress when we set this
+        # manually, so compressed responses land as raw bytes that feedparser
+        # can't parse (observed: every source showing "not well-formed" at 2:0).
+        # Let the server decide; decompress gzip below if it comes back compressed.
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
     }
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=FEED_FETCH_TIMEOUT_SECONDS) as resp:
-        return feedparser.parse(resp.read())
+        raw_bytes = resp.read()
+        encoding = resp.headers.get("Content-Encoding", "")
+        if encoding == "gzip" or (raw_bytes[:2] == b"\x1f\x8b"):
+            raw_bytes = gzip.decompress(raw_bytes)
+        return feedparser.parse(raw_bytes)
 
 
 def _struct_to_dt(struct_time) -> datetime | None:
