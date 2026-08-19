@@ -2129,7 +2129,8 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
 async def pipeline_queue_generate_all_captions(request: Request, user: dict = Depends(require_user)):
     """Generate all 4 caption variants + first comment for a queue item in one AI call."""
     form = await request.form()
-    cluster_id = int(form.get("cluster_id", 0))
+    cluster_id    = int(form.get("cluster_id", 0))
+    form_headline = str(form.get("headline", "")).strip()
 
     key = _get_anthropic_key()
     if not key:
@@ -2140,7 +2141,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
         return JSONResponse({"error": "Item not found"}, status_code=404)
 
     draft    = item.get("draft") or {}
-    headline = draft.get("headline") or item.get("text") or ""
+    headline = form_headline or draft.get("headline") or item.get("text") or ""
     tag      = draft.get("tag") or ""
     story    = item.get("text") or ""
 
@@ -2840,7 +2841,7 @@ async def fb_scanner_send_to_queue(request: Request, user: dict = Depends(requir
             category="Politics",
             handoff_sent_at=now,
             first_detected_at=now,
-            last_updated_at=now,
+            latest_update_at=now,
             fsn_state=json.dumps(fsn_state, ensure_ascii=False),
         )
         db.add(cluster)
@@ -2921,7 +2922,7 @@ async def fb_scanner_send_selected(request: Request, user: dict = Depends(requir
                 category="Politics",
                 handoff_sent_at=now,
                 first_detected_at=now,
-                last_updated_at=now,
+                latest_update_at=now,
                 fsn_state=json.dumps(fsn_state, ensure_ascii=False),
             )
             db.add(cluster)
@@ -2977,23 +2978,26 @@ async def pipeline_queue_story_save_draft(cid: str, request: Request, user: dict
     tag      = str(form.get("tag", "")).strip()
     scene    = str(form.get("scene", "")).strip()
 
-    items, item = _resolve_queue_item(cluster_id)
-    if not item:
-        return JSONResponse({"error": "not found"}, status_code=404)
+    try:
+        items, item = _resolve_queue_item(cluster_id)
+        if not item:
+            return JSONResponse({"error": "not found"}, status_code=404)
 
-    if not item.get("draft"):
-        item["draft"] = {}
-    if headline:
-        item["draft"]["headline"] = headline
-    if tag:
-        item["draft"]["tag"] = tag
-    if scene:
-        item["draft"]["scene"] = scene
-        item["scene"] = scene
+        if not item.get("draft"):
+            item["draft"] = {}
+        if headline:
+            item["draft"]["headline"] = headline
+        if tag:
+            item["draft"]["tag"] = tag
+        if scene:
+            item["draft"]["scene"] = scene
+            item["scene"] = scene
 
-    _update_cluster_fsn(cluster_id, draft=item["draft"])
-    _save_fsn_queue(items)
-    return JSONResponse({"ok": True})
+        _update_cluster_fsn(cluster_id, draft=item["draft"])
+        _save_fsn_queue(items)
+        return JSONResponse({"ok": True})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
 
 @app.post("/pipeline-queue/story/{cid}/generate-content")

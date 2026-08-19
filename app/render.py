@@ -166,7 +166,9 @@ PAGE_HEAD = _page_head()
 PAGE_TAIL = "</body></html>"
 
 
-def _score_class(score: float) -> str:
+def _score_class(score) -> str:
+    if score is None:
+        return "score-lo"
     if score >= 60:
         return "score-hi"
     if score >= 30:
@@ -2590,10 +2592,11 @@ function saveDraft(cid) {{
   if (st) st.textContent = 'Saving...';
   fetch('/pipeline-queue/story/'+cid+'/save-draft',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)
-  }}).then(r=>r.json()).then(d=>{{
+  }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
+  .then(function(d){{
     if (st) {{ st.textContent = d.ok ? 'Saved!' : ('Error: '+(d.error||'?')); }}
     if (d.ok) setTimeout(function(){{ if(st) st.textContent=''; }},2000);
-  }});
+  }}).catch(function(e){{ if(st) st.textContent='Save failed: '+e.message; }});
 }}
 var _ws_angles = {{}};
 function getAngles(cid) {{
@@ -2661,7 +2664,8 @@ function genContent(cid, voice) {{
   var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   fetch('/pipeline-queue/story/'+cid+'/generate-content',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'voice='+voice+'&headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)
-  }}).then(r=>r.json()).then(function(d){{
+  }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
+  .then(function(d){{
     if (st) st.textContent = '';
     if (d.error) {{ if(st) st.textContent='Error: '+d.error; return; }}
     var keys = ['short','medium','long','extra_long'];
@@ -2669,7 +2673,7 @@ function genContent(cid, voice) {{
     var fcEl=document.getElementById('cap-first_comment-'+cid);
     if(fcEl&&d.first_comment) fcEl.value=d.first_comment;
     if(st){{ st.textContent=voice==='news'?'News Style loaded':'America First loaded'; setTimeout(function(){{st.textContent='';}},3000); }}
-  }});
+  }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});
 }}
 function regenCap(cid, variant) {{
   var el = document.getElementById('cap-'+variant+'-'+cid);
@@ -2678,7 +2682,9 @@ function regenCap(cid, variant) {{
   el.style.opacity='0.4';
   fetch('/pipeline-queue/rewrite-caption',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'cluster_id='+cid+'&variant='+variant+'&headline='+encodeURIComponent(hl)
-  }}).then(r=>r.json()).then(function(d){{ el.style.opacity='1'; if(d.text) el.value=d.text; }});
+  }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
+  .then(function(d){{ el.style.opacity='1'; if(d.text) el.value=d.text; else if(d.error) el.style.border='1px solid #f87171'; }})
+  .catch(function(e){{ el.style.opacity='1'; el.style.border='1px solid #f87171'; }});
 }}
 function regenAllCaps(cid) {{
   var hl = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
@@ -2686,7 +2692,8 @@ function regenAllCaps(cid) {{
   if(st) st.textContent='Rewriting all captions...';
   fetch('/pipeline-queue/generate-all-captions',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'cluster_id='+cid+'&headline='+encodeURIComponent(hl)
-  }}).then(r=>r.json()).then(function(d){{
+  }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
+  .then(function(d){{
     if(st) st.textContent='';
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
     var keys=['short','medium','long','extra_long'];
@@ -2694,7 +2701,7 @@ function regenAllCaps(cid) {{
     var fcEl=document.getElementById('cap-first_comment-'+cid);
     if(fcEl&&d.first_comment) fcEl.value=d.first_comment;
     if(st){{ st.textContent='Done!'; setTimeout(function(){{st.textContent='';}},2000); }}
-  }});
+  }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});
 }}
 var _imgPollTimer = {{}};
 function _startImagePoll(cid) {{
@@ -2778,7 +2785,7 @@ function useHistoryImage(cid, kieUrl) {{
   var st   = document.getElementById('img-status-'+cid);
   if (st) st.textContent = 'Swapping...';
   fetch('/pipeline-queue/story/'+cid+'/set-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'kie_url='+encodeURIComponent(kieUrl)}})
-    .then(function(r){{ return r.json(); }})
+    .then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
     .then(function(d){{
       if (d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
       if (wrap) wrap.innerHTML = '<img src="'+d.url+'?t='+Date.now()+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
@@ -2799,14 +2806,15 @@ function useHistoryImage(cid, kieUrl) {{
         }});
         histDiv.innerHTML = html + '</div></div>';
       }}
-    }});
+    }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});
 }}
 var _tobi_opts = {{}};
 function regenTOBI(cid) {{
   var div = document.getElementById('tobi-options-'+cid);
   if(div) div.innerHTML='<div style="color:#8b93a3;font-size:12px">Writing options...</div>';
   fetch('/pipeline-queue/write-tobi',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid}})
-  .then(r=>r.json()).then(function(d){{
+  .then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
+  .then(function(d){{
     if(d.error){{ if(div) div.innerHTML='<div style="color:#f87171">'+d.error+'</div>'; return; }}
     _tobi_opts[cid] = d.options||[];
     var html = _tobi_opts[cid].map(function(t,i){{
@@ -2817,7 +2825,7 @@ function regenTOBI(cid) {{
         +'</div>';
     }}).join('');
     if(div) div.innerHTML = html||'No options returned';
-  }});
+  }}).catch(function(e){{ if(div) div.innerHTML='<div style="color:#f87171">Error: '+e.message+'</div>'; }});
 }}
 function useTOBIopt(cid, idx) {{
   var t = (_tobi_opts[cid]||[])[idx];
