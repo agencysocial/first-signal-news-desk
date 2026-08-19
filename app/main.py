@@ -2802,11 +2802,11 @@ async def fb_scanner_send_to_queue(request: Request, user: dict = Depends(requir
     try:
         idx = int(form.get("idx", -1))
     except (ValueError, TypeError):
-        return RedirectResponse("/fb-scanner?msg=Invalid+post+index", status_code=303)
+        return JSONResponse({"error": "Invalid post index"}, status_code=400)
 
     results = _fb_read_results()
     if idx < 0 or idx >= len(results):
-        return RedirectResponse("/fb-scanner?msg=Post+not+found", status_code=303)
+        return JSONResponse({"error": "Post not found"}, status_code=404)
 
     post = results[idx]
     text = (post.get("text") or post.get("preview") or "")[:500]
@@ -2814,7 +2814,7 @@ async def fb_scanner_send_to_queue(request: Request, user: dict = Depends(requir
     url  = post.get("url") or ""
 
     if not text:
-        return RedirectResponse("/fb-scanner?msg=Post+has+no+text", status_code=303)
+        return JSONResponse({"error": "Post has no text"}, status_code=400)
 
     now = datetime.now(timezone.utc)
     fsn_state = {
@@ -2870,11 +2870,7 @@ async def fb_scanner_send_to_queue(request: Request, user: dict = Depends(requir
         })
         _save_fsn_queue(items)
 
-    page_slug = page_name.replace(" ", "+")
-    return RedirectResponse(
-        f"/fb-scanner?msg={page_slug}+post+added+to+queue+%28ID+{new_id}%29",
-        status_code=303,
-    )
+    return JSONResponse({"ok": True, "cluster_id": new_id})
 
 
 @app.post("/fb-scanner/send-selected")
