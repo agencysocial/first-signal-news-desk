@@ -1709,9 +1709,10 @@ function useCustomAngle(cid, btn) {
     </table>
   </form>"""
 
+    completed = [x for x in items if x.get("queue_status") == "completed"]
     history_section = ""
-    if used or skipped:
-        hist = sorted(used + skipped, key=lambda x: x.get("added_to_queue_at",""), reverse=True)[:20]
+    if used or skipped or completed:
+        hist = sorted(used + skipped + completed, key=lambda x: x.get("completed_at") or x.get("added_to_queue_at",""), reverse=True)[:20]
         hist_rows = []
         for i in hist:
             cid       = i.get("cluster_id", "")
@@ -1720,7 +1721,7 @@ function useCustomAngle(cid, btn) {
             src_url   = i.get("source_url") or ""
             raw_text  = escape((i.get("raw_text") or "")[:600])
             added     = (i.get("added_to_queue_at") or "")[:16].replace("T", " ")
-            approved  = (i.get("approved_at") or "")[:16].replace("T", " ")
+            completed_at = (i.get("completed_at") or i.get("approved_at") or "")[:16].replace("T", " ")
             cat       = escape(i.get("category") or "")
             draft     = i.get("draft") or {}
             hl        = escape((draft.get("headline") or "")[:120])
@@ -1730,7 +1731,8 @@ function useCustomAngle(cid, btn) {
             manual    = i.get("manual", False)
             sc        = i.get("viral_score", 0)
             output_file = i.get("output_file") or ""
-            status_color = "#4ade80" if status == "used" else "#8b93a3"
+            status_color = "#4ade80" if status in ("used", "completed") else "#8b93a3"
+            status_label_h = "done" if status == "completed" else status
 
             url_row = ""
             if src_url:
@@ -1761,11 +1763,11 @@ function useCustomAngle(cid, btn) {
                 )
 
             detail_id = f"hist-{cid}"
-            meta = f'{"Manual" if manual else f"{cat} &middot; score {sc:.0f}"} &middot; added {added}' + (f" &middot; approved {approved}" if approved else "")
+            meta = f'{"Manual" if manual else f"{cat} &middot; score {sc:.0f}"} &middot; added {added}' + (f" &middot; posted {completed_at}" if completed_at else "")
 
             hist_rows.append(
                 f'<tr>'
-                f'<td style="color:{status_color};font-size:11px;width:55px;vertical-align:top;padding-top:10px">{status}</td>'
+                f'<td style="color:{status_color};font-size:11px;width:55px;vertical-align:top;padding-top:10px">{status_label_h}</td>'
                 f'<td style="padding:6px 10px">'
                 f'  <div style="font-size:12px;color:#c0c8d8;cursor:pointer;font-weight:500" onclick="toggleHist(\'{detail_id}\')">'
                 f'    {text} <span style="color:#3b82f6;font-size:10px">&#9660;</span>'
@@ -2415,9 +2417,10 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
             f'</div>'
         )
 
-    status_bg   = {"pending": "#3a3a00", "approved": "#0a2800", "skipped": "#1a1a1a"}.get(status, "#1a1f2b")
-    status_fg   = {"pending": "#facc15", "approved": "#4ade80", "skipped": "#8b93a3"}.get(status, "#e6e8ec")
-    status_badge = f'<span style="background:{status_bg};color:{status_fg};padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600">{status.upper()}</span>'
+    status_bg   = {"pending": "#3a3a00", "approved": "#0a2800", "completed": "#0a2800", "skipped": "#1a1a1a"}.get(status, "#1a1f2b")
+    status_fg   = {"pending": "#facc15", "approved": "#4ade80", "completed": "#4ade80", "skipped": "#8b93a3"}.get(status, "#e6e8ec")
+    status_label = {"completed": "DONE"}.get(status, status.upper())
+    status_badge = f'<span style="background:{status_bg};color:{status_fg};padding:2px 8px;border-radius:3px;font-size:11px;font-weight:600">{status_label}</span>'
 
     type_img  = "selected" if post_type == "image_card"    else ""
     type_tobi = "selected" if post_type == "tobi"          else ""
@@ -2440,8 +2443,8 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
     </div>
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:4px">
-    <form method="post" action="/pipeline-queue/story/{cid}/approve" style="margin:0">
-      <button type="submit" class="primary" style="padding:7px 18px;font-size:13px">&#10003; Approve</button>
+    <form method="post" action="/pipeline-queue/story/{cid}/complete" style="margin:0">
+      <button type="submit" class="primary" style="padding:7px 18px;font-size:13px">&#10003; Mark Done</button>
     </form>
     <form method="post" action="/pipeline-queue/story/{cid}/skip" style="margin:0">
       <button type="submit" style="padding:7px 14px;font-size:13px">Skip</button>

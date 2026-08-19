@@ -3165,8 +3165,24 @@ async def pipeline_queue_story_set_image(cid: str, request: Request, user: dict 
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+@app.post("/pipeline-queue/story/{cid}/complete")
+def pipeline_queue_story_complete(cid: str, user: dict = Depends(require_user)):
+    """Mark a story as completed (posted). Moves it to Recent History on the queue page."""
+    if not cid.isdigit():
+        return RedirectResponse("/pipeline-queue", status_code=303)
+    cluster_id = int(cid)
+    items, item = _resolve_queue_item(cluster_id)
+    if item:
+        item["queue_status"] = "completed"
+        item["completed_at"] = datetime.now(timezone.utc).isoformat()
+        _update_cluster_fsn(cluster_id, queue_status="completed", completed_at=item["completed_at"])
+        _save_fsn_queue(items)
+    return RedirectResponse("/pipeline-queue?msg=Marked+as+done", status_code=303)
+
+
 @app.post("/pipeline-queue/story/{cid}/approve")
 def pipeline_queue_story_approve(cid: str, user: dict = Depends(require_user)):
+    """Legacy batch-approve: marks approved for Run Full Batch flow."""
     if not cid.isdigit():
         return RedirectResponse(f"/pipeline-queue/story/{cid}", status_code=303)
     cluster_id = int(cid)
