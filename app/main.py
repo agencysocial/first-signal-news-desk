@@ -2491,7 +2491,7 @@ async def pipeline_queue_apply_angle(request: Request, user: dict = Depends(requ
 
     items, item = _resolve_queue_item(cluster_id)
     if not item:
-        return {"ok": True, "note": "item not found"}
+        return JSONResponse({"ok": False, "error": "item not found"}, status_code=404)
 
     # Patch the item's draft with the chosen angle values
     if not item.get("draft"):
@@ -2841,8 +2841,12 @@ async def fb_scanner_send_to_queue(request: Request, user: dict = Depends(requir
             fsn_state=json.dumps(fsn_state, ensure_ascii=False),
         )
         db.add(cluster)
-        db.commit()
-        db.refresh(cluster)
+        try:
+            db.commit()
+            db.refresh(cluster)
+        except Exception:
+            db.rollback()
+            return JSONResponse({"error": "Database error saving post"}, status_code=500)
         new_id = cluster.id
     finally:
         db.close()

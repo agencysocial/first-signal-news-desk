@@ -940,13 +940,13 @@ def render_pipeline_queue_page(
                 if scene:
                     inner += f'<div style="color:#60a5fa;font-size:10px;margin-bottom:8px">&#128247; Scene: {scene}</div>'
                 if c_short:
-                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">SHORT (30-50w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5">{c_short}</div></div>'
+                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">SHORT (10-15w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5">{c_short}</div></div>'
                 if c_med:
-                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">MEDIUM (80-120w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5">{c_med}</div></div>'
+                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">MEDIUM (40-60w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5">{c_med}</div></div>'
                 if c_long:
-                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">LONG ARTICLE (250-350w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5;white-space:pre-wrap">{c_long}</div></div>'
+                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">LONG (100-150w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5;white-space:pre-wrap">{c_long}</div></div>'
                 if c_xl:
-                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">XL ARTICLE (450-600w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5;white-space:pre-wrap">{c_xl}</div></div>'
+                    inner += f'<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">EXTRA LONG (200-300w):</span><div style="color:#c0c8d8;font-size:11px;margin-top:2px;line-height:1.5;white-space:pre-wrap">{c_xl}</div></div>'
                 if fc:
                     inner += f'<div style="border-top:1px solid #1a1f2b;padding-top:6px;margin-top:4px"><span style="color:#8b93a3;font-size:10px">FIRST COMMENT:</span> <span style="color:#c0c8d8;font-size:11px">{fc}</span></div>'
                 has_full_captions = bool(caps.get("medium") or caps.get("long"))
@@ -1276,7 +1276,7 @@ function generateAllCaptions(cid, btn) {
       var caps = d.captions || {};
       var fc   = d.first_comment || '';
       var html = '';
-      var labels = {short:'SHORT (30-50w)',medium:'MEDIUM (80-120w)',long:'LONG ARTICLE (250-350w)',extra_long:'XL ARTICLE (450-600w)'};
+      var labels = {short:'SHORT (10-15w)',medium:'MEDIUM (40-60w)',long:'LONG (100-150w)',extra_long:'EXTRA LONG (200-300w)'};
       Object.keys(labels).forEach(function(k){
         if (caps[k]) html += '<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">' + labels[k] + ':</span> <span style="color:#c0c8d8;font-size:11px">' + caps[k] + '</span></div>';
       });
@@ -2317,12 +2317,13 @@ def _render_img_history(history: list, cid: str) -> str:
         return ""
     items_html = ""
     for i, kie_url in enumerate(reversed(history), 1):
+        safe_url = escape(kie_url).replace("'", "&#39;")
         items_html += (
             f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
             f'<img src="{escape(kie_url)}" style="width:80px;height:100px;object-fit:cover;border-radius:4px;border:1px solid #2a3555;cursor:pointer" '
-            f'onclick="useHistoryImage(\'{cid}\',\'{escape(kie_url)}\')" title="Click to use this version">'
+            f'onclick="useHistoryImage(\'{cid}\',\'{safe_url}\')" title="Click to use this version">'
             f'<div style="display:flex;gap:4px">'
-            f'<button type="button" onclick="useHistoryImage(\'{cid}\',\'{escape(kie_url)}\')" '
+            f'<button type="button" onclick="useHistoryImage(\'{cid}\',\'{safe_url}\')" '
             f'style="font-size:9px;padding:2px 6px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use</button>'
             f'<a href="{escape(kie_url)}" download target="_blank" '
             f'style="font-size:9px;padding:2px 6px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:3px;text-decoration:none">&#11015;</a>'
@@ -2552,10 +2553,10 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
           style="font-size:10px;padding:3px 10px;background:#0a1020;border:1px solid #2a3555;color:#facc15;cursor:pointer;border-radius:3px">
           &#8635; Rewrite All</button>
       </div>
-      {cap_block("Short (30-50 words)", "short", 3)}
-      {cap_block("Medium (80-120 words)", "medium", 5)}
-      {cap_block("Long (250-350 words)", "long", 8)}
-      {cap_block("Extra Long (450-600 words)", "extra_long", 12)}
+      {cap_block("Short (10-15 words)", "short", 3)}
+      {cap_block("Medium (40-60 words)", "medium", 5)}
+      {cap_block("Long (100-150 words)", "long", 8)}
+      {cap_block("Extra Long (200-300 words)", "extra_long", 12)}
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid #2a3555">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
           <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px">First Comment</label>
