@@ -2824,7 +2824,7 @@ function useTOBIopt(cid, idx) {{
   if(!t) return;
   var el = document.getElementById('tobi-text-'+cid);
   if(el) el.value = t;
-  fetch('/pipeline-queue/apply-tobi',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&tobi_text='+encodeURIComponent(t)}});
+  fetch('/pipeline-queue/apply-tobi',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&text='+encodeURIComponent(t)}});
 }}
 // Delegated handlers for dynamically-created buttons (avoids quote-escaping in onclick)
 document.addEventListener('click', function(e) {{
@@ -2833,10 +2833,9 @@ document.addEventListener('click', function(e) {{
   var tbtn = e.target.closest('.use-tobi-btn');
   if (tbtn) {{ useTOBIopt(tbtn.getAttribute('data-cid'), parseInt(tbtn.getAttribute('data-idx'))); return; }}
 }});
-// Auto-start image polling on page load if image is still generating
+// Auto-start image polling on page load only when server says status=generating
 (function() {{
-  var wrap = document.getElementById('img-wrap-{cid}');
-  if (wrap && !wrap.querySelector('img')) {{ _startImagePoll('{cid}'); }}
+  if ({str(img_status == "generating").lower()}) {{ _startImagePoll('{cid}'); }}
 }})();
 </script>
 """

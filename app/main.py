@@ -2075,12 +2075,14 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     if not key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
 
-    item = _queue_item_for(cluster_id)
+    items, item = _resolve_queue_item(cluster_id)
     if not item:
         return JSONResponse({"error": "Item not found"}, status_code=404)
 
     draft    = item.get("draft") or {}
-    headline = draft.get("headline") or item.get("text") or ""
+    # Use headline from form if provided (user may have edited it without saving draft yet)
+    form_headline = str(form.get("headline", "")).strip()
+    headline = form_headline or draft.get("headline") or item.get("text") or ""
     captions = draft.get("captions") or {}
 
     bands = {"short": "30-50", "medium": "80-120", "long": "250-350", "extra_long": "450-600"}
@@ -2112,10 +2114,11 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
             messages=[{"role": "user", "content": user_msg}],
         )
         new_text = resp.content[0].text.strip().strip('"').strip("'")
-        # Save back to queue
-        if "captions" not in (item.get("draft") or {}):
-            item.setdefault("draft", {})["captions"] = {}
-        item["draft"]["captions"][variant] = new_text
+        # Save back to queue and DB
+        if not item.get("draft"):
+            item["draft"] = {}
+        item["draft"].setdefault("captions", {})[variant] = new_text
+        _update_cluster_fsn(cluster_id, draft=item["draft"])
         _save_fsn_queue(items)
         return JSONResponse({"ok": True, "variant": variant, "text": new_text})
     except Exception as exc:
@@ -2132,7 +2135,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
     if not key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
 
-    item = _queue_item_for(cluster_id)
+    items, item = _resolve_queue_item(cluster_id)
     if not item:
         return JSONResponse({"error": "Item not found"}, status_code=404)
 
@@ -2186,6 +2189,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
         })
         if data.get("first_comment"):
             item["draft"]["first_comment"] = data["first_comment"]
+        _update_cluster_fsn(cluster_id, draft=item["draft"])
         _save_fsn_queue(items)
         return JSONResponse({"ok": True, "captions": item["draft"]["captions"],
                              "first_comment": item["draft"].get("first_comment", "")})
@@ -2255,7 +2259,7 @@ async def pipeline_queue_write_video_script(request: Request, user: dict = Depen
     if not key:
         return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
 
-    item = _queue_item_for(cluster_id)
+    items, item = _resolve_queue_item(cluster_id)
     if not item:
         return JSONResponse({"error": "Item not found"}, status_code=404)
 
@@ -2291,9 +2295,9 @@ async def pipeline_queue_write_video_script(request: Request, user: dict = Depen
             "video_first_comment":  data.get("video_first_comment") or "",
         }
         item.update(video_fields)
-        _save_fsn_queue(items)
-        # Also write to DB fsn_state for cloud persistence
+        # Persist to DB first (cloud-safe), then update local file cache
         _update_cluster_fsn(cluster_id, **video_fields)
+        _save_fsn_queue(items)
 
         return JSONResponse({"ok": True, **video_fields})
     except Exception as exc:
