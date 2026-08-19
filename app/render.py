@@ -2739,7 +2739,8 @@ function _startImagePoll(cid) {{
           _imgPollTimer[cid] = setTimeout(poll, 5000);
         }} else {{
           clearInterval(countTimer);
-          if (st) st.textContent = d.status;
+          if (st) st.textContent = '';
+          if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #7a1010;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#f87171;font-size:12px;padding:12px;text-align:center">'+d.status+'</div>';
         }}
       }})
       .catch(function() {{ _imgPollTimer[cid] = setTimeout(poll, 10000); }});
@@ -2748,18 +2749,26 @@ function _startImagePoll(cid) {{
 }}
 function regenImage(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
   var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var st    = document.getElementById('img-status-'+cid);
   var wrap  = document.getElementById('img-wrap-'+cid);
-  if (!hl && !scene) {{ alert('Enter a headline or scene first.'); return; }}
+  function _showErr(msg) {{
+    if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #7a1010;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#f87171;font-size:12px;padding:12px;text-align:center">'+msg+'</div>';
+    if (st) st.textContent = '';
+  }}
+  if (!hl && !scene && !tag) {{ _showErr('Enter a headline or scene first, or apply an angle.'); return; }}
   if (st) st.textContent = 'Queued...';
-  if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
+  if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating…</div>';
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'headline='+encodeURIComponent(hl)+'&scene='+encodeURIComponent(scene)
-  }}).then(r=>r.json()).then(function(d){{
-    if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)
+  }}).then(function(r){{
+    if(!r.ok) return r.text().then(function(t){{ throw new Error('Server error '+r.status+': '+t.slice(0,200)); }});
+    return r.json();
+  }}).then(function(d){{
+    if(d.error){{ _showErr('Error: '+d.error); return; }}
     _startImagePoll(cid);
-  }});
+  }}).catch(function(e){{ _showErr('Request failed: '+e.message); }});
 }}
 function useHistoryImage(cid, kieUrl) {{
   var wrap = document.getElementById('img-wrap-'+cid);

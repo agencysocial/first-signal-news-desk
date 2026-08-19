@@ -3078,38 +3078,45 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
     if not cid.isdigit():
         return JSONResponse({"error": "invalid id"}, status_code=400)
     cluster_id = int(cid)
-    form = await request.form()
-    headline = str(form.get("headline", "")).strip()
-    scene    = str(form.get("scene", "")).strip()
+    try:
+        form = await request.form()
+        headline = str(form.get("headline", "")).strip()
+        tag      = str(form.get("tag", "")).strip()
+        scene    = str(form.get("scene", "")).strip()
 
-    items, item = _resolve_queue_item(cluster_id)
-    if not item:
-        return JSONResponse({"error": "not found"}, status_code=404)
+        items, item = _resolve_queue_item(cluster_id)
+        if not item:
+            return JSONResponse({"error": "Story not found in queue"}, status_code=404)
 
-    # Update draft with new headline/scene before re-generating
-    if not item.get("draft"):
-        item["draft"] = {}
-    if headline:
-        item["draft"]["headline"] = headline
-    # Use submitted scene, or fall back to whatever is already in draft/suggested
-    effective_scene = scene or (item.get("draft") or {}).get("scene") or item.get("suggested_scene") or ""
-    item["draft"]["scene"] = effective_scene
-    item["scene"] = effective_scene
+        # Update draft with submitted fields before re-generating
+        if not item.get("draft"):
+            item["draft"] = {}
+        if headline:
+            item["draft"]["headline"] = headline
+        if tag:
+            item["draft"]["tag"] = tag
+        # Use submitted scene, or fall back to whatever is already in draft/suggested
+        effective_scene = scene or (item.get("draft") or {}).get("scene") or item.get("suggested_scene") or ""
+        item["draft"]["scene"] = effective_scene
+        item["scene"] = effective_scene
 
-    # Clear old image so status shows "generating"
-    _update_cluster_fsn(cluster_id, generated_image_url="", image_gen_status="generating",
-                        kie_result_url="", draft=item["draft"])
-    item["generated_image_url"] = ""
-    item["image_gen_status"]    = "generating"
-    item["kie_result_url"]      = ""
-    _save_fsn_queue(items)
+        # Clear old image so status shows "generating"
+        _update_cluster_fsn(cluster_id, generated_image_url="", image_gen_status="generating",
+                            kie_result_url="", draft=item["draft"])
+        item["generated_image_url"] = ""
+        item["image_gen_status"]    = "generating"
+        item["kie_result_url"]      = ""
+        _save_fsn_queue(items)
 
-    key = _get_kie_key()
-    if not key:
-        return JSONResponse({"error": "KIE_AI_API_KEY not set"}, status_code=400)
+        key = _get_kie_key()
+        if not key:
+            return JSONResponse({"error": "KIE_AI_API_KEY not set on server"}, status_code=400)
 
-    background_tasks.add_task(_generate_one_image, str(cluster_id), key, item)
-    return JSONResponse({"ok": True})
+        background_tasks.add_task(_generate_one_image, str(cluster_id), key, item)
+        return JSONResponse({"ok": True})
+    except Exception as exc:
+        logger.error("regenerate-image %s: %s", cid, exc)
+        return JSONResponse({"error": f"Server error: {exc}"}, status_code=500)
 
 
 @app.get("/pipeline-queue/story/{cid}/image-status")
