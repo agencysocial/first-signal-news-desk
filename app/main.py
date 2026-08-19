@@ -123,8 +123,8 @@ def _stamp_logo(image_bytes: bytes, cid: str) -> Path:
 
     tmp_dir = Path("/tmp/fsn_images")
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    out_path = tmp_dir / f"{cid}.png"
-    out.save(str(out_path), "PNG", optimize=True)
+    out_path = tmp_dir / f"{cid}.jpg"
+    out.save(str(out_path), "JPEG", quality=88, optimize=True)
     return out_path
 
 
@@ -3234,13 +3234,17 @@ def pipeline_queue_story_remove(cid: str, user: dict = Depends(require_user)):
 
 @app.get("/pipeline-queue/image/{cid}")
 def pipeline_queue_serve_image(cid: str, user: dict = Depends(require_user)):
-    """Serve a logo-stamped PNG generated for a cluster. Re-stamps from Kie CDN if /tmp was cleared."""
+    """Serve a logo-stamped JPEG generated for a cluster. Re-stamps from Kie CDN if /tmp was cleared."""
     # Sanitise: cid must be numeric
     if not cid.isdigit():
         return Response(status_code=400)
-    tmp_path = Path("/tmp/fsn_images") / f"{cid}.png"
-    if tmp_path.exists():
-        return Response(content=tmp_path.read_bytes(), media_type="image/png")
+    # Support both .jpg (new) and .png (legacy) in /tmp
+    tmp_path_jpg = Path("/tmp/fsn_images") / f"{cid}.jpg"
+    tmp_path_png = Path("/tmp/fsn_images") / f"{cid}.png"
+    if tmp_path_jpg.exists():
+        return Response(content=tmp_path_jpg.read_bytes(), media_type="image/jpeg")
+    if tmp_path_png.exists():
+        return Response(content=tmp_path_png.read_bytes(), media_type="image/png")
 
     # /tmp was cleared (redeploy) — re-download from Kie CDN and re-stamp
     session = SessionLocal()
@@ -3258,7 +3262,8 @@ def pipeline_queue_serve_image(cid: str, user: dict = Depends(require_user)):
     r = httpx.get(kie_url, timeout=60, follow_redirects=True)
     r.raise_for_status()
     _stamp_logo(r.content, cid)
-    return Response(content=tmp_path.read_bytes(), media_type="image/png")
+    tmp_path_jpg = Path("/tmp/fsn_images") / f"{cid}.jpg"
+    return Response(content=tmp_path_jpg.read_bytes(), media_type="image/jpeg")
 
 
 @app.get("/pipeline-queue/output-image/{filename}")
