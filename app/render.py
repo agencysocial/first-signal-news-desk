@@ -2747,6 +2747,9 @@ function _startImagePoll(cid) {{
           }}
         }} else if (d.status === 'generating' || d.status === '') {{
           _imgPollTimer[cid] = setTimeout(poll, 5000);
+        }} else if (d.status === 'done' || d.status === 'completed') {{
+          clearInterval(countTimer);
+          if (st) st.textContent = '';
         }} else {{
           clearInterval(countTimer);
           if (st) st.textContent = '';
@@ -3024,7 +3027,7 @@ def _fb_results_html(results: list[dict], id_offset: int = 0) -> str:
         f'  idxs.forEach(function(v){{fd.append("idx",v);}});'
         f'  fd.append("id_offset","{id_offset}");'
         f'  fetch("/fb-scanner/send-selected",{{method:"POST",body:fd}})'
-        f'    .then(function(r){{return r.json();}})'
+        f'    .then(function(r){{if(!r.ok)return r.json().then(function(e){{throw new Error(e.error||r.status)}});return r.json();}})'
         f'    .then(function(d){{'
         f'      var msg=d.queued+" post"+(d.queued!==1?"s":"")+" queued";'
         f'      if(d.skipped)msg+=" ("+d.skipped+" skipped)";'

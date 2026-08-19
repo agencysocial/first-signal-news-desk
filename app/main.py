@@ -2003,7 +2003,7 @@ async def pipeline_queue_critique_batch(user: dict = Depends(require_user)):
 
     picks_path = _FSN_PICKS_PATH
     if not picks_path.exists():
-        return JSONResponse({"error": "No approved batch — send stories to generation first"}, status_code=400)
+        return JSONResponse({"error": "No approved batch found. Run a batch from the pipeline first, or this feature is only available locally."}, status_code=400)
 
     picks = json.loads(picks_path.read_text(encoding="utf-8"))
     posts = picks.get("posts", [])
@@ -2068,7 +2068,7 @@ Portrait cards are cards where scene contains "likeness" or "portrait". Cap is 2
 async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(require_user)):
     """Rewrite one caption variant for an approved queue item."""
     form = await request.form()
-    cluster_id = int(form.get("cluster_id", 0))
+    cluster_id = int(form.get("cluster_id") or 0)
     variant    = (form.get("variant") or "short").strip()
 
     key = _get_anthropic_key()
@@ -2129,7 +2129,7 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
 async def pipeline_queue_generate_all_captions(request: Request, user: dict = Depends(require_user)):
     """Generate all 4 caption variants + first comment for a queue item in one AI call."""
     form = await request.form()
-    cluster_id    = int(form.get("cluster_id", 0))
+    cluster_id    = int(form.get("cluster_id") or 0)
     form_headline = str(form.get("headline", "")).strip()
 
     key = _get_anthropic_key()
@@ -2154,14 +2154,12 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
     )
     user_msg = (
         f"Story: {story}\nHeadline: {headline}\nTag: {tag}\n\n"
-        "Write all 4 Facebook caption variants and a first comment. Exact requirements:\n"
-        "- short: 30-50 words, punchy hook sentence or two, ends with agreement hook\n"
-        "- medium: 80-120 words, 2-3 sharp paragraphs, ends with agreement hook\n"
-        "- long: 250-350 words, full Facebook news article — lead paragraph states the facts, "
-        "body paragraphs add context and accountability, closing line is the hook\n"
-        "- extra_long: 450-600 words, complete Facebook news article with intro, background, "
-        "quotes/facts from the story, what it means, why it matters to America First readers, "
-        "strong closing hook\n"
+        "Write all 4 Facebook caption variants and a first comment. Strict word counts:\n"
+        "- short: 10-15 words, punchy hook, ends with agreement hook\n"
+        "- medium: 40-60 words, 1-2 sharp sentences, ends with agreement hook\n"
+        "- long: 100-150 words, 2-3 paragraphs, full context, ends with hook\n"
+        "- extra_long: 200-300 words, complete Facebook article with background, context, "
+        "why it matters to America First readers, strong closing hook\n"
         "- first_comment: 5-15 words, invites reply, no question mark required\n\n"
         'Return JSON: {"short":"...","medium":"...","long":"...","extra_long":"...","first_comment":"..."}'
     )
@@ -2254,7 +2252,7 @@ Rules per field:
 async def pipeline_queue_write_video_script(request: Request, user: dict = Depends(require_user)):
     """Generate all video package content (titles, description, 3 scripts, poll, first comment) in one AI call."""
     form = await request.form()
-    cluster_id = int(form.get("cluster_id", 0))
+    cluster_id = int(form.get("cluster_id") or 0)
 
     key = _get_anthropic_key()
     if not key:
@@ -2309,7 +2307,7 @@ async def pipeline_queue_write_video_script(request: Request, user: dict = Depen
 async def pipeline_queue_expand_angles(request: Request, user: dict = Depends(require_user)):
     """Suggest 3 FSN story angles for a pending item before drafting."""
     form = await request.form()
-    cluster_id = int(form.get("cluster_id", 0))
+    cluster_id = int(form.get("cluster_id") or 0)
 
     key = _get_anthropic_key()
     if not key:
@@ -2383,7 +2381,7 @@ def pipeline_queue_history_image(path: str = "", user: dict = Depends(require_us
 async def pipeline_queue_write_tobi(request: Request, user: dict = Depends(require_user)):
     """Generate 3 TOBI post options (12-32 words each) for a pending queue item."""
     form = await request.form()
-    cluster_id = int(form.get("cluster_id", 0))
+    cluster_id = int(form.get("cluster_id") or 0)
 
     key = _get_anthropic_key()
     if not key:
@@ -2440,7 +2438,7 @@ Output ONLY valid JSON:
 async def pipeline_queue_set_post_type(request: Request, user: dict = Depends(require_user)):
     """Immediately persist post_type for a cluster so it survives page refresh."""
     form = await request.form()
-    cluster_id = int(form.get("cluster_id", 0))
+    cluster_id = int(form.get("cluster_id") or 0)
     post_type  = str(form.get("post_type", "image_card")).strip()
     if post_type not in ("image_card", "tobi", "video_package"):
         return JSONResponse({"error": "invalid type"}, status_code=400)
@@ -2460,7 +2458,7 @@ async def pipeline_queue_set_post_type(request: Request, user: dict = Depends(re
 async def pipeline_queue_apply_tobi(request: Request, user: dict = Depends(require_user)):
     """Save chosen TOBI text onto the queue item."""
     form = await request.form()
-    cluster_id = int(form.get("cluster_id", 0))
+    cluster_id = int(form.get("cluster_id") or 0)
     text = str(form.get("text", "")).strip()
     if not text:
         return JSONResponse({"error": "No text"}, status_code=400)
@@ -2484,19 +2482,16 @@ async def pipeline_queue_apply_tobi(request: Request, user: dict = Depends(requi
 async def pipeline_queue_apply_angle(request: Request, user: dict = Depends(require_user)):
     """Save a chosen angle (hook/tag/caption_lead) onto the queue item as its working draft headline."""
     form = await request.form()
-    cluster_id = int(form.get("cluster_id", 0))
+    cluster_id = int(form.get("cluster_id") or 0)
     hook         = str(form.get("hook", "")).strip()
     tag          = str(form.get("tag", "")).strip()
     caption_lead = str(form.get("caption_lead", "")).strip()
     angle_type   = str(form.get("angle_type", "")).strip()
     image_scene  = str(form.get("image_scene", "")).strip()
 
-    items = _load_fsn_queue()
-    item = next((x for x in items if x.get("cluster_id") == cluster_id), None)
+    items, item = _resolve_queue_item(cluster_id)
     if not item:
-        # On Render the queue comes from DB — store angle in session or just return ok
-        # The JS already updates the headline display client-side
-        return {"ok": True, "note": "client-side only on deployed server"}
+        return {"ok": True, "note": "item not found"}
 
     # Patch the item's draft with the chosen angle values
     if not item.get("draft"):
@@ -2510,6 +2505,7 @@ async def pipeline_queue_apply_angle(request: Request, user: dict = Depends(requ
         item["draft"]["image_scene"] = image_scene
         item["scene"] = image_scene
     item["chosen_angle_type"] = angle_type
+    _update_cluster_fsn(cluster_id, draft=item["draft"])
     _save_fsn_queue(items)
     return {"ok": True}
 
@@ -2947,7 +2943,11 @@ async def fb_scanner_send_selected(request: Request, user: dict = Depends(requir
                 })
                 _save_fsn_queue(items)
             queued += 1
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            return JSONResponse({"error": "Database error saving posts"}, status_code=500)
     finally:
         db.close()
     return JSONResponse({"queued": queued, "skipped": skipped})
@@ -3033,13 +3033,13 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
     hook_note = "" if voice == "news" else "Short must end with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:).\n"
     user_msg = (
         f"Story: {story}\nHeadline: {headline}\nTag: {tag}\n\n"
-        "Write 4 Facebook caption variants and a first comment:\n"
+        "Write 4 Facebook caption variants and a first comment. Strict word counts:\n"
         f"{hook_note}"
-        "- short: 30-50 words\n"
-        "- medium: 80-120 words, 2-3 paragraphs\n"
-        "- long: 250-350 words, full Facebook news article\n"
-        "- extra_long: 450-600 words, complete Facebook article with background, context, and strong close\n"
-        "- first_comment: 5-15 words, invites reply\n\n"
+        "- short: 10-15 words, punchy hook, ends with agreement hook\n"
+        "- medium: 40-60 words, 1-2 sharp sentences, ends with agreement hook\n"
+        "- long: 100-150 words, 2-3 paragraphs, full context, ends with hook\n"
+        "- extra_long: 200-300 words, complete Facebook article with background, context, why it matters, strong closing hook\n"
+        "- first_comment: 5-15 words, invites reply, no hard CTA required\n\n"
         'Return JSON: {"short":"...","medium":"...","long":"...","extra_long":"...","first_comment":"..."}'
     )
 
