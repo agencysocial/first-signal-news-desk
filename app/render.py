@@ -720,8 +720,14 @@ def render_pipeline_queue_page(
         rel_factor = (float(rel) / 100.0) if rel is not None else 1.0
         return viral * decay * rel_factor
 
-    pending_fresh.sort(key=_composite_sort_key, reverse=True)
-    pending_old.sort(key=_composite_sort_key, reverse=True)
+    def _pending_sort_key(item: dict):
+        # Primary: most recently added to queue (newest first)
+        # Secondary: composite viral score (higher first)
+        added = item.get("added_to_queue_at") or item.get("handoff_sent_at") or ""
+        return (added, _composite_sort_key(item))
+
+    pending_fresh.sort(key=_pending_sort_key, reverse=True)
+    pending_old.sort(key=_pending_sort_key, reverse=True)
 
     # Build recommendation lookup {cluster_id: {template, reason, type}}
     rec_map: dict[int, dict] = {}

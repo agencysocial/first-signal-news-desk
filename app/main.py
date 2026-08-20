@@ -1971,7 +1971,7 @@ async def pipeline_queue_add_article(request: Request, user: dict = Depends(requ
     items.append(entry)
     _save_fsn_queue(items)
 
-    msg = "Article added. Paste it in your Claude Code chat to generate the FSN draft, then send to generation."
+    msg = "Article added."
     return RedirectResponse(
         f"/pipeline-queue?msg={msg.replace(' ', '+')}",
         status_code=303,
