@@ -142,6 +142,8 @@ NAV = """
     }
     _loadCounts();
     setInterval(_loadCounts,30000);
+    // Keepalive — ping every 4 minutes so Render doesn't spin down during active use
+    setInterval(function(){fetch('/api/ping').catch(function(){});},240000);
   })();
   </script>
 """
@@ -238,10 +240,8 @@ def render_wire_page(clusters: list[dict], error_sources: list[tuple[str, str]],
         <td data-label="Updated" class="{fresh_class}">{escape(c.get('updated_ago', '-'))}{' <span class="new-dot">&bull;</span>' if c.get('is_fresh') else ''}</td>
         <td data-label="Status"><span class="badge status-{escape(c['status'])}">{escape(c['status'])}</span></td>
         <td data-label="Queue" style="white-space:nowrap">
-          <form method="post" action="/stories/{c['id']}/handoff" style="margin:0">
-            <input type="hidden" name="return_to" value="/">
-            <button type="submit" style="font-size:10px;padding:2px 8px;background:#0a1a28;border:1px solid #1a3a5a;color:#60a5fa;border-radius:3px;cursor:pointer;white-space:nowrap">&#43; Queue</button>
-          </form>
+          <button type="button" onclick="queueStory(this,{c['id']})"
+            style="font-size:10px;padding:2px 8px;background:#0a1a28;border:1px solid #1a3a5a;color:#60a5fa;border-radius:3px;cursor:pointer;white-space:nowrap">&#43; Queue</button>
         </td>
       </tr>""")
 
@@ -1558,6 +1558,14 @@ function useCustomAngle(cid, btn) {
   })
   .catch(function(){ if (status) status.textContent = 'Failed'; btn.disabled = false; });
 }
+function queueStory(btn, storyId) {
+  btn.disabled = true; btn.textContent = 'Queuing...';
+  var fd = new FormData(); fd.append('return_to', '/');
+  fetch('/stories/'+storyId+'/handoff', {method:'POST', body:fd})
+    .then(function(r){ return r.ok ? {ok:true} : r.text().then(function(t){throw new Error(t.slice(0,100));}); })
+    .then(function(){ btn.textContent='✓ Queued'; btn.style.background='#0a2010'; btn.style.borderColor='#4ade80'; btn.style.color='#4ade80'; btn.style.cursor='default'; })
+    .catch(function(e){ btn.disabled=false; btn.textContent='+ Queue'; alert('Error: '+e.message); });
+}
 </script>"""
 
     rec_age_str = ""
@@ -2475,12 +2483,14 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
     </div>
 
     <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <span style="color:#c7cbd4;font-size:13px;font-weight:600">Story Angles</span>
         <button type="button" id="angles-btn-{cid}" onclick="getAngles('{cid}')"
           style="font-size:11px;padding:4px 12px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:4px">
           &#128269; Get Angles</button>
       </div>
+      <textarea id="angles-notes-{cid}" placeholder="Direction or notes for the AI (optional) — e.g. &quot;focus on economic impact&quot; or &quot;make it a poll angle&quot;" rows="2"
+        style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:6px;font-family:inherit;resize:vertical;margin-bottom:8px"></textarea>
       <div id="angles-{cid}">
         <div style="color:#8b93a3;font-size:12px">Click "Get Angles" to generate 3 content angles for this story.</div>
       </div>
@@ -2553,12 +2563,14 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
     </div>
 
     <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <span style="color:#c7cbd4;font-size:13px;font-weight:600">Captions</span>
         <button type="button" onclick="regenAllCaps('{cid}')"
           style="font-size:10px;padding:3px 10px;background:#0a1020;border:1px solid #2a3555;color:#facc15;cursor:pointer;border-radius:3px">
           &#8635; Rewrite All</button>
       </div>
+      <textarea id="cap-notes-{cid}" placeholder="Notes for the AI (optional) — e.g. &quot;make it angrier&quot;, &quot;shorter sentences&quot;, &quot;lead with the tariff number&quot;" rows="2"
+        style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:6px;font-family:inherit;resize:vertical;margin-bottom:10px"></textarea>
       {cap_block("Short (10-15 words)", "short", 3)}
       {cap_block("Medium (40-60 words)", "medium", 5)}
       {cap_block("Long (100-150 words)", "long", 8)}
@@ -2609,9 +2621,10 @@ var _ws_angles = {{}};
 function getAngles(cid) {{
   var btn = document.getElementById('angles-btn-'+cid);
   var div = document.getElementById('angles-'+cid);
+  var notes = (document.getElementById('angles-notes-'+cid)||{{}}).value||'';
   if (btn) btn.textContent = 'Loading...';
   if (div) div.innerHTML = '<div style="color:#8b93a3;font-size:12px">Getting angles...</div>';
-  fetch('/pipeline-queue/expand-angles',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid}})
+  fetch('/pipeline-queue/expand-angles',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&notes='+encodeURIComponent(notes)}})
   .then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
   .then(function(d) {{
     if (btn) btn.innerHTML = '&#8635; Refresh Angles';
@@ -2685,20 +2698,22 @@ function genContent(cid, voice) {{
 function regenCap(cid, variant) {{
   var el = document.getElementById('cap-'+variant+'-'+cid);
   if (!el) return;
-  var hl = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var notes = (document.getElementById('cap-notes-'+cid)||{{}}).value||'';
   el.style.opacity='0.4';
   fetch('/pipeline-queue/rewrite-caption',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'cluster_id='+cid+'&variant='+variant+'&headline='+encodeURIComponent(hl)
+    body:'cluster_id='+cid+'&variant='+variant+'&headline='+encodeURIComponent(hl)+'&notes='+encodeURIComponent(notes)
   }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
   .then(function(d){{ el.style.opacity='1'; if(d.text) el.value=d.text; else if(d.error) el.style.border='1px solid #f87171'; }})
   .catch(function(e){{ el.style.opacity='1'; el.style.border='1px solid #f87171'; }});
 }}
 function regenAllCaps(cid) {{
-  var hl = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var notes = (document.getElementById('cap-notes-'+cid)||{{}}).value||'';
   var st = document.getElementById('content-gen-status-'+cid);
   if(st) st.textContent='Rewriting all captions...';
   fetch('/pipeline-queue/generate-all-captions',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'cluster_id='+cid+'&headline='+encodeURIComponent(hl)
+    body:'cluster_id='+cid+'&headline='+encodeURIComponent(hl)+'&notes='+encodeURIComponent(notes)
   }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
   .then(function(d){{
     if(st) st.textContent='';

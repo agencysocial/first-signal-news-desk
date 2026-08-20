@@ -844,6 +844,12 @@ def health():
         session.close()
 
 
+@app.get("/api/ping")
+def api_ping():
+    """Keepalive endpoint — prevents Render from spinning down during active sessions."""
+    return JSONResponse({"ok": True})
+
+
 @app.get("/api/queue-counts")
 def api_queue_counts(user: dict = Depends(require_user)):
     """Return counts of FSN queue items by status for the header status bar."""
@@ -2070,6 +2076,7 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     form = await request.form()
     cluster_id = int(form.get("cluster_id") or 0)
     variant    = (form.get("variant") or "short").strip()
+    notes      = str(form.get("notes", "")).strip()
 
     key = _get_anthropic_key()
     if not key:
@@ -2080,18 +2087,18 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
         return JSONResponse({"error": "Item not found"}, status_code=404)
 
     draft    = item.get("draft") or {}
-    # Use headline from form if provided (user may have edited it without saving draft yet)
     form_headline = str(form.get("headline", "")).strip()
     headline = form_headline or draft.get("headline") or item.get("text") or ""
     captions = draft.get("captions") or {}
 
-    bands = {"short": "30-50", "medium": "80-120", "long": "250-350", "extra_long": "450-600"}
-    band  = bands.get(variant, "80-120")
+    bands = {"short": "10-15", "medium": "40-60", "long": "100-150", "extra_long": "200-300"}
+    band  = bands.get(variant, "40-60")
     article_note = (
         " Write a full Facebook news article: lead paragraph states the facts, "
         "body paragraphs add context and accountability, closing line is the hook."
         if variant in ("long", "extra_long") else ""
     )
+    notes_line = f"\nOperator notes: {notes}" if notes else ""
 
     system = (
         _FSN_AMERICA_FIRST_VOICE + "\n\n"
@@ -2100,8 +2107,8 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     user_msg = (
         f"Headline: {headline}\n"
         f"Current {variant} caption: {captions.get(variant, '')}\n\n"
-        f"Rewrite the {variant} caption. Word count: {band} words.{article_note} "
-        f"Short and medium captions must end with an agreement hook (Do you agree? / Right? / Yes or No?). "
+        f"Rewrite the {variant} caption. Strict word count: {band} words.{article_note} "
+        f"Short and medium captions must end with an agreement hook (Do you agree? / Right? / Yes or No?).{notes_line} "
         "Return ONLY the new caption text."
     )
 
@@ -2131,6 +2138,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
     form = await request.form()
     cluster_id    = int(form.get("cluster_id") or 0)
     form_headline = str(form.get("headline", "")).strip()
+    notes         = str(form.get("notes", "")).strip()
 
     key = _get_anthropic_key()
     if not key:
@@ -2144,6 +2152,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
     headline = form_headline or draft.get("headline") or item.get("text") or ""
     tag      = draft.get("tag") or ""
     story    = item.get("text") or ""
+    notes_line = f"\nOperator notes: {notes}" if notes else ""
 
     system = (
         _FSN_AMERICA_FIRST_VOICE + "\n\n"
@@ -2153,7 +2162,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
         "Output ONLY valid JSON — no explanation, no markdown fences."
     )
     user_msg = (
-        f"Story: {story}\nHeadline: {headline}\nTag: {tag}\n\n"
+        f"Story: {story}\nHeadline: {headline}\nTag: {tag}{notes_line}\n\n"
         "Write all 4 Facebook caption variants and a first comment. Strict word counts:\n"
         "- short: 10-15 words, punchy hook, ends with agreement hook\n"
         "- medium: 40-60 words, 1-2 sharp sentences, ends with agreement hook\n"
@@ -2308,6 +2317,7 @@ async def pipeline_queue_expand_angles(request: Request, user: dict = Depends(re
     """Suggest 3 FSN story angles for a pending item before drafting."""
     form = await request.form()
     cluster_id = int(form.get("cluster_id") or 0)
+    notes      = str(form.get("notes", "")).strip()
 
     key = _get_anthropic_key()
     if not key:
@@ -2339,7 +2349,8 @@ Output ONLY valid JSON:
 }
 Each angle must be meaningfully different in framing. No em-dashes."""
 
-    user_msg = f"Story: {headline}\nSources:\n{source_lines}\n\nSuggest 3 FSN angles."
+    notes_line = f"\nOperator direction: {notes}" if notes else ""
+    user_msg = f"Story: {headline}\nSources:\n{source_lines}{notes_line}\n\nSuggest 3 FSN angles."
 
     try:
         import anthropic
