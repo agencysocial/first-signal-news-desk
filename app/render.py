@@ -2618,6 +2618,26 @@ function saveDraft(cid) {{
   }}).catch(function(e){{ if(st) st.textContent='Save failed: '+e.message; }});
 }}
 var _ws_angles = {{}};
+function _esc(s){{ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }}
+function _renderAngles(cid, angles, div) {{
+  var typeC = {{accountability:'#f87171',outrage:'#fb923c',breaking:'#facc15',vindication:'#4ade80',poll:'#60a5fa',analysis:'#c084fc'}};
+  var html = angles.map(function(a,i){{
+    return '<div style="background:#11151f;border:1px solid #2a3555;border-radius:5px;padding:10px;margin-bottom:8px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+      +'<span style="color:'+(typeC[a.angle_type]||'#8b93a3')+';font-size:10px;font-weight:700;text-transform:uppercase">'+_esc(a.angle_type)+'</span>'
+      +'<button type="button" data-cid="'+_esc(cid)+'" data-idx="'+i+'" class="apply-angle-btn" style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use This Angle</button>'
+      +'</div>'
+      +'<div style="color:#facc15;font-size:13px;font-weight:600;margin-bottom:4px">'+_esc(a.hook)+'</div>'
+      +'<div style="color:#e6e8ec;font-size:12px;margin-bottom:4px">'+_esc(a.caption_lead)+'</div>'
+      +'<div style="display:flex;gap:10px;font-size:11px;color:#8b93a3;flex-wrap:wrap">'
+      +'<span>Tag: <b style="color:#f87171">'+_esc(a.tag)+'</b></span>'
+      +'<span>Scene: '+_esc(a.image_scene)+'</span>'
+      +'</div>'
+      +'<div style="color:#8b93a3;font-size:11px;font-style:italic;margin-top:4px">'+_esc(a.why)+'</div>'
+      +'</div>';
+  }}).join('');
+  if (div) div.innerHTML = html || '<div style="color:#f87171">No angles returned</div>';
+}}
 function getAngles(cid) {{
   var btn = document.getElementById('angles-btn-'+cid);
   var div = document.getElementById('angles-'+cid);
@@ -2625,33 +2645,19 @@ function getAngles(cid) {{
   if (btn) btn.textContent = 'Loading...';
   if (div) div.innerHTML = '<div style="color:#8b93a3;font-size:12px">Getting angles...</div>';
   fetch('/pipeline-queue/expand-angles',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&notes='+encodeURIComponent(notes)}})
-  .then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
-  .then(function(d) {{
-    if (btn) btn.innerHTML = '&#8635; Refresh Angles';
-    if (d.error) {{ if(div) div.innerHTML='<div style="color:#f87171">Error: '+d.error+'</div>'; return; }}
-    _ws_angles[cid] = d.angles || [];
-    var typeC = {{accountability:'#f87171',outrage:'#fb923c',breaking:'#facc15',vindication:'#4ade80',poll:'#60a5fa',analysis:'#c084fc'}};
-    function _esc(s){{ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }}
-    var html = _ws_angles[cid].map(function(a,i){{
-      return '<div style="background:#11151f;border:1px solid #2a3555;border-radius:5px;padding:10px;margin-bottom:8px">'
-        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-        +'<span style="color:'+(typeC[a.angle_type]||'#8b93a3')+';font-size:10px;font-weight:700;text-transform:uppercase">'+_esc(a.angle_type)+'</span>'
-        +'<button type="button" data-cid="'+_esc(cid)+'" data-idx="'+i+'" class="apply-angle-btn" style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use This Angle</button>'
-        +'</div>'
-        +'<div style="color:#facc15;font-size:13px;font-weight:600;margin-bottom:4px">'+_esc(a.hook)+'</div>'
-        +'<div style="color:#e6e8ec;font-size:12px;margin-bottom:4px">'+_esc(a.caption_lead)+'</div>'
-        +'<div style="display:flex;gap:10px;font-size:11px;color:#8b93a3;flex-wrap:wrap">'
-        +'<span>Tag: <b style="color:#f87171">'+_esc(a.tag)+'</b></span>'
-        +'<span>Scene: '+_esc(a.image_scene)+'</span>'
-        +'</div>'
-        +'<div style="color:#8b93a3;font-size:11px;font-style:italic;margin-top:4px">'+_esc(a.why)+'</div>'
-        +'</div>';
-    }}).join('');
-    if (div) div.innerHTML = html || '<div style="color:#f87171">No angles returned</div>';
-  }}).catch(function(err) {{
-    if (btn) btn.innerHTML = '&#9888; Error — retry';
-    if (div) div.innerHTML = '<div style="color:#f87171">Error: '+err.message+'</div>';
-  }});
+  .then(function(r){{
+    if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}});
+    if(btn) btn.innerHTML='&#8635; Refresh Angles';
+    var reader=r.body.getReader(); var dec=new TextDecoder(); var buf='';
+    function pump(){{ reader.read().then(function(res){{
+      if(!res.done){{ buf+=dec.decode(res.value); pump(); return; }}
+      var d; try{{ d=JSON.parse(buf); }}catch(ex){{ if(div) div.innerHTML='<div style="color:#f87171">Parse error</div>'; return; }}
+      if(d.error){{ if(div) div.innerHTML='<div style="color:#f87171">Error: '+d.error+'</div>'; return; }}
+      _ws_angles[cid] = d.angles || [];
+      _renderAngles(cid, _ws_angles[cid], div);
+    }}); }}
+    pump();
+  }}).catch(function(e){{ if(btn) btn.innerHTML='&#9888; Error'; if(div) div.innerHTML='<div style="color:#f87171">Error: '+e.message+'</div>'; }});
 }}
 function applyAngle(cid, idx) {{
   var a = (_ws_angles[cid]||[])[idx];
@@ -2700,12 +2706,16 @@ function regenCap(cid, variant) {{
   if (!el) return;
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
   var notes = (document.getElementById('cap-notes-'+cid)||{{}}).value||'';
-  el.style.opacity='0.4';
+  el.style.opacity='0.4'; el.value='';
   fetch('/pipeline-queue/rewrite-caption',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'cluster_id='+cid+'&variant='+variant+'&headline='+encodeURIComponent(hl)+'&notes='+encodeURIComponent(notes)
-  }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
-  .then(function(d){{ el.style.opacity='1'; if(d.text) el.value=d.text; else if(d.error) el.style.border='1px solid #f87171'; }})
-  .catch(function(e){{ el.style.opacity='1'; el.style.border='1px solid #f87171'; }});
+  }}).then(function(r){{
+    if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}});
+    el.style.opacity='1';
+    var reader=r.body.getReader(); var dec=new TextDecoder();
+    function pump(){{ reader.read().then(function(res){{ if(res.done) return; el.value+=dec.decode(res.value); pump(); }}); }}
+    pump();
+  }}).catch(function(e){{ el.style.opacity='1'; el.style.border='1px solid #f87171'; }});
 }}
 function regenAllCaps(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
@@ -2714,15 +2724,21 @@ function regenAllCaps(cid) {{
   if(st) st.textContent='Rewriting all captions...';
   fetch('/pipeline-queue/generate-all-captions',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'cluster_id='+cid+'&headline='+encodeURIComponent(hl)+'&notes='+encodeURIComponent(notes)
-  }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
-  .then(function(d){{
-    if(st) st.textContent='';
-    if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
-    var keys=['short','medium','long','extra_long'];
-    keys.forEach(function(k){{ var el=document.getElementById('cap-'+k+'-'+cid); if(el&&d.captions&&d.captions[k]) el.value=d.captions[k]; }});
-    var fcEl=document.getElementById('cap-first_comment-'+cid);
-    if(fcEl&&d.first_comment) fcEl.value=d.first_comment;
-    if(st){{ st.textContent='Done!'; setTimeout(function(){{st.textContent='';}},2000); }}
+  }}).then(function(r){{
+    if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}});
+    var reader=r.body.getReader(); var dec=new TextDecoder(); var buf='';
+    function pump(){{ reader.read().then(function(res){{
+      if(!res.done){{ buf+=dec.decode(res.value); pump(); return; }}
+      if(st) st.textContent='';
+      try{{ var d=JSON.parse(buf);
+        var keys=['short','medium','long','extra_long'];
+        keys.forEach(function(k){{ var el=document.getElementById('cap-'+k+'-'+cid); if(el&&d.captions&&d.captions[k]) el.value=d.captions[k]; }});
+        var fcEl=document.getElementById('cap-first_comment-'+cid);
+        if(fcEl&&d.first_comment) fcEl.value=d.first_comment;
+        if(st){{ st.textContent='Done!'; setTimeout(function(){{st.textContent='';}},2000); }}
+      }}catch(ex){{ if(st) st.textContent='Parse error'; }}
+    }}); }}
+    pump();
   }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});
 }}
 var _imgPollTimer = {{}};

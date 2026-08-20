@@ -12,7 +12,7 @@ from pathlib import Path
 import httpx
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import BackgroundTasks, Depends, FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, func, text as _sql_text
 from starlette.middleware.sessions import SessionMiddleware
@@ -2113,21 +2113,29 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     )
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=key)
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=1200,
-            system=system,
-            messages=[{"role": "user", "content": user_msg}],
-        )
-        new_text = resp.content[0].text.strip().strip('"').strip("'")
-        # Save back to queue and DB
-        if not item.get("draft"):
-            item["draft"] = {}
-        item["draft"].setdefault("captions", {})[variant] = new_text
-        _update_cluster_fsn(cluster_id, draft=item["draft"])
-        _save_fsn_queue(items)
-        return JSONResponse({"ok": True, "variant": variant, "text": new_text})
+        import anthropic as _ant
+        client = _ant.Anthropic(api_key=key)
+
+        collected = []
+
+        def _stream():
+            with client.messages.stream(
+                model="claude-haiku-4-5-20251001", max_tokens=600,
+                system=system,
+                messages=[{"role": "user", "content": user_msg}],
+            ) as stream:
+                for chunk in stream.text_stream:
+                    collected.append(chunk)
+                    yield chunk
+            # After stream ends, persist to DB (generator has finished)
+            new_text = "".join(collected).strip().strip('"').strip("'")
+            if not item.get("draft"):
+                item["draft"] = {}
+            item["draft"].setdefault("captions", {})[variant] = new_text
+            _update_cluster_fsn(cluster_id, draft=item["draft"])
+            _save_fsn_queue(items)
+
+        return StreamingResponse(_stream(), media_type="text/plain")
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
@@ -2173,34 +2181,44 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
         'Return JSON: {"short":"...","medium":"...","long":"...","extra_long":"...","first_comment":"..."}'
     )
 
+    import re as _re
     try:
-        import anthropic, re as _re
-        client = anthropic.Anthropic(api_key=key)
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=2500,
-            system=system,
-            messages=[{"role": "user", "content": user_msg}],
-        )
-        raw = resp.content[0].text.strip()
-        m = _re.search(r'\{.*\}', raw, _re.S)
-        if not m:
-            return JSONResponse({"error": f"No JSON in response: {raw[:200]}"}, status_code=500)
-        data = json.loads(m.group())
+        import anthropic as _ant
+        client = _ant.Anthropic(api_key=key)
+        collected = []
 
-        if not item.get("draft"):
-            item["draft"] = {}
-        item["draft"].setdefault("captions", {}).update({
-            "short":      data.get("short", ""),
-            "medium":     data.get("medium", ""),
-            "long":       data.get("long", ""),
-            "extra_long": data.get("extra_long", ""),
-        })
-        if data.get("first_comment"):
-            item["draft"]["first_comment"] = data["first_comment"]
-        _update_cluster_fsn(cluster_id, draft=item["draft"])
-        _save_fsn_queue(items)
-        return JSONResponse({"ok": True, "captions": item["draft"]["captions"],
-                             "first_comment": item["draft"].get("first_comment", "")})
+        def _stream():
+            with client.messages.stream(
+                model="claude-haiku-4-5-20251001", max_tokens=2500,
+                system=system,
+                messages=[{"role": "user", "content": user_msg}],
+            ) as stream:
+                for chunk in stream.text_stream:
+                    collected.append(chunk)
+                    yield chunk
+            # Parse and persist once streaming finishes
+            raw = "".join(collected).strip()
+            m = _re.search(r'\{.*\}', raw, _re.S)
+            if not m:
+                return
+            try:
+                data = json.loads(m.group())
+            except Exception:
+                return
+            if not item.get("draft"):
+                item["draft"] = {}
+            item["draft"].setdefault("captions", {}).update({
+                "short":      data.get("short", ""),
+                "medium":     data.get("medium", ""),
+                "long":       data.get("long", ""),
+                "extra_long": data.get("extra_long", ""),
+            })
+            if data.get("first_comment"):
+                item["draft"]["first_comment"] = data["first_comment"]
+            _update_cluster_fsn(cluster_id, draft=item["draft"])
+            _save_fsn_queue(items)
+
+        return StreamingResponse(_stream(), media_type="text/plain")
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
@@ -2353,20 +2371,19 @@ Each angle must be meaningfully different in framing. No em-dashes."""
     user_msg = f"Story: {headline}\nSources:\n{source_lines}{notes_line}\n\nSuggest 3 FSN angles."
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=key)
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=1024,
-            system=system,
-            messages=[{"role": "user", "content": user_msg}],
-        )
-        raw = resp.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        result = json.loads(raw)
-        return JSONResponse(result)
+        import anthropic as _ant
+        client = _ant.Anthropic(api_key=key)
+
+        def _stream():
+            with client.messages.stream(
+                model="claude-haiku-4-5-20251001", max_tokens=1024,
+                system=system,
+                messages=[{"role": "user", "content": user_msg}],
+            ) as stream:
+                for chunk in stream.text_stream:
+                    yield chunk
+
+        return StreamingResponse(_stream(), media_type="text/plain")
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
