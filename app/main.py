@@ -850,6 +850,43 @@ def api_ping():
     return JSONResponse({"ok": True})
 
 
+@app.get("/api/find-sources")
+def api_find_sources(q: str = "", user: dict = Depends(require_user)):
+    """Search DuckDuckGo for source links related to a story headline."""
+    if not q or len(q) < 5:
+        return JSONResponse({"results": []})
+    import urllib.parse as _up, re as _re
+    query = _up.quote_plus(q + " site:reuters.com OR site:apnews.com OR site:foxnews.com OR site:breitbart.com OR site:nypost.com OR site:washingtonpost.com OR site:nytimes.com OR site:thehill.com OR site:politico.com OR site:thefederalist.com")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        r = httpx.get(f"https://html.duckduckgo.com/html/?q={query}", headers=headers, timeout=8, follow_redirects=True)
+        html = r.text
+        results = []
+        # Parse result blocks from DDG HTML
+        for block in html.split('class="result__body"')[1:6]:
+            title_m = _re.search(r'class="result__a"[^>]*>(.*?)</a>', block, _re.S)
+            url_m   = _re.search(r'class="result__url"[^>]*>\s*(.*?)\s*</a>', block, _re.S)
+            snip_m  = _re.search(r'class="result__snippet"[^>]*>(.*?)</span>', block, _re.S)
+            if not title_m:
+                continue
+            def _strip(s):
+                return _re.sub(r'<[^>]+>', '', s or '').strip()
+            raw_url = _strip(url_m.group(1)) if url_m else ""
+            if raw_url and not raw_url.startswith("http"):
+                raw_url = "https://" + raw_url
+            results.append({
+                "title":   _strip(title_m.group(1)),
+                "url":     raw_url,
+                "snippet": _strip(snip_m.group(1)) if snip_m else "",
+            })
+        return JSONResponse({"results": results[:4]})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc), "results": []}, status_code=500)
+
+
 @app.get("/api/queue-counts")
 def api_queue_counts(user: dict = Depends(require_user)):
     """Return counts of FSN queue items by status for the header status bar."""

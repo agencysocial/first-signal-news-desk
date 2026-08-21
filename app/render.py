@@ -2478,8 +2478,14 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
   <div>
 
     <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
-      <div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Source Stories</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px">Source Stories</div>
+        <button type="button" onclick="findSources('{cid}',{json.dumps(text[:120])})"
+          style="font-size:10px;padding:2px 9px;background:#0a1020;border:1px solid #2a3555;color:#60a5fa;cursor:pointer;border-radius:3px">
+          &#128269; Find Sources</button>
+      </div>
       {src_rows}
+      <div id="found-sources-{cid}" style="margin-top:6px"></div>
     </div>
 
     <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
@@ -2602,6 +2608,27 @@ function copyField(id) {{
 }}
 function onTypeChange(cid, sel) {{
   fetch('/pipeline-queue/set-post-type', {{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&post_type='+encodeURIComponent(sel.value)}});
+}}
+function findSources(cid, query) {{
+  var div = document.getElementById('found-sources-'+cid);
+  if (!div) return;
+  div.innerHTML = '<div style="color:#8b93a3;font-size:11px">Searching...</div>';
+  fetch('/api/find-sources?q='+encodeURIComponent(query))
+  .then(function(r){{ return r.ok ? r.json() : r.json().then(function(e){{throw new Error(e.error||r.status)}}); }})
+  .then(function(d){{
+    if (!d.results || !d.results.length) {{ div.innerHTML='<div style="color:#8b93a3;font-size:11px">No results found.</div>'; return; }}
+    var html = '<div style="border-top:1px solid #1a1f2b;margin-top:6px;padding-top:6px">'
+      + '<div style="color:#8b93a3;font-size:10px;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Web Results</div>';
+    d.results.forEach(function(r){{
+      html += '<div style="padding:5px 0;border-bottom:1px solid #111520">'
+        + '<a href="'+_esc(r.url)+'" target="_blank" rel="noopener" style="color:#60a5fa;font-size:12px;text-decoration:none;display:block;line-height:1.4">'+_esc(r.title)+'</a>'
+        + '<div style="color:#8b93a3;font-size:10px;margin-top:2px">'+_esc((r.url||'').split('/').slice(0,3).join('/'))+'</div>'
+        + (r.snippet ? '<div style="color:#c0c8d8;font-size:11px;margin-top:3px">'+_esc(r.snippet)+'</div>' : '')
+        + '</div>';
+    }});
+    html += '</div>';
+    div.innerHTML = html;
+  }}).catch(function(e){{ div.innerHTML='<div style="color:#f87171;font-size:11px">Search error: '+e.message+'</div>'; }});
 }}
 function saveDraft(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value || '';
