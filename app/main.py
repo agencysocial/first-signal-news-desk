@@ -2050,7 +2050,7 @@ Portrait cards are cards where scene contains "likeness" or "portrait". Cap is 2
         import anthropic
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=1024,
+            model="claude-sonnet-5", max_tokens=1024,
             system=system,
             messages=[{"role": "user", "content": user_msg}],
         )
@@ -2089,7 +2089,10 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     draft    = item.get("draft") or {}
     form_headline = str(form.get("headline", "")).strip()
     headline = form_headline or draft.get("headline") or item.get("text") or ""
+    story    = item.get("text") or ""
     captions = draft.get("captions") or {}
+    sources  = item.get("sources") or []
+    source_lines = "\n".join(f"  - {s.get('source_name','')}: {s.get('headline','')}" for s in sources[:3])
 
     bands = {"short": "10-15", "medium": "40-60", "long": "100-150", "extra_long": "200-300"}
     band  = bands.get(variant, "40-60")
@@ -2104,12 +2107,15 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
         _FSN_AMERICA_FIRST_VOICE + "\n\n"
         "Output ONLY the rewritten caption text — no explanation, no quotes around it."
     )
+    story_block = f"Story text: {story}\n" if story else ""
+    sources_block = f"Sources:\n{source_lines}\n" if source_lines else ""
     user_msg = (
-        f"Headline: {headline}\n"
+        f"{story_block}{sources_block}"
+        f"Post headline: {headline}\n"
         f"Current {variant} caption: {captions.get(variant, '')}\n\n"
         f"Rewrite the {variant} caption. Strict word count: {band} words.{article_note} "
         f"Short and medium captions must end with an agreement hook (Do you agree? / Right? / Yes or No?).{notes_line} "
-        "Return ONLY the new caption text."
+        "Use ONLY facts from the story text above. Return ONLY the new caption text."
     )
 
     try:
@@ -2120,7 +2126,7 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
 
         def _stream():
             with client.messages.stream(
-                model="claude-haiku-4-5-20251001", max_tokens=600,
+                model="claude-sonnet-5", max_tokens=600,
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
             ) as stream:
@@ -2160,24 +2166,29 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
     headline = form_headline or draft.get("headline") or item.get("text") or ""
     tag      = draft.get("tag") or ""
     story    = item.get("text") or ""
+    sources  = item.get("sources") or []
+    source_lines = "\n".join(f"  - {s.get('source_name','')}: {s.get('headline','')}" for s in sources[:3])
     notes_line = f"\nOperator notes: {notes}" if notes else ""
 
     system = (
         _FSN_AMERICA_FIRST_VOICE + "\n\n"
         "Short ends with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:). "
+        "Medium also ends with an agreement hook. "
         "Long and Extra Long are FULL FACEBOOK ARTICLES — lead with the biggest fact, "
         "build the case paragraph by paragraph, name names, cite what happened, end with the hook. "
         "Output ONLY valid JSON — no explanation, no markdown fences."
     )
+    sources_block = f"\nSources:\n{source_lines}" if source_lines else ""
     user_msg = (
-        f"Story: {story}\nHeadline: {headline}\nTag: {tag}{notes_line}\n\n"
+        f"Story: {story}{sources_block}\nHeadline: {headline}\nTag: {tag}{notes_line}\n\n"
         "Write all 4 Facebook caption variants and a first comment. Strict word counts:\n"
         "- short: 10-15 words, punchy hook, ends with agreement hook\n"
         "- medium: 40-60 words, 1-2 sharp sentences, ends with agreement hook\n"
         "- long: 100-150 words, 2-3 paragraphs, full context, ends with hook\n"
         "- extra_long: 200-300 words, complete Facebook article with background, context, "
         "why it matters to America First readers, strong closing hook\n"
-        "- first_comment: 5-15 words, invites reply, no question mark required\n\n"
+        "- first_comment: 25-45 words — add one specific detail or context from the story not in the caption, "
+        "then end with a direct question to the reader (e.g. 'What do you think about this?')\n\n"
         'Return JSON: {"short":"...","medium":"...","long":"...","extra_long":"...","first_comment":"..."}'
     )
 
@@ -2189,7 +2200,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
 
         def _stream():
             with client.messages.stream(
-                model="claude-haiku-4-5-20251001", max_tokens=2500,
+                model="claude-sonnet-5", max_tokens=2500,
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
             ) as stream:
@@ -2299,7 +2310,7 @@ async def pipeline_queue_write_video_script(request: Request, user: dict = Depen
         import anthropic, re as _re
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=4000,
+            model="claude-sonnet-5", max_tokens=4000,
             system=_VIDEO_SYSTEM,
             messages=[{"role": "user", "content": user_msg}],
         )
@@ -2376,7 +2387,7 @@ Each angle must be meaningfully different in framing. No em-dashes."""
 
         def _stream():
             with client.messages.stream(
-                model="claude-haiku-4-5-20251001", max_tokens=1024,
+                model="claude-sonnet-5", max_tokens=1024,
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
             ) as stream:
@@ -2447,7 +2458,7 @@ Output ONLY valid JSON:
         import anthropic
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=512,
+            model="claude-sonnet-5", max_tokens=512,
             system=system,
             messages=[{"role": "user", "content": f"Story: {headline}\n\nWrite 3 TOBI options."}],
         )
@@ -2540,14 +2551,25 @@ async def pipeline_queue_apply_angle(request: Request, user: dict = Depends(requ
 
 # ── Voice context injected into every AI generation call ──────────────────────
 _FSN_VOICE_CONTEXT = (
-    "CURRENT POLITICAL CONTEXT (2026): Donald Trump is the 47th President of the United States "
+    "CURRENT POLITICAL CONTEXT (August 2026): Donald Trump is the 47th President of the United States "
     "(since January 20, 2025). Kamala Harris lost the 2024 presidential election. Joe Biden is "
     "the former president. Key figures: JD Vance (VP), Elon Musk (DOGE), Marco Rubio (Secretary of State), "
     "Pete Hegseth (Secretary of Defense), Kash Patel (FBI Director), Robert F. Kennedy Jr. (HHS Secretary). "
+    "2025 midterm/state election results changed many offices — do NOT use training-data assumptions about "
+    "who currently holds a position. Always derive titles and offices from the story text provided to you. "
     "Major ongoing issues: border security (record deportations), government spending cuts (DOGE), "
     "tariffs/trade war, deep state accountability, immigration enforcement, economic nationalism. "
-    "Write as if today is 2026. Never reference Biden as current president. Never say 'the Biden administration' "
-    "for anything happening now."
+    "Never reference Biden as current president. Never say 'the Biden administration' for anything happening now."
+)
+
+_FSN_STORY_GROUNDING = (
+    "\n\nCRITICAL — USE THE STORY TEXT AS YOUR ONLY SOURCE OF FACTS:\n"
+    "Your training data is outdated for current events. The story text provided below is the authoritative source. "
+    "Use ONLY the facts in that text: the person's current title, what they said or did, the specific details. "
+    "Do NOT substitute titles, positions, or facts from your training memory. "
+    "If the story says someone is Governor, they are Governor — do not call them Representative or Senator. "
+    "If the story gives a specific number, quote, vote, or date, use it exactly. "
+    "If a detail is not in the story text, do not invent it."
 )
 
 _FSN_NEWS_VOICE = (
@@ -2555,7 +2577,7 @@ _FSN_NEWS_VOICE = (
     "Tone: factual, direct, credible. Who/what/when/where up front. "
     "No partisan adjectives, no opinion framing, no agreement hooks. "
     "Accurate attribution for all claims. Short punchy sentences. No em-dashes. "
-    + _FSN_VOICE_CONTEXT
+    + _FSN_VOICE_CONTEXT + _FSN_STORY_GROUNDING
 )
 
 _FSN_AMERICA_FIRST_VOICE = (
@@ -2564,7 +2586,7 @@ _FSN_AMERICA_FIRST_VOICE = (
     "name the real consequences. Take a clear side. End captions with an agreement hook "
     "(Do you agree? / Right? / Yes or No? / Be honest: / Who agrees?). "
     "No em-dashes, no hashtags, no emojis. Never fabricate a quote, charge, vote, or statistic. "
-    + _FSN_VOICE_CONTEXT
+    + _FSN_VOICE_CONTEXT + _FSN_STORY_GROUNDING
 )
 
 
@@ -3067,7 +3089,8 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
         "- medium: 40-60 words, 1-2 sharp sentences, ends with agreement hook\n"
         "- long: 100-150 words, 2-3 paragraphs, full context, ends with hook\n"
         "- extra_long: 200-300 words, complete Facebook article with background, context, why it matters, strong closing hook\n"
-        "- first_comment: 5-15 words, invites reply, no hard CTA required\n\n"
+        "- first_comment: 25-45 words — add one specific detail or context from the story not in the caption, "
+        "then end with a direct question to the reader\n\n"
         'Return JSON: {"short":"...","medium":"...","long":"...","extra_long":"...","first_comment":"..."}'
     )
 
@@ -3075,7 +3098,7 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
         import anthropic as _ant, re as _re
         client = _ant.Anthropic(api_key=key)
         resp = client.messages.create(
-            model="claude-haiku-4-5-20251001", max_tokens=2500,
+            model="claude-sonnet-5", max_tokens=2500,
             system=system,
             messages=[{"role": "user", "content": user_msg}],
         )
