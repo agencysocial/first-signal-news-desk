@@ -1274,24 +1274,31 @@ function generateAllCaptions(cid, btn) {
   if (status) status.textContent = 'Writing 4 variants...';
   var fd = new FormData(); fd.append('cluster_id', cid);
   fetch('/pipeline-queue/generate-all-captions', {method:'POST', body:fd})
-    .then(function(r){return r.json();})
-    .then(function(d){
-      btn.disabled = false; btn.textContent = '✓ Done';
-      if (status) status.textContent = '';
-      if (d.error) { if (status) status.textContent = 'Error: ' + d.error; return; }
-      var caps = d.captions || {};
-      var fc   = d.first_comment || '';
-      var html = '';
-      var labels = {short:'SHORT (10-15w)',medium:'MEDIUM (40-60w)',long:'LONG (100-150w)',extra_long:'EXTRA LONG (200-300w)'};
-      Object.keys(labels).forEach(function(k){
-        if (caps[k]) html += '<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">' + labels[k] + ':</span> <span style="color:#c0c8d8;font-size:11px">' + caps[k] + '</span></div>';
-      });
-      if (fc) html += '<div style="border-top:1px solid #1a1f2b;padding-top:6px;margin-top:4px"><span style="color:#8b93a3;font-size:10px">FIRST COMMENT:</span> <span style="color:#c0c8d8;font-size:11px">' + fc + '</span></div>';
-      var res = document.getElementById('gencaps-result-' + cid);
-      if (res) res.innerHTML = html;
-      btn.style.display = 'none';
+    .then(function(r){
+      if (!r.ok) return r.json().then(function(e){throw new Error(e.error||r.status);});
+      // Route streams raw JSON text — accumulate then parse
+      var reader = r.body.getReader(); var dec = new TextDecoder(); var buf = '';
+      function pump() { reader.read().then(function(res) {
+        if (!res.done) { buf += dec.decode(res.value); pump(); return; }
+        btn.disabled = false; btn.textContent = '✓ Done';
+        if (status) status.textContent = '';
+        var d; try { d = JSON.parse(buf); } catch(ex) { if(status) status.textContent='Parse error'; return; }
+        if (d.error) { if(status) status.textContent='Error: '+d.error; return; }
+        // AI returns flat JSON: {short, medium, long, extra_long, first_comment}
+        var fc = d.first_comment || '';
+        var html = '';
+        var labels = {short:'SHORT (10-15w)',medium:'MEDIUM (40-60w)',long:'LONG (100-150w)',extra_long:'EXTRA LONG (200-300w)'};
+        Object.keys(labels).forEach(function(k){
+          if (d[k]) html += '<div style="margin-bottom:8px"><span style="color:#8b93a3;font-size:10px">' + labels[k] + ':</span> <span style="color:#c0c8d8;font-size:11px">' + d[k] + '</span></div>';
+        });
+        if (fc) html += '<div style="border-top:1px solid #1a1f2b;padding-top:6px;margin-top:4px"><span style="color:#8b93a3;font-size:10px">FIRST COMMENT:</span> <span style="color:#c0c8d8;font-size:11px">' + fc + '</span></div>';
+        var res = document.getElementById('gencaps-result-' + cid);
+        if (res) res.innerHTML = html;
+        btn.style.display = 'none';
+      }); }
+      pump();
     })
-    .catch(function(e){ btn.disabled=false; btn.textContent='Generate All Captions'; if(status) status.textContent='Request failed.'; });
+    .catch(function(e){ btn.disabled=false; btn.textContent='Generate All Captions'; if(status) status.textContent='Error: '+e.message; });
 }
 
 function pickHeadline(cid, idx, btn) {
@@ -1314,18 +1321,21 @@ function rewriteCap(cid, variant, btn) {
   fd.append('cluster_id', cid);
   fd.append('variant', variant);
   fetch('/pipeline-queue/rewrite-caption', {method:'POST', body:fd})
-    .then(function(r){return r.json();})
-    .then(function(d){
-      btn.disabled = false; btn.textContent = orig;
-      if (d.error) { if(statusEl) statusEl.textContent = 'Error: ' + d.error; return; }
-      if (variant === 'short') {
-        var capEl = document.getElementById('cap-short-' + cid);
-        if (capEl) capEl.textContent = d.text;
-      }
-      if (statusEl) statusEl.textContent = '✓ ' + variant + ' rewritten';
-      setTimeout(function(){ if(statusEl) statusEl.textContent=''; }, 3000);
+    .then(function(r){
+      if (!r.ok) return r.json().then(function(e){throw new Error(e.error||r.status);});
+      // Route streams plain text — accumulate then display
+      var capEl = document.getElementById('cap-short-' + cid); // will generalise below
+      var reader = r.body.getReader(); var dec = new TextDecoder(); var buf = '';
+      function pump() { reader.read().then(function(res) {
+        if (!res.done) { buf += dec.decode(res.value); pump(); return; }
+        btn.disabled = false; btn.textContent = orig;
+        var el = document.getElementById('cap-' + variant + '-' + cid);
+        if (el) el.textContent = buf.trim();
+        if (statusEl) { statusEl.textContent = '✓ ' + variant + ' rewritten'; setTimeout(function(){ statusEl.textContent=''; }, 3000); }
+      }); }
+      pump();
     })
-    .catch(function(){ btn.disabled=false; btn.textContent=orig; if(statusEl) statusEl.textContent='Request failed.'; });
+    .catch(function(e){ btn.disabled=false; btn.textContent=orig; if(statusEl) statusEl.textContent='Error: '+e.message; });
 }
 
 function previewSource(cid, btn) {
@@ -2480,7 +2490,7 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
     <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px">Source Stories</div>
-        <button type="button" onclick="findSources('{cid}',{json.dumps(text[:120])})"
+        <button type="button" data-cid="{cid}" data-q="{escape(text[:120])}" onclick="findSources(this.dataset.cid,this.dataset.q)"
           style="font-size:10px;padding:2px 9px;background:#0a1020;border:1px solid #2a3555;color:#60a5fa;cursor:pointer;border-radius:3px">
           &#128269; Find Sources</button>
       </div>
