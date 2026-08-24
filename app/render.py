@@ -1571,10 +1571,12 @@ function useCustomAngle(cid, btn) {
 }
 function queueStory(btn, storyId) {
   btn.disabled = true; btn.textContent = 'Queuing...';
-  var fd = new FormData(); fd.append('return_to', '/');
-  fetch('/stories/'+storyId+'/handoff', {method:'POST', body:fd})
-    .then(function(r){ return r.ok ? {ok:true} : r.text().then(function(t){throw new Error(t.slice(0,100));}); })
-    .then(function(){ btn.textContent='✓ Queued'; btn.style.background='#0a2010'; btn.style.borderColor='#4ade80'; btn.style.color='#4ade80'; btn.style.cursor='default'; })
+  fetch('/stories/'+storyId+'/handoff', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'return_to=/'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.ok){ btn.textContent='✓ Queued'; btn.style.background='#0a2010'; btn.style.borderColor='#4ade80'; btn.style.color='#4ade80'; btn.style.cursor='default'; }
+      else{ btn.disabled=false; btn.textContent='+ Queue'; alert('Error: '+(d.error||'unknown')); }
+    })
     .catch(function(e){ btn.disabled=false; btn.textContent='+ Queue'; alert('Error: '+e.message); });
 }
 </script>"""

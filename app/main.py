@@ -1316,11 +1316,10 @@ def handoff(cluster_id: int, return_to: str = Form("/"), user: dict = Depends(re
             existing_fsn["queue_status"] = "pending"
             cluster.fsn_state = json.dumps(existing_fsn, ensure_ascii=False)
         session.commit()
-        if return_to and return_to != "/stories/" + str(cluster_id):
-            return RedirectResponse(f"{return_to}?msg=Queued", status_code=303)
-        return RedirectResponse(
-            f"/stories/{cluster_id}?msg=Sent+to+First+Signal+Pipeline", status_code=303
-        )
+        # Return JSON so fetch() callers get a clean signal (redirects are swallowed by fetch)
+        return JSONResponse({"ok": True})
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
     finally:
         session.close()
 
