@@ -3523,16 +3523,108 @@ def _render_card_template_preview(slug: str) -> str:
         return """
       <div style="background:#0d111a;border:1px solid #2a3555;border-radius:6px;padding:20px;grid-column:1/-1">
         <h3 style="margin:0 0 4px;color:#e6e8ec;font-size:14px">&#128247; Card Template Preview</h3>
-        <p style="color:#8b93a3;font-size:11px;margin:0 0 12px">Approved layout — breaking news card.</p>
-        <table style="border-collapse:collapse;font-size:12px">
-          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Aspect ratio</td><td style="color:#c0c8d8">4:5 vertical portrait</td></tr>
-          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Output size</td><td style="color:#c0c8d8">1024 &times; 1280 px &nbsp;&middot;&nbsp; PNG &nbsp;&middot;&nbsp; 1K resolution</td></tr>
-          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Photo area</td><td style="color:#c0c8d8">Upper two-thirds</td></tr>
-          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Footer</td><td style="color:#c0c8d8">Solid black</td></tr>
-          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Tag pill</td><td style="color:#c0c8d8">Red <code style="font-size:10px">#D02020</code>, bold white uppercase</td></tr>
-          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Headline</td><td style="color:#c0c8d8">Bold yellow <code style="font-size:10px">#FFDE59</code>, Montserrat uppercase</td></tr>
-          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Watermark</td><td style="color:#c0c8d8">First Signal News, bottom center</td></tr>
-        </table>
+        <p style="color:#8b93a3;font-size:11px;margin:0 0 16px">Approved layout — breaking news card.</p>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+
+          <!-- Card mockup 240×300 -->
+          <div style="position:relative;width:240px;height:300px;flex-shrink:0;border-radius:4px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.5)">
+            <!-- Photo area: dark political night-sky SVG -->
+            <svg viewBox="0 0 240 200" xmlns="http://www.w3.org/2000/svg"
+                 style="position:absolute;top:0;left:0;width:240px;height:200px">
+              <!-- Sky gradient -->
+              <defs>
+                <linearGradient id="fsnsky" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#07090f"/>
+                  <stop offset="100%" stop-color="#1a2540"/>
+                </linearGradient>
+              </defs>
+              <rect width="240" height="200" fill="url(#fsnsky)"/>
+              <!-- Stars -->
+              <circle cx="20" cy="18" r="1" fill="#fff" opacity=".8"/>
+              <circle cx="55" cy="9" r=".8" fill="#fff" opacity=".6"/>
+              <circle cx="90" cy="22" r="1.2" fill="#fff" opacity=".9"/>
+              <circle cx="130" cy="11" r=".7" fill="#fff" opacity=".7"/>
+              <circle cx="170" cy="19" r="1" fill="#fff" opacity=".8"/>
+              <circle cx="210" cy="8" r=".9" fill="#fff" opacity=".6"/>
+              <circle cx="35" cy="40" r=".6" fill="#fff" opacity=".5"/>
+              <circle cx="155" cy="35" r=".8" fill="#fff" opacity=".7"/>
+              <circle cx="195" cy="44" r=".6" fill="#fff" opacity=".5"/>
+              <!-- US Capitol silhouette -->
+              <g fill="#0e1520">
+                <!-- Base / steps -->
+                <rect x="30" y="155" width="180" height="45"/>
+                <!-- Main building body -->
+                <rect x="55" y="130" width="130" height="40"/>
+                <!-- Wings -->
+                <rect x="30" y="138" width="40" height="32"/>
+                <rect x="170" y="138" width="40" height="32"/>
+                <!-- Drum / rotunda -->
+                <ellipse cx="120" cy="120" rx="28" ry="14" fill="#0e1520"/>
+                <rect x="92" y="106" width="56" height="20"/>
+                <!-- Dome -->
+                <ellipse cx="120" cy="100" rx="22" ry="18" fill="#0e1520"/>
+                <rect x="98" y="82" width="44" height="22"/>
+                <!-- Lantern -->
+                <rect x="115" y="70" width="10" height="16"/>
+                <!-- Flag pole -->
+                <rect x="119" y="52" width="2" height="20"/>
+                <!-- Small flag -->
+                <rect x="121" y="52" width="12" height="8" fill="#D02020"/>
+              </g>
+              <!-- Distant glow / horizon -->
+              <ellipse cx="120" cy="170" rx="80" ry="18" fill="#1e2f5a" opacity=".6"/>
+            </svg>
+
+            <!-- Black footer -->
+            <div style="position:absolute;bottom:0;left:0;right:0;height:100px;background:#000;padding:8px 10px 6px">
+              <!-- Red tag pill -->
+              <div style="display:inline-block;background:#D02020;border-radius:3px;padding:2px 6px;margin-bottom:5px">
+                <span style="font-size:7px;font-weight:700;color:#fff;letter-spacing:.5px;text-transform:uppercase">BREAKING</span>
+              </div>
+              <!-- Yellow headline -->
+              <div style="font-size:11px;font-weight:700;color:#FFDE59;text-transform:uppercase;line-height:1.25;font-family:sans-serif">
+                BORDER DEAL COLLAPSES AS SENATE VOTE FAILS
+              </div>
+              <!-- Watermark -->
+              <div style="position:absolute;bottom:5px;left:0;right:0;text-align:center;font-size:7px;color:#fff;opacity:.7;letter-spacing:.3px">
+                First Signal News
+              </div>
+            </div>
+          </div>
+
+          <!-- Right column: logos + spec -->
+          <div style="flex:1;min-width:220px">
+
+            <!-- Logo variants -->
+            <p style="color:#8b93a3;font-size:11px;margin:0 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Logo variants</p>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+              <div style="background:#1a2030;border-radius:4px;padding:8px 12px">
+                <div style="font-size:9px;color:#5a6a8a;margin-bottom:4px">Primary (on light / dark backgrounds)</div>
+                <img src="/static/logo.png" style="height:28px;width:auto" alt="First Signal News logo">
+              </div>
+              <div style="background:#0a0c10;border-radius:4px;padding:8px 12px;border:1px solid #1e2535">
+                <div style="font-size:9px;color:#5a6a8a;margin-bottom:4px">White text (on dark backgrounds)</div>
+                <img src="/static/logo_white_text.png" style="height:28px;width:auto" alt="First Signal News logo white">
+              </div>
+              <div style="background:#f5f5f5;border-radius:4px;padding:8px 12px">
+                <div style="font-size:9px;color:#888;margin-bottom:4px">Black text (on white / light backgrounds)</div>
+                <img src="/static/logo_black_text.png" style="height:28px;width:auto" alt="First Signal News logo black">
+              </div>
+            </div>
+
+            <!-- Layout spec -->
+            <p style="color:#8b93a3;font-size:11px;margin:0 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Layout spec</p>
+            <table style="border-collapse:collapse;font-size:12px;width:100%">
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0;white-space:nowrap">Aspect ratio</td><td style="color:#c0c8d8">4:5 vertical portrait</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0;white-space:nowrap">Output size</td><td style="color:#c0c8d8">1024 &times; 1280 px &nbsp;&middot;&nbsp; PNG &nbsp;&middot;&nbsp; 1K resolution</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Photo area</td><td style="color:#c0c8d8">Upper two-thirds — dramatic US news scene</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Footer</td><td style="color:#c0c8d8">Lower third — solid black <code style="font-size:10px">#000000</code></td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Tag pill</td><td style="color:#c0c8d8">Red <code style="font-size:10px">#D02020</code>, bold white uppercase, 3 words</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Headline</td><td style="color:#c0c8d8">Bold yellow <code style="font-size:10px">#FFDE59</code>, Montserrat uppercase</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Watermark</td><td style="color:#c0c8d8">First Signal News, white, bottom center</td></tr>
+            </table>
+          </div>
+        </div>
       </div>"""
 
     return ""  # No preview for new / unknown brands
