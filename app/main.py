@@ -2415,19 +2415,24 @@ Each angle must be meaningfully different in framing. No em-dashes."""
     user_msg = f"Story: {headline}\nSources:\n{source_lines}{notes_line}\n\nSuggest 3 FSN angles."
 
     try:
-        import anthropic as _ant
+        import anthropic as _ant, re as _re
         client = _ant.Anthropic(api_key=key)
-
-        def _stream():
-            with client.messages.stream(
-                model="claude-sonnet-4-6", max_tokens=1024,
-                system=system,
-                messages=[{"role": "user", "content": user_msg}],
-            ) as stream:
-                for chunk in stream.text_stream:
-                    yield chunk
-
-        return StreamingResponse(_stream(), media_type="text/plain")
+        resp = client.messages.create(
+            model="claude-sonnet-4-6", max_tokens=1024,
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        raw = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "").strip()
+        # Strip markdown fences if model wraps JSON
+        raw = _re.sub(r'^```(?:json)?\s*', '', raw, flags=_re.IGNORECASE)
+        raw = _re.sub(r'\s*```$', '', raw)
+        m = _re.search(r'\{.*\}', raw, _re.S)
+        if not m:
+            return JSONResponse({"error": f"No JSON returned: {raw[:200]}"}, status_code=500)
+        result = json.loads(m.group())
+        return JSONResponse(result)
+    except json.JSONDecodeError as exc:
+        return JSONResponse({"error": f"JSON parse error: {exc}"}, status_code=500)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 

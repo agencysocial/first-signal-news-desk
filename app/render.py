@@ -2685,18 +2685,12 @@ function getAngles(cid) {{
   if (btn) btn.textContent = 'Loading...';
   if (div) div.innerHTML = '<div style="color:#8b93a3;font-size:12px">Getting angles...</div>';
   fetch('/pipeline-queue/expand-angles',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&notes='+encodeURIComponent(notes)}})
-  .then(function(r){{
-    if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}});
+  .then(function(r){{ return r.json(); }})
+  .then(function(d){{
     if(btn) btn.innerHTML='&#8635; Refresh Angles';
-    var reader=r.body.getReader(); var dec=new TextDecoder(); var buf='';
-    function pump(){{ reader.read().then(function(res){{
-      if(!res.done){{ buf+=dec.decode(res.value); pump(); return; }}
-      var d; try{{ d=JSON.parse(buf); }}catch(ex){{ if(div) div.innerHTML='<div style="color:#f87171">Parse error</div>'; return; }}
-      if(d.error){{ if(div) div.innerHTML='<div style="color:#f87171">Error: '+d.error+'</div>'; return; }}
-      _ws_angles[cid] = d.angles || [];
-      _renderAngles(cid, _ws_angles[cid], div);
-    }}); }}
-    pump();
+    if(d.error){{ if(div) div.innerHTML='<div style="color:#f87171">Error: '+d.error+'</div>'; return; }}
+    _ws_angles[cid] = d.angles || [];
+    _renderAngles(cid, _ws_angles[cid], div);
   }}).catch(function(e){{ if(btn) btn.innerHTML='&#9888; Error'; if(div) div.innerHTML='<div style="color:#f87171">Error: '+e.message+'</div>'; }});
 }}
 function applyAngle(cid, idx) {{
