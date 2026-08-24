@@ -2410,12 +2410,18 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     notes_line = f"\nOperator notes: {notes}" if notes else ""
 
     brand = _get_brand(form_brand or item.get("brand_slug") or "first_signal")
+    brand_slug_rw = (brand or {}).get("slug") or "first_signal"
     base_voice = (
         brand.get("voice_instructions") or _FSN_AMERICA_FIRST_VOICE
         if brand else _FSN_AMERICA_FIRST_VOICE
     )
+    if brand_slug_rw == "cathy_talk":
+        hook_instruction = "End with an open personal question inviting the reader to share their experience."
+    else:
+        hook_instruction = "Short and medium captions must end with an agreement hook (Do you agree? / Right? / Yes or No?)."
     system = (
         base_voice + "\n\n"
+        "NEVER use em-dashes (—). "
         "Output ONLY the rewritten caption text — no explanation, no quotes around it."
     )
     story_block = f"Story text: {story}\n" if story else ""
@@ -2425,7 +2431,7 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
         f"Post headline: {headline}\n"
         f"Current {variant} caption: {captions.get(variant, '')}\n\n"
         f"Rewrite the {variant} caption. Strict word count: {band} words.{article_note} "
-        f"Short and medium captions must end with an agreement hook (Do you agree? / Right? / Yes or No?).{notes_line} "
+        f"{hook_instruction}{notes_line} "
         "Use ONLY facts from the story text above. Return ONLY the new caption text."
     )
 
@@ -2483,30 +2489,45 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
     notes_line = f"\nOperator notes: {notes}" if notes else ""
 
     brand = _get_brand(form_brand or item.get("brand_slug") or "first_signal")
+    brand_slug_writing = (brand or {}).get("slug") or "first_signal"
     base_voice = (
         _get_brand_voice_system(brand, task="captions")
         if brand and brand.get("voice_instructions")
         else _FSN_AMERICA_FIRST_VOICE
     )
+    # Brand-specific hook and article framing
+    if brand_slug_writing == "cathy_talk":
+        hook_rule = (
+            "End each caption with an open, personal question that invites women to share their experience "
+            "(e.g. 'Have you felt this way?' / 'What do you think?'). NEVER use em-dashes."
+        )
+        long_frame = "conversational, warm article — lead with why this matters to everyday women and families"
+        audience_frame = "CathyTalk readers"
+    else:
+        hook_rule = (
+            "Short ends with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:). "
+            "Medium also ends with an agreement hook."
+        )
+        long_frame = "FULL FACEBOOK ARTICLE — lead with the biggest fact, build the case paragraph by paragraph, name names, cite what happened, end with the hook"
+        audience_frame = "America First readers"
+
     system = (
         base_voice + "\n\n"
-        "Short ends with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:). "
-        "Medium also ends with an agreement hook. "
-        "Long and Extra Long are FULL FACEBOOK ARTICLES — lead with the biggest fact, "
-        "build the case paragraph by paragraph, name names, cite what happened, end with the hook. "
+        f"{hook_rule} "
+        "Long and Extra Long are a " + long_frame + ". "
+        "NEVER use em-dashes (—) anywhere. "
         "Output ONLY valid JSON — no explanation, no markdown fences."
     )
     sources_block = f"\nSources:\n{source_lines}" if source_lines else ""
     user_msg = (
         f"Story: {story}{sources_block}\nHeadline: {headline}\nTag: {tag}{notes_line}\n\n"
         "Write all 4 Facebook caption variants and a first comment. Strict word counts:\n"
-        "- short: 10-15 words, punchy hook, ends with agreement hook\n"
-        "- medium: 40-60 words, 1-2 sharp sentences, ends with agreement hook\n"
-        "- long: 100-150 words, 2-3 paragraphs, full context, ends with hook\n"
-        "- extra_long: 200-300 words, complete Facebook article with background, context, "
-        "why it matters to America First readers, strong closing hook\n"
+        "- short: 10-15 words, punchy hook\n"
+        "- medium: 40-60 words, 1-2 sharp sentences\n"
+        "- long: 100-150 words, 2-3 paragraphs, full context\n"
+        f"- extra_long: 200-300 words, why it matters to {audience_frame}, strong closing\n"
         "- first_comment: 25-45 words — add one specific detail or context from the story not in the caption, "
-        "then end with a direct question to the reader (e.g. 'What do you think about this?')\n\n"
+        "then end with a direct question to the reader\n\n"
         'Return JSON: {"short":"...","medium":"...","long":"...","extra_long":"...","first_comment":"..."}'
     )
 
