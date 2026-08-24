@@ -2881,7 +2881,7 @@ function regenImage(cid) {{
   if (!hl && !scene && !tag) {{ _showErr('Enter a headline or scene first, or apply an angle.'); return; }}
   if (st) st.textContent = 'Queued...';
   if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating…</div>';
-  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'{escape(brand_slug)}';
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)
   }}).then(function(r){{

@@ -3516,13 +3516,14 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         item["scene"] = effective_scene
         if notes:
             item["draft"]["image_notes"] = notes
-        if brand_slug:
-            item["brand_slug"] = brand_slug
+        # brand_slug from form always wins; never let a stale item value bleed across brands
+        resolved_brand = brand_slug or item.get("brand_slug") or "first_signal"
+        item["brand_slug"] = resolved_brand
 
         # Clear old image so status shows "generating"
         _update_cluster_fsn(cluster_id, generated_image_url="", image_gen_status="generating",
                             kie_result_url="", draft=item["draft"],
-                            brand_slug=item.get("brand_slug"))
+                            brand_slug=resolved_brand)
         item["generated_image_url"] = ""
         item["image_gen_status"]    = "generating"
         item["kie_result_url"]      = ""
