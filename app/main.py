@@ -1300,8 +1300,21 @@ def handoff(cluster_id: int, return_to: str = Form("/"), user: dict = Depends(re
             select(NormalizedArticle).where(NormalizedArticle.id.in_(article_ids))
         ).scalars().all()
 
-        write_handoff(cluster, articles)
+        try:
+            write_handoff(cluster, articles)
+        except Exception:
+            pass  # local-only; Render ephemeral path is fine to skip
         cluster.handoff_sent_at = datetime.now(timezone.utc)
+        # Ensure the item surfaces in the Production Queue with pending status
+        existing_fsn: dict = {}
+        if cluster.fsn_state:
+            try:
+                existing_fsn = json.loads(cluster.fsn_state)
+            except Exception:
+                pass
+        if not existing_fsn.get("queue_status"):
+            existing_fsn["queue_status"] = "pending"
+            cluster.fsn_state = json.dumps(existing_fsn, ensure_ascii=False)
         session.commit()
         if return_to and return_to != "/stories/" + str(cluster_id):
             return RedirectResponse(f"{return_to}?msg=Queued", status_code=303)
