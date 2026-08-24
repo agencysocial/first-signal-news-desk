@@ -3541,7 +3541,7 @@ def render_settings_brand_edit_page(brand=None, msg: str = "") -> str:
         </label>
         <label style="display:block;margin-bottom:4px">
           <span style="color:#8b93a3;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Logo URL</span><br>
-          <input type="url" name="logo_url" value="{logo_val}" placeholder="https://..." style="width:100%;margin-top:4px">
+          <input type="text" name="logo_url" value="{logo_val}" placeholder="https://... or /static/logo.png" style="width:100%;margin-top:4px">
         </label>
         {logo_preview}
         <label style="display:block;margin-top:12px">
