@@ -2767,12 +2767,13 @@ function regenAllCaps(cid) {{
       if(!res.done){{ buf+=dec.decode(res.value); pump(); return; }}
       if(st) st.textContent='';
       try{{ var d=JSON.parse(buf);
+        if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
         var keys=['short','medium','long','extra_long'];
-        keys.forEach(function(k){{ var el=document.getElementById('cap-'+k+'-'+cid); if(el&&d.captions&&d.captions[k]) el.value=d.captions[k]; }});
+        keys.forEach(function(k){{ var el=document.getElementById('cap-'+k+'-'+cid); if(el&&d[k]) el.value=d[k]; }});
         var fcEl=document.getElementById('cap-first_comment-'+cid);
         if(fcEl&&d.first_comment) fcEl.value=d.first_comment;
         if(st){{ st.textContent='Done!'; setTimeout(function(){{st.textContent='';}},2000); }}
-      }}catch(ex){{ if(st) st.textContent='Parse error'; }}
+      }}catch(ex){{ if(st) st.textContent='Parse error: '+ex.message; }}
     }}); }}
     pump();
   }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});

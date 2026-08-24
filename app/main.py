@@ -3152,10 +3152,10 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
             system=system,
             messages=[{"role": "user", "content": user_msg}],
         )
-        raw  = resp.content[0].text.strip()
-        m    = _re.search(r'\{.*\}', raw, _re.S)
+        raw = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "").strip()
+        m   = _re.search(r'\{.*\}', raw, _re.S)
         if not m:
-            return JSONResponse({"error": f"No JSON in response"}, status_code=500)
+            return JSONResponse({"error": f"No JSON in response: {raw[:200]}"}, status_code=500)
         data = json.loads(m.group())
 
         # Persist to queue
