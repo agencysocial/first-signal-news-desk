@@ -384,6 +384,20 @@ def render_wire_page(clusters: list[dict], error_sources: list[tuple[str, str]],
     </tbody>
   </table>
   {errors_html}
+<script>
+function queueStory(btn, storyId) {{
+  var meta = document.querySelector('meta[http-equiv="refresh"]');
+  if (meta) meta.setAttribute('content', '9999');
+  btn.disabled = true; btn.textContent = 'Queuing...';
+  fetch('/stories/'+storyId+'/handoff', {{method:'POST', headers:{{'Content-Type':'application/x-www-form-urlencoded'}}, body:'return_to=/'}})
+    .then(function(r){{ return r.json(); }})
+    .then(function(d){{
+      if(d.ok){{ btn.textContent='✓ Queued'; btn.style.background='#0a2010'; btn.style.borderColor='#4ade80'; btn.style.color='#4ade80'; btn.style.cursor='default'; }}
+      else{{ btn.disabled=false; btn.textContent='+ Queue'; alert('Error: '+(d.error||'unknown')); }}
+    }})
+    .catch(function(e){{ btn.disabled=false; btn.textContent='+ Queue'; alert('Error: '+e.message); }});
+}}
+</script>
 """
     return _page_head(refresh_meta) + body + PAGE_TAIL
 
