@@ -365,6 +365,198 @@ def _update_cluster_fsn(cid: int | str, **kwargs) -> None:
     finally:
         session.close()
 
+# ── Brand property helpers ────────────────────────────────────────────────────
+
+_FSN_BRAND_COLORS = json.dumps({
+    "color_footer":     "#000000",
+    "color_headline":   "#FFDE59",
+    "color_tag_bg":     "#D02020",
+    "color_tag_text":   "#FFFFFF",
+    "color_text":       "#FFFFFF",
+})
+_FSN_IMAGE_SETTINGS = json.dumps({
+    "aspect_ratio":       "4:5",
+    "resolution":         "1K",
+    "output_format":      "png",
+    "watermark_text":     "",
+    "watermark_position": "bottom_center",
+})
+_FSN_VOICE = (
+    "America First conservative news voice with a hard accuracy floor. "
+    "Tell the REAL story from the source: keep verifiable facts (real names, real dates, real quotes). "
+    "Rewrite the wording — NEVER fabricate a quote, position, event, charge, or statistic about any real person. "
+    "Partisan and pointed: take a clear America First side, name the subject specifically. "
+    "End captions with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:). "
+    "No em-dashes."
+)
+_FSN_CAPTION_SETTINGS = json.dumps({
+    "short":        [10, 15],
+    "medium":       [40, 60],
+    "long":         [100, 150],
+    "extra_long":   [200, 300],
+    "first_comment":[25, 45],
+    "agreement_hook": True,
+    "hashtags":     False,
+    "emojis":       False,
+})
+
+_CATHYTALK_BRAND_COLORS = json.dumps({
+    "color_footer":     "#1a1a2e",
+    "color_headline":   "#FFFFFF",
+    "color_tag_bg":     "#e94560",
+    "color_tag_text":   "#FFFFFF",
+    "color_text":       "#FFFFFF",
+})
+_CATHYTALK_IMAGE_SETTINGS = json.dumps({
+    "aspect_ratio":       "4:5",
+    "resolution":         "1K",
+    "output_format":      "png",
+    "watermark_text":     "",
+    "watermark_position": "bottom_center",
+})
+_CATHYTALK_VOICE = (
+    "Warm, conversational women's lifestyle and culture voice. "
+    "Tone: relatable, encouraging, direct. Write like a smart friend sharing important news. "
+    "Focus on how the story affects everyday women and families. "
+    "End captions with an engaging question that invites personal responses. "
+    "No partisan framing. No em-dashes."
+)
+_CATHYTALK_CAPTION_SETTINGS = json.dumps({
+    "short":        [10, 15],
+    "medium":       [40, 60],
+    "long":         [100, 150],
+    "extra_long":   [200, 300],
+    "first_comment":[25, 45],
+    "agreement_hook": False,
+    "hashtags":     False,
+    "emojis":       False,
+})
+
+
+def _seed_default_brands() -> None:
+    """Insert First Signal News and CathyTalk if brand_properties table is empty."""
+    from app.models import BrandProperty as _BP
+    session = SessionLocal()
+    try:
+        if session.execute(select(func.count()).select_from(_BP)).scalar() > 0:
+            return
+        session.add(_BP(
+            slug="first_signal", name="First Signal News", enabled=True, sort_order=0,
+            colors=_FSN_BRAND_COLORS, image_settings=_FSN_IMAGE_SETTINGS,
+            voice_instructions=_FSN_VOICE, caption_settings=_FSN_CAPTION_SETTINGS,
+            logo_url="", notes="America First / conservative news page.",
+        ))
+        session.add(_BP(
+            slug="cathy_talk", name="CathyTalk", enabled=True, sort_order=1,
+            colors=_CATHYTALK_BRAND_COLORS, image_settings=_CATHYTALK_IMAGE_SETTINGS,
+            voice_instructions=_CATHYTALK_VOICE, caption_settings=_CATHYTALK_CAPTION_SETTINGS,
+            logo_url="", notes="Women's lifestyle and culture media property.",
+        ))
+        session.commit()
+        logger.info("Seeded default brand properties.")
+    except Exception as exc:
+        session.rollback()
+        logger.warning("Brand seed failed: %s", exc)
+    finally:
+        session.close()
+
+
+def _get_all_brands() -> list[dict]:
+    from app.models import BrandProperty as _BP
+    session = SessionLocal()
+    try:
+        rows = session.execute(select(_BP).order_by(_BP.sort_order, _BP.id)).scalars().all()
+        return [_brand_to_dict(b) for b in rows]
+    finally:
+        session.close()
+
+
+def _get_brand(slug: str) -> dict | None:
+    from app.models import BrandProperty as _BP
+    session = SessionLocal()
+    try:
+        b = session.execute(select(_BP).where(_BP.slug == slug)).scalar_one_or_none()
+        return _brand_to_dict(b) if b else None
+    finally:
+        session.close()
+
+
+def _brand_to_dict(b) -> dict:
+    def _j(v):
+        try: return json.loads(v) if v else {}
+        except: return {}
+    return {
+        "id": b.id, "slug": b.slug, "name": b.name, "enabled": b.enabled,
+        "sort_order": b.sort_order, "colors": _j(b.colors),
+        "image_settings": _j(b.image_settings), "voice_instructions": b.voice_instructions or "",
+        "caption_settings": _j(b.caption_settings), "logo_url": b.logo_url or "",
+        "notes": b.notes or "",
+    }
+
+
+def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
+                                   brand: dict, notes: str = "") -> str:
+    """Build a Kie.ai image prompt using brand-specific colors and layout."""
+    colors = brand.get("colors") or {}
+    footer_color  = colors.get("color_footer", "#000000")
+    headline_color = colors.get("color_headline", "#FFDE59")
+    tag_bg_color  = colors.get("color_tag_bg", "#D02020")
+    img = brand.get("image_settings") or {}
+    aspect = img.get("aspect_ratio", "4:5")
+
+    # Map hex to English for the AI (inline hex can render as text)
+    def _hex_to_english(h: str) -> str:
+        mapping = {
+            "#000000": "solid flat pure black",
+            "#FFDE59": "bold bright golden yellow",
+            "#D02020": "vivid fire-engine red",
+            "#FFFFFF": "white",
+            "#1a1a2e": "deep navy blue",
+            "#e94560": "vivid rose pink",
+        }
+        return mapping.get(h.upper() if h else "", f"the color {h}")
+
+    footer_eng  = _hex_to_english(footer_color)
+    headline_eng = _hex_to_english(headline_color)
+    tag_eng     = _hex_to_english(tag_bg_color)
+    notes_clause = f" Additional direction: {notes}." if notes else ""
+
+    return (
+        f"A {aspect} vertical portrait breaking-news share card with TWO ZONES — strictly no overlap between them.\n\n"
+        f"ZONE 1 — UPPER TWO-THIRDS (photo area): {scene}.{notes_clause} {_ANTI_SLOP}\n\n"
+        f"ZONE 2 — LOWER ONE-THIRD (footer panel): A SOLID FLAT {footer_eng.upper()} rectangle spanning the full width "
+        f"at the bottom of the card. This panel must be completely opaque with ZERO transparency, "
+        f"ZERO gradient, ZERO bleed from the photo above. Inside this panel:\n"
+        f"  - TOP OF FOOTER: a small solid {tag_eng} rounded rectangle pill containing the text "
+        f"\"{tag}\" in bold white uppercase letters.\n"
+        f"  - BELOW THE TAG: the headline text \"{headline}\" in BOLD {headline_eng.upper()} uppercase "
+        f"Montserrat-style sans-serif. Left-aligned, large enough to read at a glance, wrapped over 2 to 4 lines.\n"
+        f"\n"
+        f"RULES: Flat 2D text only — no drop shadows, no outer glows, no gradients on text. "
+        f"No logos, no URLs, no social handles. Photo fills only the upper two-thirds. "
+        f"{aspect} vertical portrait format, photorealistic, sharp, magazine-quality."
+    )
+
+
+def _get_brand_voice_system(brand: dict, task: str = "captions") -> str:
+    """Return a system prompt combining brand voice with task instructions."""
+    voice = brand.get("voice_instructions") or _FSN_VOICE
+    name  = brand.get("name", "this page")
+    cs    = brand.get("caption_settings") or {}
+    hook  = cs.get("agreement_hook", True)
+    hook_note = (
+        "\nEnd short and medium captions with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:)."
+        if hook else
+        "\nEnd captions with an engaging question that invites the reader to share their experience."
+    )
+    return (
+        f"You are a content writer for {name}.\n\n"
+        f"BRAND VOICE:\n{voice}\n\n"
+        f"TASK: Write {task} in this brand's voice.{hook_note}\n"
+        "Output ONLY valid JSON — no explanation, no markdown fences."
+    )
+
+
 def _read_picks() -> dict | None:
     if not _FSN_PICKS_PATH.exists():
         return None
@@ -762,6 +954,15 @@ async def lifespan(app: FastAPI):
             _conn.commit()
     except Exception as _e:
         logger.warning("schema migration skipped: %s", _e)
+
+    # Create brand_properties table if it doesn't exist, then seed defaults
+    try:
+        from app.models import BrandProperty as _BP
+        from app.db import Base as _Base
+        _Base.metadata.create_all(_engine, tables=[_BP.__table__], checkfirst=True)
+        _seed_default_brands()
+    except Exception as _e:
+        logger.warning("brand_properties setup skipped: %s", _e)
 
     # Seed competitor URL list into /tmp on every startup so the FB Scanner
     # page always has a list to render — without this, the first page load
@@ -1772,8 +1973,13 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "") -> None
     tag      = draft.get("tag") or "BREAKING NEWS"
     scene    = draft.get("scene") or draft.get("image_scene") or item.get("suggested_scene") or "United States Capitol building exterior, wide establishing shot"
     effective_notes = notes or draft.get("image_notes") or ""
+    brand_slug_for_gen = item.get("brand_slug") or "first_signal"
     try:
-        prompt = _build_image_prompt(headline, tag, scene, effective_notes)
+        brand = _get_brand(brand_slug_for_gen)
+        if brand and brand.get("voice_instructions"):
+            prompt = _build_image_prompt_for_brand(headline, tag, scene, brand, effective_notes)
+        else:
+            prompt = _build_image_prompt(headline, tag, scene, effective_notes)
         task_id = _kie_submit(prompt, key)
         kie_url = _kie_poll(task_id, key)
 
@@ -3074,9 +3280,10 @@ async def pipeline_queue_story_save_draft(cid: str, request: Request, user: dict
         return JSONResponse({"error": "invalid id"}, status_code=400)
     cluster_id = int(cid)
     form = await request.form()
-    headline = str(form.get("headline", "")).strip()
-    tag      = str(form.get("tag", "")).strip()
-    scene    = str(form.get("scene", "")).strip()
+    headline   = str(form.get("headline", "")).strip()
+    tag        = str(form.get("tag", "")).strip()
+    scene      = str(form.get("scene", "")).strip()
+    brand_slug = str(form.get("brand_slug", "")).strip()
 
     try:
         items, item = _resolve_queue_item(cluster_id)
@@ -3092,8 +3299,10 @@ async def pipeline_queue_story_save_draft(cid: str, request: Request, user: dict
         if scene:
             item["draft"]["scene"] = scene
             item["scene"] = scene
+        if brand_slug:
+            item["brand_slug"] = brand_slug
 
-        _update_cluster_fsn(cluster_id, draft=item["draft"])
+        _update_cluster_fsn(cluster_id, draft=item["draft"], brand_slug=item.get("brand_slug"))
         _save_fsn_queue(items)
         return JSONResponse({"ok": True})
     except Exception as exc:
@@ -3107,10 +3316,11 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
         return JSONResponse({"error": "invalid id"}, status_code=400)
     cluster_id = int(cid)
     form = await request.form()
-    voice    = str(form.get("voice", "america_first")).strip()
-    headline = str(form.get("headline", "")).strip()
-    tag      = str(form.get("tag", "")).strip()
-    scene    = str(form.get("scene", "")).strip()
+    voice      = str(form.get("voice", "america_first")).strip()
+    headline   = str(form.get("headline", "")).strip()
+    tag        = str(form.get("tag", "")).strip()
+    scene      = str(form.get("scene", "")).strip()
+    brand_slug = str(form.get("brand_slug", "")).strip() or None
 
     key = _get_anthropic_key()
     if not key:
@@ -3124,7 +3334,13 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
     if not headline:
         headline = (item.get("draft") or {}).get("headline") or story[:120]
 
-    system = _FSN_NEWS_VOICE if voice == "news" else _FSN_AMERICA_FIRST_VOICE
+    # Brand-aware voice: use brand settings if a brand slug is provided
+    active_brand_slug = brand_slug or item.get("brand_slug") or "first_signal"
+    brand = _get_brand(active_brand_slug)
+    if brand and brand.get("voice_instructions"):
+        system = _get_brand_voice_system(brand, task="captions")
+    else:
+        system = _FSN_NEWS_VOICE if voice == "news" else _FSN_AMERICA_FIRST_VOICE
     system += (
         "\n\nOutput ONLY valid JSON — no explanation, no markdown fences.\n"
         "Return: {\"short\":\"...\",\"medium\":\"...\",\"long\":\"...\",\"extra_long\":\"...\",\"first_comment\":\"...\"}"
@@ -3189,10 +3405,11 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
     cluster_id = int(cid)
     try:
         form = await request.form()
-        headline = str(form.get("headline", "")).strip()
-        tag      = str(form.get("tag", "")).strip()
-        scene    = str(form.get("scene", "")).strip()
-        notes    = str(form.get("notes", "")).strip()
+        headline   = str(form.get("headline", "")).strip()
+        tag        = str(form.get("tag", "")).strip()
+        scene      = str(form.get("scene", "")).strip()
+        notes      = str(form.get("notes", "")).strip()
+        brand_slug = str(form.get("brand_slug", "")).strip() or None
 
         items, item = _resolve_queue_item(cluster_id)
         if not item:
@@ -3211,10 +3428,13 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         item["scene"] = effective_scene
         if notes:
             item["draft"]["image_notes"] = notes
+        if brand_slug:
+            item["brand_slug"] = brand_slug
 
         # Clear old image so status shows "generating"
         _update_cluster_fsn(cluster_id, generated_image_url="", image_gen_status="generating",
-                            kie_result_url="", draft=item["draft"])
+                            kie_result_url="", draft=item["draft"],
+                            brand_slug=item.get("brand_slug"))
         item["generated_image_url"] = ""
         item["image_gen_status"]    = "generating"
         item["kie_result_url"]      = ""
@@ -3383,3 +3603,89 @@ def pipeline_queue_output_image(filename: str, user: dict = Depends(require_user
     if not path.exists() or not path.suffix.lower() == ".png":
         return Response(status_code=404)
     return Response(content=path.read_bytes(), media_type="image/png")
+
+
+# ── Brand / Settings routes ───────────────────────────────────────────────────
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_index(msg: str = "", user: dict = Depends(require_user)):
+    from app.render import render_settings_index_page
+    brands = _get_all_brands()
+    return HTMLResponse(render_settings_index_page(brands, msg=msg))
+
+
+@app.get("/settings/brands/new", response_class=HTMLResponse)
+def settings_brand_new(user: dict = Depends(require_user)):
+    from app.render import render_settings_brand_edit_page
+    return HTMLResponse(render_settings_brand_edit_page(brand=None))
+
+
+@app.post("/settings/brands/new")
+async def settings_brand_create(request: Request, user: dict = Depends(require_user)):
+    from app.models import BrandProperty as _BP
+    form = await request.form()
+    slug = str(form.get("slug", "")).strip().lower().replace(" ", "_")
+    if not slug:
+        return RedirectResponse("/settings?msg=Slug+required", status_code=303)
+    session = SessionLocal()
+    try:
+        existing = session.execute(select(_BP).where(_BP.slug == slug)).scalar_one_or_none()
+        if existing:
+            return RedirectResponse(f"/settings?msg=Slug+{slug}+already+exists", status_code=303)
+        b = _BP(
+            slug=slug,
+            name=str(form.get("name", slug)).strip(),
+            enabled=form.get("enabled") == "on",
+            sort_order=int(form.get("sort_order") or 0),
+            colors=str(form.get("colors", "{}")),
+            image_settings=str(form.get("image_settings", "{}")),
+            voice_instructions=str(form.get("voice_instructions", "")),
+            caption_settings=str(form.get("caption_settings", "{}")),
+            logo_url=str(form.get("logo_url", "")),
+            notes=str(form.get("notes", "")),
+        )
+        session.add(b)
+        session.commit()
+        return RedirectResponse(f"/settings?msg=Brand+{slug}+created", status_code=303)
+    finally:
+        session.close()
+
+
+@app.get("/settings/brands/{slug}", response_class=HTMLResponse)
+def settings_brand_edit(slug: str, msg: str = "", user: dict = Depends(require_user)):
+    from app.render import render_settings_brand_edit_page
+    brand = _get_brand(slug)
+    if not brand:
+        return RedirectResponse("/settings?msg=Brand+not+found", status_code=303)
+    return HTMLResponse(render_settings_brand_edit_page(brand=brand, msg=msg))
+
+
+@app.post("/settings/brands/{slug}")
+async def settings_brand_save(slug: str, request: Request, user: dict = Depends(require_user)):
+    from app.models import BrandProperty as _BP
+    form = await request.form()
+    session = SessionLocal()
+    try:
+        b = session.execute(select(_BP).where(_BP.slug == slug)).scalar_one_or_none()
+        if not b:
+            return RedirectResponse("/settings?msg=Brand+not+found", status_code=303)
+        b.name              = str(form.get("name", b.name)).strip()
+        b.enabled           = form.get("enabled") == "on"
+        b.sort_order        = int(form.get("sort_order") or b.sort_order)
+        b.colors            = str(form.get("colors", b.colors or "{}"))
+        b.image_settings    = str(form.get("image_settings", b.image_settings or "{}"))
+        b.voice_instructions= str(form.get("voice_instructions", b.voice_instructions or ""))
+        b.caption_settings  = str(form.get("caption_settings", b.caption_settings or "{}"))
+        b.logo_url          = str(form.get("logo_url", b.logo_url or ""))
+        b.notes             = str(form.get("notes", b.notes or ""))
+        session.commit()
+        return RedirectResponse(f"/settings/brands/{slug}?msg=Saved", status_code=303)
+    finally:
+        session.close()
+
+
+@app.get("/api/brands")
+def api_brands(user: dict = Depends(require_user)):
+    """Return enabled brands for the workspace dropdown."""
+    brands = [b for b in _get_all_brands() if b["enabled"]]
+    return JSONResponse([{"slug": b["slug"], "name": b["name"]} for b in brands])

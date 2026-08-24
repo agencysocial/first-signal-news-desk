@@ -121,6 +121,7 @@ NAV = """
     </div>
     <div style="display:flex;align-items:center;gap:12px">
       <span id="_qcounts" style="font-size:11px;color:#8b93a3;letter-spacing:.3px"></span>
+      <a href="/settings" style="font-size:11px;color:#8b93a3;text-decoration:none;border:1px solid #2a3555;padding:3px 8px;border-radius:3px">&#9881; Settings</a>
       <form method="post" action="/logout" class="inline-form">
         <button type="submit" style="font-size:11px">Logout</button>
       </form>
@@ -167,6 +168,9 @@ def _page_head(extra_meta: str = "") -> str:
 
 PAGE_HEAD = _page_head()
 PAGE_TAIL = "</body></html>"
+
+def _label(s: str) -> str:
+    return s.replace("_", " ").title()
 
 
 def _score_class(score) -> str:
@@ -2395,7 +2399,8 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
     tag       = draft.get("tag") or ""
     scene     = draft.get("scene") or item.get("suggested_scene") or ""
     fc        = draft.get("first_comment") or ""
-    post_type = item.get("post_type") or "image_card"
+    post_type  = item.get("post_type") or "image_card"
+    brand_slug = item.get("brand_slug") or "first_signal"
     img_url      = item.get("generated_image_url") or ""
     img_status   = item.get("image_gen_status") or ""
     img_history  = item.get("image_history") or []
@@ -2554,6 +2559,12 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
           </select>
         </div>
       </div>
+      <div style="margin-bottom:10px">
+        <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Brand Property</label>
+        <select id="draft-brand-{cid}" data-current="{escape(brand_slug)}" style="width:100%;padding:8px">
+          <option value="first_signal">First Signal News</option>
+        </select>
+      </div>
       <div style="margin-bottom:12px">
         <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Image Scene</label>
         <textarea id="draft-scene-{cid}" rows="2"
@@ -2666,10 +2677,11 @@ function saveDraft(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value || '';
   var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value || '';
   var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value || '';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value || '';
   var st    = document.getElementById('draft-save-status-'+cid);
   if (st) st.textContent = 'Saving...';
   fetch('/pipeline-queue/story/'+cid+'/save-draft',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&brand_slug='+encodeURIComponent(brand)
   }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
   .then(function(d){{
     if (st) {{ st.textContent = d.ok ? 'Saved!' : ('Error: '+(d.error||'?')); }}
@@ -2741,8 +2753,9 @@ function genContent(cid, voice) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
   var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
   var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'';
   fetch('/pipeline-queue/story/'+cid+'/generate-content',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'voice='+voice+'&headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)
+    body:'voice='+voice+'&headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&brand_slug='+encodeURIComponent(brand)
   }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
   .then(function(d){{
     if (st) st.textContent = '';
@@ -2866,8 +2879,9 @@ function regenImage(cid) {{
   if (!hl && !scene && !tag) {{ _showErr('Enter a headline or scene first, or apply an angle.'); return; }}
   if (st) st.textContent = 'Queued...';
   if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating…</div>';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'';
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)
   }}).then(function(r){{
     if(!r.ok) return r.text().then(function(t){{ throw new Error('Server error '+r.status+': '+t.slice(0,200)); }});
     return r.json();
@@ -2940,6 +2954,19 @@ document.addEventListener('click', function(e) {{
 // Auto-start image polling on page load only when server says status=generating
 (function() {{
   if ({str(img_status == "generating").lower()}) {{ _startImagePoll('{cid}'); }}
+}})();
+// Populate brand dropdown from /api/brands
+(function() {{
+  var sel = document.getElementById('draft-brand-{cid}');
+  if (!sel) return;
+  var current = sel.getAttribute('data-current') || '{escape(brand_slug)}';
+  fetch('/api/brands').then(function(r){{ return r.json(); }}).then(function(d){{
+    var brands = d.brands || [];
+    if (!brands.length) return;
+    sel.innerHTML = brands.map(function(b){{
+      return '<option value="'+b.slug+'"'+(b.slug===current?' selected':'')+'>'+b.name+'</option>';
+    }}).join('');
+  }}).catch(function(){{}});
 }})();
 </script>
 """
@@ -3363,3 +3390,197 @@ document.addEventListener('mousemove', function(e) {{
 """
     head = _page_head(extra_meta=page_meta)
     return head + body + PAGE_TAIL
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Settings pages
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_settings_index_page(brands: list, msg: str = "") -> str:
+    from html import escape
+    flash = f'<div class="flash">{escape(msg)}</div>' if msg else ""
+    rows = []
+    for b in brands:
+        if b.get("enabled"):
+            status_badge = '<span style="background:#0a2a0a;border:1px solid #1a5a1a;color:#4ade80;font-size:10px;padding:1px 7px;border-radius:10px">Enabled</span>'
+        else:
+            status_badge = '<span style="background:#1a0a0a;border:1px solid #5a1a1a;color:#f87171;font-size:10px;padding:1px 7px;border-radius:10px">Disabled</span>'
+        colors = b.get("colors") or {}
+        swatches = " ".join(
+            f'<span title="{escape(k)}" style="display:inline-block;width:14px;height:14px;border-radius:3px;background:{escape(str(v))};border:1px solid #2a3555;vertical-align:middle"></span>'
+            for k, v in colors.items() if v
+        )
+        logo_cell = (
+            f'<img src="{escape(b["logo_url"])}" style="height:24px;">'
+            if b.get("logo_url")
+            else '<span style="color:#8b93a3;font-size:11px">(none)</span>'
+        )
+        rows.append(
+            f'<tr>'
+            f'<td data-label="Brand"><a href="/settings/brands/{escape(b["slug"])}" style="color:#60a5fa;font-weight:600">{escape(b["name"])}</a></td>'
+            f'<td data-label="Slug"><code style="font-size:11px;color:#8b93a3">{escape(b["slug"])}</code></td>'
+            f'<td data-label="Status">{status_badge}</td>'
+            f'<td data-label="Colors">{swatches}</td>'
+            f'<td data-label="Logo">{logo_cell}</td>'
+            f'<td><a href="/settings/brands/{escape(b["slug"])}" style="font-size:11px">&#9998; Edit</a></td>'
+            f'</tr>'
+        )
+    body = f"""
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+    <h1 style="margin:0">Brand Settings</h1>
+    <a href="/settings/brands/new" class="primary"
+       style="text-decoration:none;padding:7px 14px;font-size:13px">+ New Brand</a>
+  </div>
+  {flash}
+  <p style="color:#8b93a3;font-size:13px;margin-bottom:16px">
+    Manage media properties. Each brand has its own colors, voice, image settings, and logo.
+    The workspace brand selector pulls from this list.
+  </p>
+  <table>
+    <thead><tr><th>Brand</th><th>Slug</th><th>Status</th><th>Colors</th><th>Logo</th><th></th></tr></thead>
+    <tbody>{"".join(rows)}</tbody>
+  </table>
+"""
+    return PAGE_HEAD + body + PAGE_TAIL
+
+
+def render_settings_brand_edit_page(brand=None, msg: str = "") -> str:
+    import json as _json
+    from html import escape
+    is_new = brand is None
+    b = brand or {}
+    flash = f'<div class="flash">{escape(msg)}</div>' if msg else ""
+
+    def _jval(key: str, default: dict) -> str:
+        val = b.get(key)
+        if isinstance(val, dict):
+            return _json.dumps(val, indent=2)
+        if isinstance(val, str):
+            try:
+                return _json.dumps(_json.loads(val), indent=2)
+            except Exception:
+                return val
+        return _json.dumps(default, indent=2)
+
+    colors_default = {
+        "color_footer": "#000000", "color_headline": "#FFDE59",
+        "color_tag_bg": "#D02020", "color_tag_text": "#FFFFFF", "color_text": "#FFFFFF"
+    }
+    image_default = {
+        "aspect_ratio": "4:5", "resolution": "1K",
+        "output_format": "png", "watermark_text": "", "watermark_position": "bottom_center"
+    }
+    caption_default = {
+        "short": [10, 15], "medium": [40, 60], "long": [100, 150], "extra_long": [200, 300],
+        "first_comment": [5, 15], "agreement_hook": True, "hashtags": False, "emojis": False
+    }
+
+    slug_val = escape(b.get("slug", ""))
+    name_val = escape(b.get("name", ""))
+    sort_val = b.get("sort_order", 0)
+    logo_val = escape(b.get("logo_url") or "")
+    notes_val = escape(b.get("notes") or "")
+    voice_val = escape(b.get("voice_instructions") or "")
+    enabled_checked = "checked" if b.get("enabled", True) else ""
+
+    if is_new:
+        slug_field = '<input type="text" name="slug" required placeholder="e.g. cathy_talk" style="width:220px">'
+    else:
+        slug_field = f'<input type="hidden" name="slug" value="{slug_val}"><code style="color:#8b93a3">{slug_val}</code>'
+
+    action = "/settings/brands/new" if is_new else f"/settings/brands/{slug_val}"
+    title = "New Brand" if is_new else f"Edit: {name_val}"
+
+    colors_preview = ""
+    colors = b.get("colors") or {}
+    if isinstance(colors, str):
+        try:
+            colors = _json.loads(colors)
+        except Exception:
+            colors = {}
+    if colors:
+        swatches = "\n".join(
+            f'<div style="text-align:center"><div style="width:40px;height:40px;background:{escape(str(v))};border:1px solid #2a3555;border-radius:4px"></div>'
+            f'<div style="font-size:9px;color:#8b93a3;margin-top:2px">{escape(k.replace("color_", ""))}</div></div>'
+            for k, v in colors.items() if v
+        )
+        colors_preview = f'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">{swatches}</div>'
+
+    logo_preview = ""
+    if b.get("logo_url"):
+        logo_preview = f'<div style="margin-top:8px"><img src="{logo_val}" style="max-height:60px;border:1px solid #2a3555;border-radius:4px;padding:4px;background:#0a0f1a"></div>'
+
+    body = f"""
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+    <a href="/settings" style="color:#8b93a3;font-size:12px">&#8592; All Brands</a>
+    <h1 style="margin:0">{title}</h1>
+  </div>
+  {flash}
+  <form method="post" action="{action}">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:960px">
+
+      <div style="background:#0d111a;border:1px solid #2a3555;border-radius:6px;padding:20px">
+        <h3 style="margin:0 0 16px;color:#e6e8ec;font-size:14px">&#127991; Identity</h3>
+        <label style="display:block;margin-bottom:12px">
+          <span style="color:#8b93a3;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Brand Name</span><br>
+          <input type="text" name="name" value="{name_val}" required style="width:100%;margin-top:4px">
+        </label>
+        <label style="display:block;margin-bottom:12px">
+          <span style="color:#8b93a3;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Slug (URL-safe ID)</span><br>
+          <div style="margin-top:4px">{slug_field}</div>
+        </label>
+        <label style="display:block;margin-bottom:12px">
+          <span style="color:#8b93a3;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Sort Order</span><br>
+          <input type="number" name="sort_order" value="{sort_val}" style="width:80px;margin-top:4px">
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <input type="checkbox" name="enabled" {enabled_checked}>
+          <span style="color:#c0c8d8;font-size:13px">Enabled (shows in workspace dropdown)</span>
+        </label>
+        <label style="display:block;margin-bottom:4px">
+          <span style="color:#8b93a3;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Logo URL</span><br>
+          <input type="url" name="logo_url" value="{logo_val}" placeholder="https://..." style="width:100%;margin-top:4px">
+        </label>
+        {logo_preview}
+        <label style="display:block;margin-top:12px">
+          <span style="color:#8b93a3;font-size:11px;text-transform:uppercase;letter-spacing:.5px">Admin Notes</span><br>
+          <textarea name="notes" rows="2" style="width:100%;margin-top:4px;font-size:12px">{notes_val}</textarea>
+        </label>
+      </div>
+
+      <div style="background:#0d111a;border:1px solid #2a3555;border-radius:6px;padding:20px">
+        <h3 style="margin:0 0 16px;color:#e6e8ec;font-size:14px">&#127912; Brand Colors</h3>
+        <p style="color:#8b93a3;font-size:11px;margin:0 0 8px">JSON keys: color_footer, color_headline, color_tag_bg, color_tag_text, color_text</p>
+        <textarea name="colors" rows="9" style="width:100%;font-family:monospace;font-size:11px">{escape(_jval("colors", colors_default))}</textarea>
+        {colors_preview}
+      </div>
+
+      <div style="background:#0d111a;border:1px solid #2a3555;border-radius:6px;padding:20px">
+        <h3 style="margin:0 0 16px;color:#e6e8ec;font-size:14px">&#128444; Image Settings</h3>
+        <p style="color:#8b93a3;font-size:11px;margin:0 0 8px">JSON keys: aspect_ratio, resolution, output_format, watermark_text, watermark_position</p>
+        <textarea name="image_settings" rows="9" style="width:100%;font-family:monospace;font-size:11px">{escape(_jval("image_settings", image_default))}</textarea>
+      </div>
+
+      <div style="background:#0d111a;border:1px solid #2a3555;border-radius:6px;padding:20px">
+        <h3 style="margin:0 0 16px;color:#e6e8ec;font-size:14px">&#128221; Caption Settings</h3>
+        <p style="color:#8b93a3;font-size:11px;margin:0 0 8px">JSON word count bands, agreement hooks, hashtags, emojis</p>
+        <textarea name="caption_settings" rows="9" style="width:100%;font-family:monospace;font-size:11px">{escape(_jval("caption_settings", caption_default))}</textarea>
+      </div>
+
+      <div style="background:#0d111a;border:1px solid #2a3555;border-radius:6px;padding:20px;grid-column:1/-1">
+        <h3 style="margin:0 0 16px;color:#e6e8ec;font-size:14px">&#127908; Brand Voice</h3>
+        <p style="color:#8b93a3;font-size:11px;margin:0 0 8px">
+          Plain text injected as the AI system prompt. Describe tone, audience, what to avoid, what to emphasize.
+        </p>
+        <textarea name="voice_instructions" rows="8" style="width:100%;font-size:12px;line-height:1.6">{voice_val}</textarea>
+      </div>
+
+    </div>
+    <div style="margin-top:20px;display:flex;gap:12px">
+      <button type="submit" class="primary" style="padding:9px 20px;font-size:14px">&#10003; Save Brand</button>
+      <a href="/settings" style="color:#8b93a3;font-size:13px;align-self:center">Cancel</a>
+    </div>
+  </form>
+"""
+    return PAGE_HEAD + body + PAGE_TAIL
+

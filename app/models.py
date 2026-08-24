@@ -178,6 +178,34 @@ class StoryClusterArticle(Base):
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class BrandProperty(Base):
+    """One row per media property (First Signal News, CathyTalk, etc.).
+    Settings are stored as JSON blobs so new fields can be added without migrations."""
+    __tablename__ = "brand_properties"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(50), unique=True, index=True)  # e.g. "first_signal", "cathy_talk"
+    name: Mapped[str] = mapped_column(String(200))                          # e.g. "First Signal News"
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Visual identity (JSON: color_footer, color_headline, color_tag, color_text, color_tag_bg)
+    colors: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Image generation settings (JSON: aspect_ratio, resolution, output_format, watermark_text, watermark_position)
+    image_settings: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # AI voice / content instructions (plain text, injected as system prompt context)
+    voice_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Caption rules (JSON: short, medium, long, extra_long word bands; agreement_hook bool; hashtags bool)
+    caption_settings: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Logo — URL to a publicly accessible image (CDN, uploaded asset, etc.)
+    logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Any extra notes the admin wants to store (shown in settings UI)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class CoveredPost(Base):
     """One row per Mark-Covered event, not one row per cluster -- a story can
     be covered, reopen on a new development (see clustering.py's
