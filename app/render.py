@@ -3568,7 +3568,7 @@ def _render_card_template_preview(slug: str) -> str:
             </div>
 
             <!-- Black footer: lower 45% = 135px -->
-            <div style="position:absolute;bottom:0;left:0;right:0;height:135px;background:#000;padding:10px 12px 10px">
+            <div style="position:absolute;bottom:0;left:0;right:0;height:135px;background:#000;padding:6px 12px 8px">
               <!-- Red tag pill — left-aligned, rectangular rounded -->
               <div style="display:inline-block;background:#D02020;border-radius:3px;padding:3px 8px;margin-bottom:7px">
                 <span style="font-size:8px;font-weight:800;color:#fff;letter-spacing:.8px;text-transform:uppercase;font-family:sans-serif">DEEP STATE OBSTRUCTION</span>
