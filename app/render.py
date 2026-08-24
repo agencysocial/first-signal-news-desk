@@ -3446,6 +3446,96 @@ def render_settings_index_page(brands: list, msg: str = "") -> str:
     return PAGE_HEAD + body + PAGE_TAIL
 
 
+def _render_card_template_preview(slug: str) -> str:
+    """Return a full-width card template preview block for known brand slugs."""
+    if slug == "cathy_talk":
+        return """
+      <div style="background:#0d111a;border:1px solid #2a3555;border-radius:6px;padding:20px;grid-column:1/-1">
+        <h3 style="margin:0 0 4px;color:#e6e8ec;font-size:14px">&#128247; Card Template Preview</h3>
+        <p style="color:#8b93a3;font-size:11px;margin:0 0 16px">Approved layout locked in. This is what each generated card will look like.</p>
+        <div style="display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap">
+
+          <!-- Card mockup -->
+          <div style="width:240px;height:300px;border-radius:10px;overflow:hidden;position:relative;border:1px solid #2a3555;flex-shrink:0">
+
+            <!-- Photo area: warm lifestyle illustration -->
+            <svg width="240" height="191" viewBox="0 0 320 255" xmlns="http://www.w3.org/2000/svg">
+              <rect width="320" height="255" fill="#F5E9D8"/>
+              <circle cx="262" cy="48" r="120" fill="#F0CF90" opacity="0.42"/>
+              <circle cx="262" cy="48" r="78" fill="#EAC47A" opacity="0.32"/>
+              <ellipse cx="160" cy="145" rx="100" ry="72" fill="#F8E2C0" opacity="0.28"/>
+              <rect x="0" y="185" width="320" height="70" fill="#CEAD88"/>
+              <rect x="0" y="185" width="320" height="9" fill="#DCC09A"/>
+              <line x1="52" y1="185" x2="52" y2="205" stroke="#8A7258" stroke-width="5" stroke-linecap="round"/>
+              <ellipse cx="52" cy="130" rx="16" ry="42" fill="#8EA87A" opacity="0.75" transform="rotate(-16 52 130)"/>
+              <ellipse cx="36" cy="152" rx="13" ry="30" fill="#7A9468" opacity="0.68" transform="rotate(22 36 152)"/>
+              <ellipse cx="68" cy="144" rx="11" ry="24" fill="#A2BA8C" opacity="0.62" transform="rotate(-30 68 144)"/>
+              <path d="M36 198 L42 218 L62 218 L68 198 Z" fill="#C67A5A"/>
+              <rect x="34" y="192" width="36" height="8" rx="2" fill="#D48A6A"/>
+              <rect x="198" y="172" width="42" height="28" rx="3" fill="#F0E4D4"/>
+              <rect x="198" y="172" width="6" height="28" rx="2" fill="#CE3175" opacity="0.8"/>
+              <ellipse cx="148" cy="188" rx="38" ry="7" fill="#E8DAC8" opacity="0.95"/>
+              <rect x="118" y="128" width="60" height="62" rx="6" fill="#FAF0EC"/>
+              <rect x="114" y="182" width="68" height="9" rx="4" fill="#EBD8C5"/>
+              <rect x="118" y="150" width="60" height="8" fill="#CE3175" opacity="0.72"/>
+              <path d="M178 140 Q200 140 200 156 Q200 172 178 172" stroke="#DCCFC5" stroke-width="6.5" fill="none" stroke-linecap="round"/>
+              <ellipse cx="148" cy="130" rx="28" ry="5" fill="#8B5E3C" opacity="0.65"/>
+              <path d="M136 126 Q131 112 136 98" stroke="#C4A888" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.65"/>
+              <path d="M148 124 Q153 110 148 96" stroke="#C4A888" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.55"/>
+              <rect x="87" y="183" width="28" height="4" rx="2" fill="#D4C0A4"/>
+              <ellipse cx="117" cy="185" rx="6" ry="4.5" fill="#D4C0A4"/>
+              <defs><linearGradient id="ctpv" x1="0" y1="0" x2="0" y2="1"><stop offset="62%" stop-color="white" stop-opacity="0"/><stop offset="100%" stop-color="white" stop-opacity="1"/></linearGradient></defs>
+              <rect width="320" height="255" fill="url(#ctpv)"/>
+            </svg>
+
+            <!-- Logo top-left -->
+            <img src="/static/cathy_talk_logo.png"
+                 style="position:absolute;top:8px;left:8px;height:21px;width:auto"
+                 alt="CathyTalk">
+
+            <!-- White footer -->
+            <div style="position:absolute;bottom:0;left:0;right:0;height:109px;background:#fff;padding:10px 14px">
+              <div style="font-size:7px;font-weight:600;color:#CE3175;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px">Health &amp; Family</div>
+              <div style="width:25px;height:1.5px;background:#CE3175;margin-bottom:7px"></div>
+              <div style="font-size:13px;font-weight:800;color:#222;line-height:1.25;font-family:sans-serif">How to tell the difference between burnout and everyday exhaustion</div>
+            </div>
+          </div>
+
+          <!-- Layout spec -->
+          <div style="flex:1;min-width:220px">
+            <p style="color:#8b93a3;font-size:11px;margin:0 0 12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Layout spec</p>
+            <table style="border-collapse:collapse;font-size:12px;width:100%">
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0;white-space:nowrap">Aspect ratio</td><td style="color:#c0c8d8">4:5 vertical portrait</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Photo area</td><td style="color:#c0c8d8">Upper 63% — warm lifestyle, light background</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Footer</td><td style="color:#c0c8d8">Lower 37% — solid white</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Logo</td><td style="color:#c0c8d8">Primary (pink+dark) — top-left, overlaid</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Category</td><td style="color:#c0c8d8">Rose pink <code style="font-size:10px">#CE3175</code>, small caps</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Rule</td><td style="color:#c0c8d8">34px × 2px, rose pink</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Headline</td><td style="color:#c0c8d8">Raleway 800, charcoal <code style="font-size:10px">#222222</code></td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Watermark</td><td style="color:#c0c8d8">None (logo handles branding)</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>"""
+
+    if slug == "first_signal":
+        return """
+      <div style="background:#0d111a;border:1px solid #2a3555;border-radius:6px;padding:20px;grid-column:1/-1">
+        <h3 style="margin:0 0 4px;color:#e6e8ec;font-size:14px">&#128247; Card Template Preview</h3>
+        <p style="color:#8b93a3;font-size:11px;margin:0 0 12px">Approved layout — breaking news card.</p>
+        <table style="border-collapse:collapse;font-size:12px">
+          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Aspect ratio</td><td style="color:#c0c8d8">4:5 vertical portrait</td></tr>
+          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Photo area</td><td style="color:#c0c8d8">Upper two-thirds</td></tr>
+          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Footer</td><td style="color:#c0c8d8">Solid black</td></tr>
+          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Tag pill</td><td style="color:#c0c8d8">Red <code style="font-size:10px">#D02020</code>, bold white uppercase</td></tr>
+          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Headline</td><td style="color:#c0c8d8">Bold yellow <code style="font-size:10px">#FFDE59</code>, Montserrat uppercase</td></tr>
+          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Watermark</td><td style="color:#c0c8d8">First Signal News, bottom center</td></tr>
+        </table>
+      </div>"""
+
+    return ""  # No preview for new / unknown brands
+
+
 def render_settings_brand_edit_page(brand=None, msg: str = "") -> str:
     import json as _json
     from html import escape
@@ -3576,6 +3666,8 @@ def render_settings_brand_edit_page(brand=None, msg: str = "") -> str:
         </p>
         <textarea name="voice_instructions" rows="8" style="width:100%;font-size:12px;line-height:1.6">{voice_val}</textarea>
       </div>
+
+      {_render_card_template_preview(b.get("slug",""))}
 
     </div>
     <div style="margin-top:20px;display:flex;gap:12px">
