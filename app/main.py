@@ -564,7 +564,7 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"width at the bottom of the card. Completely opaque, zero transparency, zero gradient, "
             f"zero bleed from the photo above. Inside this white panel (left-aligned, 20px left padding):\n"
             f"  - FIRST LINE: the category label \"{tag}\" in vivid deep rose pink uppercase letters "
-            f"with wide letter spacing. The text must be clearly legible — medium-large size, prominent.\n"
+            f"with normal letter spacing (no tracking, no wide spacing). The text must be clearly legible — medium-large size, prominent.\n"
             f"  - SECOND LINE: a short horizontal rule, 34px wide, 2px tall, vivid deep rose pink.\n"
             f"  - THIRD LINE: the headline \"{headline}\" in BOLD near-black charcoal, very large "
             f"modern sans-serif (Raleway or similar), mixed case, wrapped over 2 to 3 lines. "
