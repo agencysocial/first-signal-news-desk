@@ -1570,6 +1570,9 @@ function useCustomAngle(cid, btn) {
   .catch(function(){ if (status) status.textContent = 'Failed'; btn.disabled = false; });
 }
 function queueStory(btn, storyId) {
+  // Cancel the meta-refresh so the page doesn't reload mid-request
+  var meta = document.querySelector('meta[http-equiv="refresh"]');
+  if (meta) meta.setAttribute('content', '9999');
   btn.disabled = true; btn.textContent = 'Queuing...';
   fetch('/stories/'+storyId+'/handoff', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'return_to=/'})
     .then(function(r){ return r.json(); })
