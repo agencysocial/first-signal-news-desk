@@ -405,59 +405,75 @@ _FSN_CAPTION_SETTINGS = json.dumps({
 })
 
 _CATHYTALK_BRAND_COLORS = json.dumps({
-    "color_footer":     "#1a1a2e",
-    "color_headline":   "#FFFFFF",
-    "color_tag_bg":     "#e94560",
+    "color_footer":     "#FFFFFF",
+    "color_headline":   "#222222",
+    "color_tag_bg":     "#CE3175",
     "color_tag_text":   "#FFFFFF",
-    "color_text":       "#FFFFFF",
+    "color_text":       "#222222",
 })
 _CATHYTALK_IMAGE_SETTINGS = json.dumps({
     "aspect_ratio":       "4:5",
     "resolution":         "1K",
     "output_format":      "png",
-    "watermark_text":     "",
+    "watermark_text":     "CathyTalk",
     "watermark_position": "bottom_center",
 })
 _CATHYTALK_VOICE = (
-    "Warm, conversational women's lifestyle and culture voice. "
-    "Tone: relatable, encouraging, direct. Write like a smart friend sharing important news. "
+    "You are a CathyTalk writer. Warm, conversational women's lifestyle and culture voice. "
+    "Tone: relatable, encouraging, direct — like a smart trusted friend sharing something important. "
     "Focus on how the story affects everyday women and families. "
-    "End captions with an engaging question that invites personal responses. "
-    "No partisan framing. No em-dashes."
+    "End captions with a personal, open-ended question that invites real responses from women. "
+    "No partisan framing. No em-dashes. No jargon."
 )
 _CATHYTALK_CAPTION_SETTINGS = json.dumps({
     "short":        [10, 15],
     "medium":       [40, 60],
     "long":         [100, 150],
     "extra_long":   [200, 300],
-    "first_comment":[25, 45],
+    "first_comment":[5, 15],
     "agreement_hook": False,
     "hashtags":     False,
     "emojis":       False,
 })
+# Logo URLs — served from /static/ by FastAPI StaticFiles mount.
+# Primary (light bg): pink "CATHY" + speech bubble outline.
+# Dark bg variant: full "CATHYTALK" logo.
+_CATHYTALK_LOGO_URL      = "/static/cathy_talk_logo.png"
+_CATHYTALK_LOGO_DARK_URL = "/static/cathy_talk_logo_dark.png"
 
 
 def _seed_default_brands() -> None:
-    """Insert First Signal News and CathyTalk if brand_properties table is empty."""
+    """Upsert First Signal News and CathyTalk brand properties on every startup.
+    Creates rows if missing; updates logo_url, colors, voice, and settings if already present
+    so config changes in code take effect without manual DB edits."""
     from app.models import BrandProperty as _BP
-    session = SessionLocal()
-    try:
-        if session.execute(select(func.count()).select_from(_BP)).scalar() > 0:
-            return
-        session.add(_BP(
+    _DEFAULTS = [
+        dict(
             slug="first_signal", name="First Signal News", enabled=True, sort_order=0,
             colors=_FSN_BRAND_COLORS, image_settings=_FSN_IMAGE_SETTINGS,
             voice_instructions=_FSN_VOICE, caption_settings=_FSN_CAPTION_SETTINGS,
             logo_url="", notes="America First / conservative news page.",
-        ))
-        session.add(_BP(
+        ),
+        dict(
             slug="cathy_talk", name="CathyTalk", enabled=True, sort_order=1,
             colors=_CATHYTALK_BRAND_COLORS, image_settings=_CATHYTALK_IMAGE_SETTINGS,
             voice_instructions=_CATHYTALK_VOICE, caption_settings=_CATHYTALK_CAPTION_SETTINGS,
-            logo_url="", notes="Women's lifestyle and culture media property.",
-        ))
+            logo_url=_CATHYTALK_LOGO_URL, notes="Women's lifestyle and culture media property.",
+        ),
+    ]
+    session = SessionLocal()
+    try:
+        for d in _DEFAULTS:
+            existing = session.execute(select(_BP).where(_BP.slug == d["slug"])).scalar_one_or_none()
+            if existing is None:
+                session.add(_BP(**d))
+            else:
+                # Always sync these fields so code changes propagate to DB
+                for field in ("colors", "image_settings", "voice_instructions",
+                              "caption_settings", "logo_url", "name", "sort_order"):
+                    setattr(existing, field, d[field])
         session.commit()
-        logger.info("Seeded default brand properties.")
+        logger.info("Brand properties seeded/synced.")
     except Exception as exc:
         session.rollback()
         logger.warning("Brand seed failed: %s", exc)
@@ -514,7 +530,9 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             "#000000": "solid flat pure black",
             "#FFDE59": "bold bright golden yellow",
             "#D02020": "vivid fire-engine red",
-            "#FFFFFF": "white",
+            "#FFFFFF": "solid flat pure white",
+            "#222222": "near-black charcoal",
+            "#CE3175": "vivid deep rose pink",
             "#1a1a2e": "deep navy blue",
             "#e94560": "vivid rose pink",
         }
