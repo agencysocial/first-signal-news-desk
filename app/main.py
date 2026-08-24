@@ -2328,6 +2328,7 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     cluster_id = int(form.get("cluster_id") or 0)
     variant    = (form.get("variant") or "short").strip()
     notes      = str(form.get("notes", "")).strip()
+    form_brand = str(form.get("brand_slug", "")).strip() or None
 
     key = _get_anthropic_key()
     if not key:
@@ -2354,8 +2355,13 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     )
     notes_line = f"\nOperator notes: {notes}" if notes else ""
 
+    brand = _get_brand(form_brand or item.get("brand_slug") or "first_signal")
+    base_voice = (
+        brand.get("voice_instructions") or _FSN_AMERICA_FIRST_VOICE
+        if brand else _FSN_AMERICA_FIRST_VOICE
+    )
     system = (
-        _FSN_AMERICA_FIRST_VOICE + "\n\n"
+        base_voice + "\n\n"
         "Output ONLY the rewritten caption text — no explanation, no quotes around it."
     )
     story_block = f"Story text: {story}\n" if story else ""
@@ -2404,6 +2410,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
     cluster_id    = int(form.get("cluster_id") or 0)
     form_headline = str(form.get("headline", "")).strip()
     notes         = str(form.get("notes", "")).strip()
+    form_brand    = str(form.get("brand_slug", "")).strip() or None
 
     key = _get_anthropic_key()
     if not key:
@@ -2421,8 +2428,14 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
     source_lines = "\n".join(f"  - {s.get('source_name','')}: {s.get('headline','')}" for s in sources[:3])
     notes_line = f"\nOperator notes: {notes}" if notes else ""
 
+    brand = _get_brand(form_brand or item.get("brand_slug") or "first_signal")
+    base_voice = (
+        _get_brand_voice_system(brand, task="captions")
+        if brand and brand.get("voice_instructions")
+        else _FSN_AMERICA_FIRST_VOICE
+    )
     system = (
-        _FSN_AMERICA_FIRST_VOICE + "\n\n"
+        base_voice + "\n\n"
         "Short ends with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:). "
         "Medium also ends with an agreement hook. "
         "Long and Extra Long are FULL FACEBOOK ARTICLES — lead with the biggest fact, "
@@ -3688,4 +3701,4 @@ async def settings_brand_save(slug: str, request: Request, user: dict = Depends(
 def api_brands(user: dict = Depends(require_user)):
     """Return enabled brands for the workspace dropdown."""
     brands = [b for b in _get_all_brands() if b["enabled"]]
-    return JSONResponse([{"slug": b["slug"], "name": b["name"]} for b in brands])
+    return JSONResponse({"brands": [{"slug": b["slug"], "name": b["name"]} for b in brands]})

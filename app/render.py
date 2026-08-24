@@ -2772,9 +2772,10 @@ function regenCap(cid, variant) {{
   if (!el) return;
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
   var notes = (document.getElementById('cap-notes-'+cid)||{{}}).value||'';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'';
   el.style.opacity='0.4'; el.value='';
   fetch('/pipeline-queue/rewrite-caption',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'cluster_id='+cid+'&variant='+variant+'&headline='+encodeURIComponent(hl)+'&notes='+encodeURIComponent(notes)
+    body:'cluster_id='+cid+'&variant='+variant+'&headline='+encodeURIComponent(hl)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)
   }}).then(function(r){{
     if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}});
     el.style.opacity='1';
@@ -2786,10 +2787,11 @@ function regenCap(cid, variant) {{
 function regenAllCaps(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
   var notes = (document.getElementById('cap-notes-'+cid)||{{}}).value||'';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'';
   var st = document.getElementById('content-gen-status-'+cid);
   if(st) st.textContent='Rewriting all captions...';
   fetch('/pipeline-queue/generate-all-captions',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'cluster_id='+cid+'&headline='+encodeURIComponent(hl)+'&notes='+encodeURIComponent(notes)
+    body:'cluster_id='+cid+'&headline='+encodeURIComponent(hl)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)
   }}).then(function(r){{
     if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}});
     var reader=r.body.getReader(); var dec=new TextDecoder(); var buf='';
