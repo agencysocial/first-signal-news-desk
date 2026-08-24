@@ -415,8 +415,8 @@ _CATHYTALK_IMAGE_SETTINGS = json.dumps({
     "aspect_ratio":       "4:5",
     "resolution":         "1K",
     "output_format":      "png",
-    "watermark_text":     "CathyTalk",
-    "watermark_position": "bottom_center",
+    "watermark_text":     "",
+    "watermark_position": "top_left",
 })
 _CATHYTALK_VOICE = (
     "You are a CathyTalk writer. Warm, conversational women's lifestyle and culture voice. "
@@ -542,7 +542,29 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
     headline_eng = _hex_to_english(headline_color)
     tag_eng     = _hex_to_english(tag_bg_color)
     notes_clause = f" Additional direction: {notes}." if notes else ""
+    brand_slug = brand.get("slug", "")
 
+    # CathyTalk uses an approved distinct layout — white footer, editorial lifestyle card
+    if brand_slug == "cathy_talk":
+        return (
+            f"A {aspect} vertical portrait editorial lifestyle share card with TWO ZONES — strictly no overlap.\n\n"
+            f"ZONE 1 — UPPER 63% (photo area): {scene}.{notes_clause} "
+            f"Light, warm, editorial lifestyle photography — warm natural light, clean composition, "
+            f"soft cream and warm tones. No dark backgrounds. {_ANTI_SLOP}\n\n"
+            f"ZONE 2 — LOWER 37% (footer panel): A SOLID FLAT PURE WHITE rectangle spanning the full "
+            f"width at the bottom of the card. Completely opaque, zero transparency, zero gradient, "
+            f"zero bleed from the photo above. Inside this white panel (left-aligned, 20px padding):\n"
+            f"  - FIRST LINE: a small category label in vivid deep rose pink small uppercase letters "
+            f"with wide letter spacing — e.g. \"HEALTH & FAMILY\".\n"
+            f"  - SECOND LINE: a short horizontal rule, 34px wide, 2px tall, vivid deep rose pink.\n"
+            f"  - THIRD LINE: the headline \"{headline}\" in BOLD near-black charcoal, large "
+            f"modern sans-serif (Raleway or similar), mixed case, wrapped over 2 to 3 lines.\n\n"
+            f"RULES: Flat 2D text — no drop shadows, no glows, no gradients on text. "
+            f"No watermark text at the bottom. No logos rendered in the image — the logo is overlaid separately. "
+            f"{aspect} vertical portrait format, photorealistic, sharp, magazine-quality."
+        )
+
+    # Default layout (First Signal News and future brands)
     return (
         f"A {aspect} vertical portrait breaking-news share card with TWO ZONES — strictly no overlap between them.\n\n"
         f"ZONE 1 — UPPER TWO-THIRDS (photo area): {scene}.{notes_clause} {_ANTI_SLOP}\n\n"
