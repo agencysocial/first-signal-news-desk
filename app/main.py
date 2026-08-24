@@ -93,8 +93,8 @@ def _build_image_prompt(headline: str, tag: str, scene: str, notes: str = "") ->
     )
 
 
-def _stamp_logo(image_bytes: bytes, cid: str) -> Path:
-    """Download image bytes, stamp the FSN logo at top-left, save to /tmp. Returns path."""
+def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") -> Path:
+    """Download image bytes, stamp the brand logo at top-left, save to /tmp. Returns path."""
     from PIL import Image as _PILImage
     import io as _io
 
@@ -103,19 +103,24 @@ def _stamp_logo(image_bytes: bytes, cid: str) -> Path:
     BRIGHTNESS_THRESHOLD = 140
 
     static_dir = Path(__file__).resolve().parent / "static"
-    logo_white = static_dir / "logo_white_text.png"
-    logo_black = static_dir / "logo_black_text.png"
 
     card = _PILImage.open(_io.BytesIO(image_bytes)).convert("RGBA")
     w, h = card.size
 
-    # Sample top-left region to decide which logo variant
+    # Sample top-left region to decide light vs dark background
     region_w = min(300, w // 3)
     region_h = min(120, h // 6)
     region = card.crop((0, 0, region_w, region_h)).convert("RGB")
     pixels = list(region.getdata())
     avg_brightness = sum(0.299 * r + 0.587 * g + 0.114 * b for r, g, b in pixels) / max(len(pixels), 1)
-    logo_path = logo_black if avg_brightness > BRIGHTNESS_THRESHOLD else logo_white
+    is_light_bg = avg_brightness > BRIGHTNESS_THRESHOLD
+
+    if brand_slug == "cathy_talk":
+        # CathyTalk: primary logo (pink+dark) on light bg, dark-bg variant (white) on dark bg
+        logo_path = static_dir / ("cathy_talk_logo.png" if is_light_bg else "cathy_talk_logo_dark.png")
+    else:
+        # First Signal News: white text on dark bg, black text on light bg
+        logo_path = static_dir / ("logo_black_text.png" if is_light_bg else "logo_white_text.png")
 
     logo = _PILImage.open(logo_path).convert("RGBA")
     ratio = LOGO_FIXED_WIDTH / logo.width
@@ -557,12 +562,13 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"soft cream and warm tones. No dark backgrounds. {_ANTI_SLOP}\n\n"
             f"ZONE 2 — LOWER 37% (footer panel): A SOLID FLAT PURE WHITE rectangle spanning the full "
             f"width at the bottom of the card. Completely opaque, zero transparency, zero gradient, "
-            f"zero bleed from the photo above. Inside this white panel (left-aligned, 20px padding):\n"
-            f"  - FIRST LINE: a small category label in vivid deep rose pink small uppercase letters "
-            f"with wide letter spacing — e.g. \"HEALTH & FAMILY\".\n"
+            f"zero bleed from the photo above. Inside this white panel (left-aligned, 20px left padding):\n"
+            f"  - FIRST LINE: the category label \"{tag}\" in vivid deep rose pink uppercase letters "
+            f"with wide letter spacing. The text must be clearly legible — medium-large size, prominent.\n"
             f"  - SECOND LINE: a short horizontal rule, 34px wide, 2px tall, vivid deep rose pink.\n"
-            f"  - THIRD LINE: the headline \"{headline}\" in BOLD near-black charcoal, large "
-            f"modern sans-serif (Raleway or similar), mixed case, wrapped over 2 to 3 lines.\n\n"
+            f"  - THIRD LINE: the headline \"{headline}\" in BOLD near-black charcoal, very large "
+            f"modern sans-serif (Raleway or similar), mixed case, wrapped over 2 to 3 lines. "
+            f"The headline must be the dominant text element — large enough to read at a glance across a phone screen.\n\n"
             f"RULES: Flat 2D text — no drop shadows, no glows, no gradients on text. "
             f"No watermark text at the bottom. No logos rendered in the image — the logo is overlaid separately. "
             f"{aspect} vertical portrait format, photorealistic, sharp, magazine-quality."
@@ -2034,7 +2040,7 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "") -> None
         # Download and stamp logo
         r = httpx.get(kie_url, timeout=60, follow_redirects=True)
         r.raise_for_status()
-        _stamp_logo(r.content, cid)
+        _stamp_logo(r.content, cid, brand_slug=brand_slug_for_gen)
 
         # Push previous CDN URL into image_history before overwriting
         session = SessionLocal()
@@ -3541,9 +3547,9 @@ async def pipeline_queue_story_set_image(cid: str, request: Request, user: dict 
     try:
         r = httpx.get(kie_url, timeout=60, follow_redirects=True)
         r.raise_for_status()
-        _stamp_logo(r.content, cid)
-        # Swap history: push current kie_result_url into history, set new as current
         item = _queue_item_for(cluster_id)
+        _stamp_logo(r.content, cid, brand_slug=(item or {}).get("brand_slug") or "first_signal")
+        # Swap history: push current kie_result_url into history, set new as current
         history = list(item.get("image_history") or []) if item else []
         old_kie = (item or {}).get("kie_result_url") or ""
         if old_kie and old_kie != kie_url and old_kie not in history:
@@ -3642,7 +3648,8 @@ def pipeline_queue_serve_image(cid: str, user: dict = Depends(require_user)):
 
     r = httpx.get(kie_url, timeout=60, follow_redirects=True)
     r.raise_for_status()
-    _stamp_logo(r.content, cid)
+    brand_slug_img = (fsn.get("brand_slug") or "first_signal")
+    _stamp_logo(r.content, cid, brand_slug=brand_slug_img)
     tmp_path_jpg = Path("/tmp/fsn_images") / f"{cid}.jpg"
     return Response(content=tmp_path_jpg.read_bytes(), media_type="image/jpeg")
 
