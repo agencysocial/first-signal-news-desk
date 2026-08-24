@@ -3506,6 +3506,7 @@ def _render_card_template_preview(slug: str) -> str:
             <p style="color:#8b93a3;font-size:11px;margin:0 0 12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Layout spec</p>
             <table style="border-collapse:collapse;font-size:12px;width:100%">
               <tr><td style="color:#8b93a3;padding:4px 12px 4px 0;white-space:nowrap">Aspect ratio</td><td style="color:#c0c8d8">4:5 vertical portrait</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0;white-space:nowrap">Output size</td><td style="color:#c0c8d8">1024 &times; 1280 px &nbsp;&middot;&nbsp; PNG &nbsp;&middot;&nbsp; 1K resolution</td></tr>
               <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Photo area</td><td style="color:#c0c8d8">Upper 63% — warm lifestyle, light background</td></tr>
               <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Footer</td><td style="color:#c0c8d8">Lower 37% — solid white</td></tr>
               <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Logo</td><td style="color:#c0c8d8">Primary (pink+dark) — top-left, overlaid</td></tr>
@@ -3525,6 +3526,7 @@ def _render_card_template_preview(slug: str) -> str:
         <p style="color:#8b93a3;font-size:11px;margin:0 0 12px">Approved layout — breaking news card.</p>
         <table style="border-collapse:collapse;font-size:12px">
           <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Aspect ratio</td><td style="color:#c0c8d8">4:5 vertical portrait</td></tr>
+          <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Output size</td><td style="color:#c0c8d8">1024 &times; 1280 px &nbsp;&middot;&nbsp; PNG &nbsp;&middot;&nbsp; 1K resolution</td></tr>
           <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Photo area</td><td style="color:#c0c8d8">Upper two-thirds</td></tr>
           <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Footer</td><td style="color:#c0c8d8">Solid black</td></tr>
           <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Tag pill</td><td style="color:#c0c8d8">Red <code style="font-size:10px">#D02020</code>, bold white uppercase</td></tr>
