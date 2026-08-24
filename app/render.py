@@ -2309,8 +2309,8 @@ function toggleHist(id) {
     <div style="margin-top:14px;padding:10px 14px;background:#0a1628;border:1px solid #1e3a8a;border-radius:6px;font-size:12px;line-height:1.7;color:#93c5fd">
       <b style="color:#c0c8d8">How it works:</b><br>
       1. Paste the article URL and/or text below and click <b>Add to Queue</b> &mdash; it lands in Pending.<br>
-      2. <b>Paste the same article text in your Claude Code chat.</b> Claude drafts the headline, tag, 4 captions, and first comment in First Signal News voice and updates the queue entry automatically.<br>
-      3. Come back here, click the <b>&#9998; Draft</b> button on the entry to review, then send to generation.
+      2. Open the story from the Production Queue, click <b>Get Angles</b> to generate content angles, then use <b>Generate Content</b> to write the headline, tag, 4 captions, and first comment in First Signal News voice.<br>
+      3. Generate the image, review everything in the workspace, then mark it ready to post.
     </div>
 
     <form method="post" action="/pipeline-queue/add-article" id="manual-add-form">
@@ -2327,7 +2327,7 @@ function toggleHist(id) {
       <div style="margin-top:10px;display:flex;align-items:center;gap:10px">
         <button type="submit" class="primary"
           style="padding:7px 16px;font-size:13px">&#43; Add to Queue</button>
-        <span style="font-size:11px;color:#8b93a3">Then paste the article in Claude Code chat to generate the FSN draft.</span>
+        <span style="font-size:11px;color:#8b93a3">Then open it in Production Queue to generate angles, content, and image.</span>
       </div>
     </form>
   </div>
