@@ -86,7 +86,7 @@ def _build_image_prompt(headline: str, tag: str, scene: str, notes: str = "") ->
         f"  - BELOW THE TAG: the headline text \"{headline}\" in BOLD BRIGHT GOLDEN YELLOW uppercase "
         f"Montserrat-style sans-serif. The yellow is bright warm golden yellow — consistent, NOT pale, "
         f"NOT lime, NOT orange. Left-aligned, large enough to read at a glance, wrapped over 2 to 4 lines.\n"
-        f"  - BOTTOM CENTER of the black panel: the watermark text \"First Signal News\" in small white letters.\n\n"
+        f"\n"
         f"RULES: Flat 2D text only — no drop shadows, no outer glows, no gradients on text. "
         f"No logos, no URLs, no social handles. Photo fills only the upper two-thirds. "
         f"4:5 vertical portrait format, photorealistic, sharp, magazine-quality."
