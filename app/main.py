@@ -73,17 +73,23 @@ def _get_kie_key() -> str | None:
     return None
 
 
-def _build_image_prompt(headline: str, tag: str, scene: str) -> str:
+def _build_image_prompt(headline: str, tag: str, scene: str, notes: str = "") -> str:
+    notes_clause = f" Additional direction: {notes}." if notes else ""
     return (
-        f"A 4:5 vertical breaking-news share card. "
-        f"UPPER TWO-THIRDS is the photo: {scene}. {_ANTI_SLOP} "
-        f"LOWER THIRD is a solid flat BLACK footer panel. Inside the footer, at the top, a small "
-        f"bright RED rectangular tag box with the label \"{tag}\" in bold white uppercase. "
-        f"Directly below it, the headline \"{headline}\" in BOLD BRIGHT YELLOW uppercase modern "
-        f"sans-serif (Montserrat style), left-aligned, large and highly legible, wrapped over 2-4 lines. "
-        f"No text, no logos, no watermarks, no URLs, no social handles outside the black footer panel. "
-        f"Flat 2D text, no drop shadows, no outer glows. "
-        f"4:5 vertical portrait, photorealistic, sharp, vivid, magazine-quality."
+        f"A 4:5 vertical portrait breaking-news share card with TWO ZONES — strictly no overlap between them.\n\n"
+        f"ZONE 1 — UPPER TWO-THIRDS (photo area): {scene}.{notes_clause} {_ANTI_SLOP}\n\n"
+        f"ZONE 2 — LOWER ONE-THIRD (footer panel): A SOLID FLAT PURE BLACK rectangle spanning the full width "
+        f"at the bottom of the card. This panel must be completely opaque black with ZERO transparency, "
+        f"ZERO gradient, ZERO bleed from the photo above. Inside this black panel:\n"
+        f"  - TOP OF FOOTER: a small solid bright red rounded rectangle pill containing the text "
+        f"\"{tag}\" in bold white uppercase letters. The red is vivid fire-engine red — NOT orange, NOT dark red.\n"
+        f"  - BELOW THE TAG: the headline text \"{headline}\" in BOLD BRIGHT GOLDEN YELLOW uppercase "
+        f"Montserrat-style sans-serif. The yellow is bright warm golden yellow — consistent, NOT pale, "
+        f"NOT lime, NOT orange. Left-aligned, large enough to read at a glance, wrapped over 2 to 4 lines.\n"
+        f"  - BOTTOM CENTER of the black panel: the watermark text \"First Signal News\" in small white letters.\n\n"
+        f"RULES: Flat 2D text only — no drop shadows, no outer glows, no gradients on text. "
+        f"No logos, no URLs, no social handles. Photo fills only the upper two-thirds. "
+        f"4:5 vertical portrait format, photorealistic, sharp, magazine-quality."
     )
 
 
@@ -852,37 +858,26 @@ def api_ping():
 
 @app.get("/api/find-sources")
 def api_find_sources(q: str = "", user: dict = Depends(require_user)):
-    """Search DuckDuckGo for source links related to a story headline."""
+    """Search Google News RSS for source links related to a story headline."""
     if not q or len(q) < 5:
         return JSONResponse({"results": []})
-    import urllib.parse as _up, re as _re
-    query = _up.quote_plus(q + " site:reuters.com OR site:apnews.com OR site:foxnews.com OR site:breitbart.com OR site:nypost.com OR site:washingtonpost.com OR site:nytimes.com OR site:thehill.com OR site:politico.com OR site:thefederalist.com")
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
+    import urllib.parse as _up, re as _re, xml.etree.ElementTree as _ET
+    encoded = _up.quote_plus(q)
+    rss_url = f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en"
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; AIMNewsDesk/1.0)"}
     try:
-        r = httpx.get(f"https://html.duckduckgo.com/html/?q={query}", headers=headers, timeout=8, follow_redirects=True)
-        html = r.text
+        r = httpx.get(rss_url, headers=headers, timeout=10, follow_redirects=True)
+        root = _ET.fromstring(r.text)
+        ns = {"media": "http://search.yahoo.com/mrss/"}
         results = []
-        # Parse result blocks from DDG HTML
-        for block in html.split('class="result__body"')[1:6]:
-            title_m = _re.search(r'class="result__a"[^>]*>(.*?)</a>', block, _re.S)
-            url_m   = _re.search(r'class="result__url"[^>]*>\s*(.*?)\s*</a>', block, _re.S)
-            snip_m  = _re.search(r'class="result__snippet"[^>]*>(.*?)</span>', block, _re.S)
-            if not title_m:
-                continue
-            def _strip(s):
-                return _re.sub(r'<[^>]+>', '', s or '').strip()
-            raw_url = _strip(url_m.group(1)) if url_m else ""
-            if raw_url and not raw_url.startswith("http"):
-                raw_url = "https://" + raw_url
-            results.append({
-                "title":   _strip(title_m.group(1)),
-                "url":     raw_url,
-                "snippet": _strip(snip_m.group(1)) if snip_m else "",
-            })
-        return JSONResponse({"results": results[:4]})
+        for item in root.findall(".//item")[:6]:
+            title = (item.findtext("title") or "").strip()
+            link  = (item.findtext("link") or "").strip()
+            desc  = _re.sub(r'<[^>]+>', '', item.findtext("description") or "").strip()[:200]
+            src   = (item.findtext("source") or "").strip()
+            if title and link:
+                results.append({"title": title, "url": link, "snippet": desc, "source": src})
+        return JSONResponse({"results": results[:5]})
     except Exception as exc:
         return JSONResponse({"error": str(exc), "results": []}, status_code=500)
 
@@ -1758,14 +1753,15 @@ def pipeline_queue_batch_status(user: dict = Depends(require_user)):
     })
 
 
-def _generate_one_image(cid: str, key: str, item: dict) -> None:
+def _generate_one_image(cid: str, key: str, item: dict, notes: str = "") -> None:
     """Generate image for a single cluster, stamp logo, and update DB. Runs in a thread."""
     draft = item.get("draft") or {}
     headline = draft.get("headline") or item.get("text") or ""
     tag      = draft.get("tag") or "BREAKING NEWS"
     scene    = draft.get("scene") or draft.get("image_scene") or item.get("suggested_scene") or "United States Capitol building exterior, wide establishing shot"
+    effective_notes = notes or draft.get("image_notes") or ""
     try:
-        prompt = _build_image_prompt(headline, tag, scene)
+        prompt = _build_image_prompt(headline, tag, scene, effective_notes)
         task_id = _kie_submit(prompt, key)
         kie_url = _kie_poll(task_id, key)
 
@@ -2087,11 +2083,11 @@ Portrait cards are cards where scene contains "likeness" or "portrait". Cap is 2
         import anthropic
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
-            model="claude-sonnet-5", max_tokens=1024,
+            model="claude-sonnet-4-6", max_tokens=1024,
             system=system,
             messages=[{"role": "user", "content": user_msg}],
         )
-        raw = resp.content[0].text.strip()
+        raw = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "").strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -2163,7 +2159,7 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
 
         def _stream():
             with client.messages.stream(
-                model="claude-sonnet-5", max_tokens=600,
+                model="claude-sonnet-4-6", max_tokens=600,
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
             ) as stream:
@@ -2237,7 +2233,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
 
         def _stream():
             with client.messages.stream(
-                model="claude-sonnet-5", max_tokens=2500,
+                model="claude-sonnet-4-6", max_tokens=2500,
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
             ) as stream:
@@ -2347,11 +2343,11 @@ async def pipeline_queue_write_video_script(request: Request, user: dict = Depen
         import anthropic, re as _re
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
-            model="claude-sonnet-5", max_tokens=4000,
+            model="claude-sonnet-4-6", max_tokens=4000,
             system=_VIDEO_SYSTEM,
             messages=[{"role": "user", "content": user_msg}],
         )
-        raw = resp.content[0].text.strip()
+        raw = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "").strip()
         m = _re.search(r'\{.*\}', raw, _re.S)
         if not m:
             return JSONResponse({"error": f"No JSON in response: {raw[:300]}"}, status_code=500)
@@ -2424,7 +2420,7 @@ Each angle must be meaningfully different in framing. No em-dashes."""
 
         def _stream():
             with client.messages.stream(
-                model="claude-sonnet-5", max_tokens=1024,
+                model="claude-sonnet-4-6", max_tokens=1024,
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
             ) as stream:
@@ -2495,11 +2491,11 @@ Output ONLY valid JSON:
         import anthropic
         client = anthropic.Anthropic(api_key=key)
         resp = client.messages.create(
-            model="claude-sonnet-5", max_tokens=512,
+            model="claude-sonnet-4-6", max_tokens=512,
             system=system,
             messages=[{"role": "user", "content": f"Story: {headline}\n\nWrite 3 TOBI options."}],
         )
-        raw = resp.content[0].text.strip()
+        raw = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "").strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -3135,7 +3131,7 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
         import anthropic as _ant, re as _re
         client = _ant.Anthropic(api_key=key)
         resp = client.messages.create(
-            model="claude-sonnet-5", max_tokens=2500,
+            model="claude-sonnet-4-6", max_tokens=2500,
             system=system,
             messages=[{"role": "user", "content": user_msg}],
         )
@@ -3179,6 +3175,7 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         headline = str(form.get("headline", "")).strip()
         tag      = str(form.get("tag", "")).strip()
         scene    = str(form.get("scene", "")).strip()
+        notes    = str(form.get("notes", "")).strip()
 
         items, item = _resolve_queue_item(cluster_id)
         if not item:
@@ -3195,6 +3192,8 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         effective_scene = scene or (item.get("draft") or {}).get("scene") or item.get("suggested_scene") or ""
         item["draft"]["scene"] = effective_scene
         item["scene"] = effective_scene
+        if notes:
+            item["draft"]["image_notes"] = notes
 
         # Clear old image so status shows "generating"
         _update_cluster_fsn(cluster_id, generated_image_url="", image_gen_status="generating",
@@ -3208,7 +3207,7 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         if not key:
             return JSONResponse({"error": "KIE_AI_API_KEY not set on server"}, status_code=400)
 
-        background_tasks.add_task(_generate_one_image, str(cluster_id), key, item)
+        background_tasks.add_task(_generate_one_image, str(cluster_id), key, item, notes)
         return JSONResponse({"ok": True})
     except Exception as exc:
         logger.error("regenerate-image %s: %s", cid, exc)

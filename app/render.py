@@ -142,8 +142,9 @@ NAV = """
     }
     _loadCounts();
     setInterval(_loadCounts,30000);
-    // Keepalive — ping every 4 minutes so Render doesn't spin down during active use
-    setInterval(function(){fetch('/api/ping').catch(function(){});},240000);
+    // Keepalive — ping every 2 minutes so Render doesn't spin down; also ping on tab focus
+    setInterval(function(){fetch('/api/ping').catch(function(){});},120000);
+    document.addEventListener('visibilitychange',function(){if(!document.hidden)fetch('/api/ping').catch(function(){});});
   })();
   </script>
 """
@@ -2352,7 +2353,7 @@ def _render_img_history(history: list, cid: str) -> str:
             f'<a href="{escape(kie_url)}" download target="_blank" '
             f'style="font-size:9px;padding:2px 6px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:3px;text-decoration:none">&#11015;</a>'
             f'</div>'
-            f'<span style="font-size:9px;color:#8b93a3">v{i}</span>'
+            f'<span style="font-size:9px;color:#8b93a3">Image-{i}</span>'
             f'</div>'
         )
     return (
@@ -2567,12 +2568,14 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
   <!-- RIGHT -->
   <div>
     <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <span style="color:#c7cbd4;font-size:13px;font-weight:600">Image</span>
         <button type="button" onclick="regenImage('{cid}')"
           style="font-size:11px;padding:4px 12px;background:#1a0a00;border:1px solid #7a3010;color:#fb923c;cursor:pointer;border-radius:4px">
           {regen_label}</button>
       </div>
+      <textarea id="img-notes-{cid}" placeholder="Optional notes for this generation — e.g. &quot;show a courtroom&quot;, &quot;darker mood&quot;, &quot;wide shot of Capitol&quot;" rows="2"
+        style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:6px;font-family:inherit;resize:vertical;margin-bottom:8px"></textarea>
       <div id="img-wrap-{cid}">{img_html}</div>
       <div id="img-status-{cid}" style="font-size:11px;color:#8b93a3;margin-top:4px">{"Generating... refresh in ~60s" if img_status=="generating" else ""}</div>
       <div id="img-history-{cid}">{_render_img_history(img_history, cid)}</div>
@@ -2813,7 +2816,7 @@ function _startImagePoll(cid) {{
                   +'<button type="button" onclick="useHistoryImage(\\''+cid+'\\',\\''+u+'\\')" style="font-size:9px;padding:2px 6px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use</button>'
                   +'<a href="'+u+'" download target="_blank" style="font-size:9px;padding:2px 6px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:3px;text-decoration:none">&#11015;</a>'
                   +'</div>'
-                  +'<span style="font-size:9px;color:#8b93a3">v'+(i+1)+'</span>'
+                  +'<span style="font-size:9px;color:#8b93a3">Image-'+(i+1)+'</span>'
                   +'</div>';
               }});
               html += '</div></div>';
@@ -2839,6 +2842,7 @@ function regenImage(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
   var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
   var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var notes = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
   var st    = document.getElementById('img-status-'+cid);
   var wrap  = document.getElementById('img-wrap-'+cid);
   function _showErr(msg) {{
@@ -2849,7 +2853,7 @@ function regenImage(cid) {{
   if (st) st.textContent = 'Queued...';
   if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating…</div>';
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)
   }}).then(function(r){{
     if(!r.ok) return r.text().then(function(t){{ throw new Error('Server error '+r.status+': '+t.slice(0,200)); }});
     return r.json();
