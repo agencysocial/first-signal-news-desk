@@ -259,6 +259,10 @@ def _load_fsn_queue() -> list[dict]:
                 "script_long":         fsn.get("script_long", ""),
                 "poll_question":       fsn.get("poll_question", ""),
                 "video_first_comment": fsn.get("video_first_comment", ""),
+                "brand_slug":          fsn.get("brand_slug", ""),
+                "kie_result_url":      fsn.get("kie_result_url", ""),
+                "image_history":       fsn.get("image_history", []),
+                "momentum_score":      round(float(c.momentum_score or 0), 1),
                 "_source": "newsdesk_handoff",
             }
             items.append(item)
@@ -270,7 +274,7 @@ def _load_fsn_queue() -> list[dict]:
 _FSN_STATE_KEYS = {"queue_status", "post_type", "draft", "approved_at",
                    "generated_image_url", "image_gen_status", "image_history", "tobi_text", "output_file",
                    "video_titles", "reels_description", "script_short", "script_medium",
-                   "script_long", "poll_question", "video_first_comment"}
+                   "script_long", "poll_question", "video_first_comment", "brand_slug"}
 
 
 def _save_fsn_queue(items: list[dict]) -> None:
