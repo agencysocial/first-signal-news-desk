@@ -468,10 +468,14 @@ def _seed_default_brands() -> None:
             if existing is None:
                 session.add(_BP(**d))
             else:
-                # Always sync these fields so code changes propagate to DB
-                for field in ("colors", "image_settings", "voice_instructions",
-                              "caption_settings", "logo_url", "name", "sort_order"):
+                # Sync structural fields on every startup so code changes propagate.
+                for field in ("colors", "image_settings", "logo_url", "name", "sort_order"):
                     setattr(existing, field, d[field])
+                # Operator-editable fields: only write the default if the DB is blank
+                # (preserves any edits made via the settings UI across restarts/deploys).
+                for field in ("voice_instructions", "caption_settings"):
+                    if not getattr(existing, field, None):
+                        setattr(existing, field, d[field])
         session.commit()
         logger.info("Brand properties seeded/synced.")
     except Exception as exc:
