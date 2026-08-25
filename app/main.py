@@ -3714,7 +3714,7 @@ def pipeline_queue_story_image_status(cid: str, brand_slug: str = "first_signal"
 
 @app.post("/pipeline-queue/story/{cid}/set-image")
 async def pipeline_queue_story_set_image(cid: str, request: Request, user: dict = Depends(require_user)):
-    """Swap a history image to be the current image (downloads and re-stamps logo)."""
+    """Swap a history image to be the current image (downloads and re-stamps logo). Brand-aware."""
     if not cid.isdigit():
         return JSONResponse({"error": "invalid id"}, status_code=400)
     cluster_id = int(cid)
@@ -3726,17 +3726,29 @@ async def pipeline_queue_story_set_image(cid: str, request: Request, user: dict 
         r = httpx.get(kie_url, timeout=60, follow_redirects=True)
         r.raise_for_status()
         item = _queue_item_for(cluster_id)
-        _stamp_logo(r.content, cid, brand_slug=(item or {}).get("brand_slug") or "first_signal")
-        # Swap history: push current kie_result_url into history, set new as current
-        history = list(item.get("image_history") or []) if item else []
-        old_kie = (item or {}).get("kie_result_url") or ""
+        brand_slug = str(form.get("brand_slug", "")).strip() or (item or {}).get("brand_slug") or "first_signal"
+        tmp_file_id = f"{cid}__{brand_slug}"
+        stamped_path = _stamp_logo(r.content, tmp_file_id, brand_slug=brand_slug)
+        supabase_url = _supabase_storage_upload(stamped_path, cid, brand_slug)
+        # Swap history inside brand_images[brand_slug]
+        brand_images = dict((item or {}).get("brand_images") or {})
+        existing = dict(brand_images.get(brand_slug) or {})
+        history = list(existing.get("image_history") or [])
+        old_kie = existing.get("kie_result_url") or ""
         if old_kie and old_kie != kie_url and old_kie not in history:
             history.append(old_kie)
         if kie_url in history:
             history.remove(kie_url)
-        served_url = f"/pipeline-queue/image/{cid}"
-        _update_cluster_fsn(cluster_id, generated_image_url=served_url,
-                            kie_result_url=kie_url, image_history=history)
+        served_url = f"/pipeline-queue/image/{cid}/{brand_slug}"
+        existing.update({
+            "generated_image_url": served_url,
+            "kie_result_url": kie_url,
+            "supabase_image_url": supabase_url or existing.get("supabase_image_url") or "",
+            "image_gen_status": "done",
+            "image_history": history,
+        })
+        brand_images[brand_slug] = existing
+        _update_cluster_fsn(cluster_id, brand_images=brand_images)
         return JSONResponse({"ok": True, "url": served_url, "history": history})
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)

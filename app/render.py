@@ -2091,7 +2091,7 @@ function toggleHist(id) {
     html += '</div>';
 
     // patch _total for the counter
-    html += '<script>setTimeout(function(){var e=document.getElementById("gal-approved-count");if(e)e._total=' + totalImg + ';},0);<\/script>';
+    html += '<script>setTimeout(function(){var e=document.getElementById("gal-approved-count");if(e)e._total=' + totalImg + ';},0);<\\/script>';
 
     // ── Image cards ─────────────────────────────────────────────────────────
     var colStyle = _galView === 'grid'
@@ -2154,7 +2154,7 @@ function toggleHist(id) {
         html += '<button id="pkgbtn-' + pid + '" onclick="copyPackage(' + pid + ',' + JSON.stringify(caps) + ',' + JSON.stringify(fc) + ')" style="font-size:10px;padding:1px 6px;background:#0a1a0a;border:1px solid #1a4a1a;color:#4ade80;cursor:pointer;border-radius:3px;margin-left:2px">&#128203;</button>';
         html += '</div>';
         html += '<div id="' + cid + '" style="display:none;font-size:10px;color:#c0c8d8;line-height:1.6;max-height:100px;overflow-y:auto;background:#060910;padding:6px;border-radius:3px;margin-bottom:6px" data-fc="' + esc(fc) + '" data-variant="short"></div>';
-        html += '<script type="application/json" id="caps-' + cid + '">' + JSON.stringify(caps) + '<\/script>';
+        html += '<script type="application/json" id="caps-' + cid + '">' + JSON.stringify(caps) + '<\\/script>';
         // Skip button
         html += '<button id="skipbtn-' + pid + '" onclick="skipCard(' + pid + ')" type="button" style="font-size:10px;padding:1px 7px;background:#1a0a0a;border:1px solid #5a1a1a;color:#f87171;cursor:pointer;border-radius:3px;width:100%">&#10005; Skip</button>';
         html += '</div></div>';
@@ -2190,7 +2190,7 @@ function toggleHist(id) {
         html += '<button id="pkgbtn-' + pid + '" onclick="copyPackage(' + pid + ',' + JSON.stringify(caps) + ',' + JSON.stringify(fc) + ')" style="font-size:10px;padding:2px 10px;background:#0a1a0a;border:1px solid #1a4a1a;color:#4ade80;cursor:pointer;border-radius:3px;margin-left:4px">&#128203; Copy caption</button>';
         html += '</div>';
         html += '<div id="' + cid + '" style="display:none;font-size:12px;color:#c0c8d8;line-height:1.7;background:#060910;padding:10px;border-radius:4px;max-height:200px;overflow-y:auto" data-fc="' + esc(fc) + '" data-variant="short"></div>';
-        html += '<script type="application/json" id="caps-' + cid + '">' + JSON.stringify(caps) + '<\/script>';
+        html += '<script type="application/json" id="caps-' + cid + '">' + JSON.stringify(caps) + '<\\/script>';
         html += '</div>';
         // First comment row
         if (fc) {
@@ -3007,7 +3007,8 @@ function useHistoryImage(cid, kieUrl) {{
   var wrap = document.getElementById('img-wrap-'+cid);
   var st   = document.getElementById('img-status-'+cid);
   if (st) st.textContent = 'Swapping...';
-  fetch('/pipeline-queue/story/'+cid+'/set-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'kie_url='+encodeURIComponent(kieUrl)}})
+  var brandSlug = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
+  fetch('/pipeline-queue/story/'+cid+'/set-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'kie_url='+encodeURIComponent(kieUrl)+'&brand_slug='+encodeURIComponent(brandSlug)}})
     .then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
     .then(function(d){{
       if (d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
