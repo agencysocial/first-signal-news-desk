@@ -395,7 +395,9 @@ _FSN_VOICE = (
     "Tell the REAL story from the source: keep verifiable facts (real names, real dates, real quotes). "
     "Rewrite the wording — NEVER fabricate a quote, position, event, charge, or statistic about any real person. "
     "Partisan and pointed: take a clear America First side, name the subject specifically. "
-    "End captions with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:). "
+    "End captions with a sharp, story-specific question that names the subject or issue — "
+    "NOT a generic phrase like 'Do you agree?' but a question the reader can actually answer about THIS story "
+    "(e.g. 'Should [NAME] face consequences for this?' / 'Is this the end of [ISSUE]?' / 'What does this mean for [topic]?'). "
     "No em-dashes."
 )
 _FSN_CAPTION_SETTINGS = json.dumps({
@@ -599,9 +601,10 @@ def _get_brand_voice_system(brand: dict, task: str = "captions") -> str:
     cs    = brand.get("caption_settings") or {}
     hook  = cs.get("agreement_hook", True)
     hook_note = (
-        "\nEnd short and medium captions with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:)."
+        "\nEnd short and medium captions with a sharp, story-specific question that names the real subject or issue — "
+        "NOT a generic phrase like 'Do you agree?' but a question readers can actually answer about THIS story."
         if hook else
-        "\nEnd captions with an engaging question that invites the reader to share their experience."
+        "\nEnd captions with an open personal question that invites the reader to share their experience."
     )
     return (
         f"You are a content writer for {name}.\n\n"
@@ -2418,7 +2421,7 @@ async def pipeline_queue_rewrite_caption(request: Request, user: dict = Depends(
     if brand_slug_rw == "cathy_talk":
         hook_instruction = "End with an open personal question inviting the reader to share their experience."
     else:
-        hook_instruction = "Short and medium captions must end with an agreement hook (Do you agree? / Right? / Yes or No?)."
+        hook_instruction = "Short and medium captions must end with a sharp, story-specific question naming the real subject or issue — NOT generic like 'Do you agree?' but specific to THIS story."
     system = (
         base_voice + "\n\n"
         "NEVER use em-dashes (—). "
@@ -2505,8 +2508,8 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
         audience_frame = "CathyTalk readers"
     else:
         hook_rule = (
-            "Short ends with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:). "
-            "Medium also ends with an agreement hook."
+            "Short and medium captions must end with a sharp, story-specific question naming the real person or issue — "
+            "NOT generic like 'Do you agree?' but specific to THIS story."
         )
         long_frame = "FULL FACEBOOK ARTICLE — lead with the biggest fact, build the case paragraph by paragraph, name names, cite what happened, end with the hook"
         audience_frame = "America First readers"
@@ -2792,7 +2795,7 @@ Rules:
 - Each post: 12-32 words (HARD LIMIT — count carefully)
 - America First conservative voice, direct and punchy
 - No em-dashes, no emojis, no hashtags
-- End each post with an agreement hook: "Do you agree?" / "Yes or No?" / "Right?" / "Who agrees?" / "Be honest:"
+- End each post with a sharp, story-specific question naming the real person or issue — NOT generic like "Do you agree?" but specific to THIS story
 - Each option must take a different angle (e.g. outrage, accountability, poll)
 
 Output ONLY valid JSON:
@@ -2927,8 +2930,9 @@ _FSN_NEWS_VOICE = (
 _FSN_AMERICA_FIRST_VOICE = (
     "You are a First Signal News writer producing America First / conservative Facebook content. "
     "Tone: pointed, accountability-driven, pro-Trump, pro-America. Name the real people, name the real votes, "
-    "name the real consequences. Take a clear side. End captions with an agreement hook "
-    "(Do you agree? / Right? / Yes or No? / Be honest: / Who agrees?). "
+    "name the real consequences. Take a clear side. End captions with a sharp, story-specific question "
+    "that names the real person or issue — NOT generic ('Do you agree?') but specific to THIS story "
+    "(e.g. 'Should [NAME] be held accountable?' / 'Is this the end of [POLICY]?'). "
     "No em-dashes, no hashtags, no emojis. Never fabricate a quote, charge, vote, or statistic. "
     + _FSN_VOICE_CONTEXT + _FSN_STORY_GROUNDING
 )
@@ -3436,7 +3440,7 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
         long_frame = "conversational, warm article — lead with why this matters to everyday women and families"
         audience_frame = "CathyTalk readers"
     else:
-        hook_note = "" if voice == "news" else "Short must end with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:).\n"
+        hook_note = "" if voice == "news" else "Short and medium must end with a sharp, story-specific question naming the real person or issue — NOT generic like 'Do you agree?' but specific to THIS story.\n"
         long_frame = "complete Facebook article with background, context, why it matters, strong closing hook"
         audience_frame = "America First readers"
 
