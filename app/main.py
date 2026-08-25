@@ -3429,20 +3429,31 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
         system = _get_brand_voice_system(brand, task="captions")
     else:
         system = _FSN_NEWS_VOICE if voice == "news" else _FSN_AMERICA_FIRST_VOICE
+
+    # Brand-specific hook and framing
+    if active_brand_slug == "cathy_talk":
+        hook_note = "End each caption with an open personal question inviting the reader to share their experience.\n"
+        long_frame = "conversational, warm article — lead with why this matters to everyday women and families"
+        audience_frame = "CathyTalk readers"
+    else:
+        hook_note = "" if voice == "news" else "Short must end with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:).\n"
+        long_frame = "complete Facebook article with background, context, why it matters, strong closing hook"
+        audience_frame = "America First readers"
+
     system += (
-        "\n\nOutput ONLY valid JSON — no explanation, no markdown fences.\n"
+        "\nNEVER use em-dashes (—) anywhere in the output. "
+        "Output ONLY valid JSON — no explanation, no markdown fences.\n"
         "Return: {\"short\":\"...\",\"medium\":\"...\",\"long\":\"...\",\"extra_long\":\"...\",\"first_comment\":\"...\"}"
     )
 
-    hook_note = "" if voice == "news" else "Short must end with an agreement hook (Do you agree? / Right? / Yes or No? / Be honest:).\n"
     user_msg = (
         f"Story: {story}\nHeadline: {headline}\nTag: {tag}\n\n"
         "Write 4 Facebook caption variants and a first comment. Strict word counts:\n"
         f"{hook_note}"
-        "- short: 10-15 words, punchy hook, ends with agreement hook\n"
-        "- medium: 40-60 words, 1-2 sharp sentences, ends with agreement hook\n"
-        "- long: 100-150 words, 2-3 paragraphs, full context, ends with hook\n"
-        "- extra_long: 200-300 words, complete Facebook article with background, context, why it matters, strong closing hook\n"
+        "- short: 10-15 words, punchy hook\n"
+        "- medium: 40-60 words, 1-2 sharp sentences\n"
+        "- long: 100-150 words, 2-3 paragraphs, full context\n"
+        f"- extra_long: 200-300 words, {long_frame}\n"
         "- first_comment: 25-45 words — add one specific detail or context from the story not in the caption, "
         "then end with a direct question to the reader\n\n"
         'Return JSON: {"short":"...","medium":"...","long":"...","extra_long":"...","first_comment":"..."}'
