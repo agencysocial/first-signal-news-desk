@@ -3503,15 +3503,30 @@ def _render_card_template_preview(slug: str) -> str:
             </div>
           </div>
 
-          <!-- Layout spec -->
+          <!-- Right column: logos + spec -->
           <div style="flex:1;min-width:220px">
-            <p style="color:#8b93a3;font-size:11px;margin:0 0 12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Layout spec</p>
+
+            <!-- Logo variants -->
+            <p style="color:#8b93a3;font-size:11px;margin:0 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Logo variants</p>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+              <div style="background:#f7f3f0;border-radius:4px;padding:8px 12px">
+                <div style="font-size:9px;color:#888;margin-bottom:4px">Primary — light backgrounds (white footer)</div>
+                <img src="/static/cathy_talk_logo.png" style="height:24px;width:auto" alt="CathyTalk primary logo">
+              </div>
+              <div style="background:#1a1a1a;border-radius:4px;padding:8px 12px">
+                <div style="font-size:9px;color:#5a6a8a;margin-bottom:4px">All-white — dark photo backgrounds</div>
+                <img src="/static/cathy_talk_logo_white.png" style="height:24px;width:auto" alt="CathyTalk white logo">
+              </div>
+            </div>
+
+            <!-- Layout spec -->
+            <p style="color:#8b93a3;font-size:11px;margin:0 0 8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Layout spec</p>
             <table style="border-collapse:collapse;font-size:12px;width:100%">
               <tr><td style="color:#8b93a3;padding:4px 12px 4px 0;white-space:nowrap">Aspect ratio</td><td style="color:#c0c8d8">4:5 vertical portrait</td></tr>
               <tr><td style="color:#8b93a3;padding:4px 12px 4px 0;white-space:nowrap">Output size</td><td style="color:#c0c8d8">1024 &times; 1280 px &nbsp;&middot;&nbsp; PNG &nbsp;&middot;&nbsp; 1K resolution</td></tr>
               <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Photo area</td><td style="color:#c0c8d8">Upper 63% — warm lifestyle, light background</td></tr>
               <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Footer</td><td style="color:#c0c8d8">Lower 37% — solid white</td></tr>
-              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Logo</td><td style="color:#c0c8d8">Primary (pink+dark) — top-left, overlaid</td></tr>
+              <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Logo</td><td style="color:#c0c8d8">Primary (pink+dark) on light; all-white on dark</td></tr>
               <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Category</td><td style="color:#c0c8d8">Rose pink <code style="font-size:10px">#CE3175</code>, small caps</td></tr>
               <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Rule</td><td style="color:#c0c8d8">34px × 2px, rose pink</td></tr>
               <tr><td style="color:#8b93a3;padding:4px 12px 4px 0">Headline</td><td style="color:#c0c8d8">Raleway 800, charcoal <code style="font-size:10px">#222222</code></td></tr>

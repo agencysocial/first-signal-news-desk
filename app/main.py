@@ -119,8 +119,8 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
     is_light_bg = avg_brightness > BRIGHTNESS_THRESHOLD
 
     if brand_slug == "cathy_talk":
-        # CathyTalk: primary logo (pink+dark) on light bg, dark-bg variant (white) on dark bg
-        logo_path = static_dir / ("cathy_talk_logo.png" if is_light_bg else "cathy_talk_logo_dark.png")
+        # CathyTalk: primary (pink+dark) on light bg, all-white version on dark bg
+        logo_path = static_dir / ("cathy_talk_logo.png" if is_light_bg else "cathy_talk_logo_white.png")
     else:
         # First Signal News: white text on dark bg, black text on light bg
         logo_path = static_dir / ("logo_black_text.png" if is_light_bg else "logo_white_text.png")
@@ -448,8 +448,8 @@ _CATHYTALK_CAPTION_SETTINGS = json.dumps({
 # Logo URLs — served from /static/ by FastAPI StaticFiles mount.
 # Primary (light bg): pink "CATHY" + speech bubble outline.
 # Dark bg variant: full "CATHYTALK" logo.
-_CATHYTALK_LOGO_URL      = "/static/cathy_talk_logo.png"
-_CATHYTALK_LOGO_DARK_URL = "/static/cathy_talk_logo_dark.png"
+_CATHYTALK_LOGO_URL       = "/static/cathy_talk_logo.png"       # primary (pink+dark) — light backgrounds
+_CATHYTALK_LOGO_WHITE_URL = "/static/cathy_talk_logo_white.png"  # all-white — dark backgrounds
 
 
 def _seed_default_brands() -> None:
