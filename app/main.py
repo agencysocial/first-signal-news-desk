@@ -318,6 +318,7 @@ def _load_fsn_queue() -> list[dict]:
                 "kie_result_url":      fsn.get("kie_result_url", ""),
                 "image_history":       fsn.get("image_history", []),
                 "brand_images":        fsn.get("brand_images", {}),
+                "brand_drafts":        fsn.get("brand_drafts", {}),
                 "momentum_score":      round(float(c.momentum_score or 0), 1),
                 "_source": "newsdesk_handoff",
             }
@@ -330,7 +331,8 @@ def _load_fsn_queue() -> list[dict]:
 _FSN_STATE_KEYS = {"queue_status", "post_type", "draft", "approved_at",
                    "generated_image_url", "image_gen_status", "image_history", "tobi_text", "output_file",
                    "video_titles", "reels_description", "script_short", "script_medium",
-                   "script_long", "poll_question", "video_first_comment", "brand_slug", "brand_images"}
+                   "script_long", "poll_question", "video_first_comment", "brand_slug", "brand_images",
+                   "brand_drafts"}
 
 
 def _save_fsn_queue(items: list[dict]) -> None:
@@ -424,6 +426,37 @@ def _update_cluster_fsn(cid: int | str, **kwargs) -> None:
         logger.error("_update_cluster_fsn %s: %s", cid, exc)
     finally:
         session.close()
+
+def _save_brand_draft_snapshot(cid: int | str, brand_slug: str, draft: dict) -> None:
+    """Persist a per-brand content snapshot so FSN and CathyTalk packages coexist on the same story."""
+    session = SessionLocal()
+    try:
+        c = session.get(StoryCluster, int(cid))
+        if c:
+            fsn: dict = {}
+            if c.fsn_state:
+                try:
+                    fsn = json.loads(c.fsn_state)
+                except Exception:
+                    pass
+            brand_drafts = fsn.get("brand_drafts") or {}
+            brand_drafts[brand_slug] = {
+                "headline":      draft.get("headline", ""),
+                "tag":           draft.get("tag", ""),
+                "scene":         draft.get("scene", ""),
+                "captions":      dict(draft.get("captions") or {}),
+                "first_comment": draft.get("first_comment", ""),
+                "saved_at":      datetime.now(timezone.utc).isoformat(),
+            }
+            fsn["brand_drafts"] = brand_drafts
+            c.fsn_state = json.dumps(fsn, ensure_ascii=False)
+            session.commit()
+    except Exception as exc:
+        session.rollback()
+        logger.error("_save_brand_draft_snapshot %s/%s: %s", cid, brand_slug, exc)
+    finally:
+        session.close()
+
 
 # ── Brand property helpers ────────────────────────────────────────────────────
 
@@ -2654,6 +2687,7 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
             if data.get("first_comment"):
                 item["draft"]["first_comment"] = data["first_comment"]
             _update_cluster_fsn(cluster_id, draft=item["draft"])
+            _save_brand_draft_snapshot(cluster_id, brand_slug_writing, item["draft"])
             _save_fsn_queue(items)
 
         return StreamingResponse(_stream(), media_type="text/plain")
@@ -3574,6 +3608,10 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
         if data.get("first_comment"):
             item["draft"]["first_comment"] = data["first_comment"]
         _update_cluster_fsn(cluster_id, draft=item["draft"])
+
+        # Save a per-brand snapshot so both FSN and CathyTalk packages coexist
+        _save_brand_draft_snapshot(cluster_id, active_brand_slug, item["draft"])
+
         _save_fsn_queue(items)
 
         return JSONResponse({"ok": True, "captions": item["draft"]["captions"],

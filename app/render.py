@@ -2431,6 +2431,8 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
     img_status   = item.get("image_gen_status") or ""
     img_history  = item.get("image_history") or []
     tobi_text = item.get("tobi_text") or ""
+    brand_drafts  = item.get("brand_drafts") or {}
+    brand_images_map = item.get("brand_images") or {}
     status    = item.get("queue_status") or "pending"
     viral     = float(item.get("viral_score") or 0)
     momentum  = float(item.get("momentum_score") or 0)
@@ -2504,6 +2506,75 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
     type_tobi = "selected" if post_type == "tobi"          else ""
     type_vid  = "selected" if post_type == "video_package" else ""
 
+    # Build saved brand package panels
+    _BRAND_LABELS = {"first_signal": "First Signal News", "cathy_talk": "CathyTalk"}
+    _BRAND_COLORS = {"first_signal": "#facc15", "cathy_talk": "#CE3175"}
+    saved_pkg_panels = ""
+    saved_pkg_buttons = ""
+    for _bslug, _bdata in brand_drafts.items():
+        _blabel = _BRAND_LABELS.get(_bslug, _bslug)
+        _bcolor = _BRAND_COLORS.get(_bslug, "#8b93a3")
+        _bimg = (brand_images_map.get(_bslug) or {})
+        _bimg_url = _bimg.get("supabase_image_url") or _bimg.get("generated_image_url") or ""
+        _bcaps = _bdata.get("captions") or {}
+        _bfc = _bdata.get("first_comment") or ""
+        _bhl = _bdata.get("headline") or ""
+        _btag = _bdata.get("tag") or ""
+        _bsaved = (_bdata.get("saved_at") or "")[:16].replace("T", " ")
+        _bimg_html = (
+            f'<a href="{escape(_bimg_url)}" target="_blank">'
+            f'<img src="{escape(_bimg_url)}" style="max-width:200px;width:100%;border-radius:6px;display:block;margin-bottom:8px">'
+            f'</a>'
+        ) if _bimg_url else '<div style="color:#5a6a8a;font-size:11px;margin-bottom:8px">No image saved yet</div>'
+        _cap_rows = "".join(
+            f'<div style="margin-bottom:10px">'
+            f'<div style="color:#5a6a8a;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">{_k.replace("_"," ").title()}</div>'
+            f'<div style="background:#060910;border:1px solid #2a3555;border-radius:4px;padding:8px;font-size:12px;color:#c0c8d8;white-space:pre-wrap">{escape(_v)}</div>'
+            f'</div>'
+            for _k, _v in [("short", _bcaps.get("short","")), ("medium", _bcaps.get("medium","")),
+                            ("long", _bcaps.get("long","")), ("extra_long", _bcaps.get("extra_long",""))] if _v
+        )
+        _fc_html = (
+            f'<div style="margin-bottom:10px">'
+            f'<div style="color:#5a6a8a;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px">First Comment</div>'
+            f'<div style="background:#060910;border:1px solid #2a3555;border-radius:4px;padding:8px;font-size:12px;color:#c0c8d8">{escape(_bfc)}</div>'
+            f'</div>'
+        ) if _bfc else ""
+        saved_pkg_panels += (
+            f'<div id="brand-pkg-{_bslug}-{cid}" style="display:none;background:#0a0e18;border:1px solid #2a3555;border-radius:6px;padding:16px;margin-bottom:12px">'
+            f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+            f'<span style="font-size:13px;font-weight:600;color:{_bcolor}">{escape(_blabel)} Package</span>'
+            f'<span style="font-size:10px;color:#5a6a8a">saved {_bsaved}</span>'
+            f'</div>'
+            f'<div style="display:flex;gap:16px;flex-wrap:wrap">'
+            f'<div style="flex-shrink:0">{_bimg_html}</div>'
+            f'<div style="flex:1;min-width:220px">'
+            f'<div style="margin-bottom:8px"><span style="color:#5a6a8a;font-size:10px">HEADLINE</span> '
+            f'<span style="color:#FFDE59;font-size:13px;font-weight:600">{escape(_bhl)}</span></div>'
+            f'<div style="margin-bottom:12px"><span style="color:#f87171;font-size:10px;background:#3a0808;padding:2px 6px;border-radius:3px">{escape(_btag)}</span></div>'
+            f'{_cap_rows}{_fc_html}'
+            f'</div></div></div>'
+        )
+        saved_pkg_buttons += (
+            f'<button type="button" onclick="toggleBrandPkg(\'{_bslug}\',\'{cid}\')" '
+            f'style="font-size:11px;padding:5px 14px;background:#0a0e18;border:1px solid {_bcolor};'
+            f'color:{_bcolor};cursor:pointer;border-radius:4px;font-weight:600" '
+            f'id="brand-pkg-btn-{_bslug}-{cid}">'
+            f'{escape(_blabel)} &#9660;</button>'
+        )
+
+    brand_packages_section = ""
+    if brand_drafts:
+        brand_packages_section = (
+            f'<div style="background:#080c14;border:1px solid #1a1f2b;border-radius:6px;padding:12px 14px;margin-bottom:16px">'
+            f'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+            f'<span style="color:#8b93a3;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Saved Packages</span>'
+            f'{saved_pkg_buttons}'
+            f'</div>'
+            f'{saved_pkg_panels}'
+            f'</div>'
+        )
+
     body = f"""
 <div style="max-width:1200px;margin:0 auto">
 <a class="back" href="/pipeline-queue">&larr; Back to Queue</a>
@@ -2532,6 +2603,8 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
     </form>
   </div>
 </div>
+
+{brand_packages_section}
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
 
@@ -2674,6 +2747,14 @@ function copyField(id) {{
     el.style.borderColor = '#4ade80';
     setTimeout(function(){{ el.style.borderColor = prev; }}, 700);
   }});
+}}
+function toggleBrandPkg(bslug, cid) {{
+  var panel = document.getElementById('brand-pkg-'+bslug+'-'+cid);
+  var btn   = document.getElementById('brand-pkg-btn-'+bslug+'-'+cid);
+  if (!panel) return;
+  var open = panel.style.display !== 'none';
+  panel.style.display = open ? 'none' : 'block';
+  if (btn) btn.innerHTML = btn.innerHTML.replace(open ? '▲' : '▼', open ? '▼' : '▲');
 }}
 function onTypeChange(cid, sel) {{
   fetch('/pipeline-queue/set-post-type', {{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&post_type='+encodeURIComponent(sel.value)}});
