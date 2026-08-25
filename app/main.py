@@ -100,7 +100,7 @@ def _ensure_supabase_bucket() -> None:
             headers={"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},
             timeout=10,
         )
-        if r.status_code not in (200, 201, 400):  # 400 = already exists
+        if r.status_code not in (200, 201, 400, 409):  # 400/409 = already exists
             logger.warning("Supabase bucket create: status %s", r.status_code)
     except Exception as exc:
         logger.warning("Supabase bucket create failed: %s", exc)
@@ -426,37 +426,6 @@ def _update_cluster_fsn(cid: int | str, **kwargs) -> None:
         logger.error("_update_cluster_fsn %s: %s", cid, exc)
     finally:
         session.close()
-
-def _save_brand_draft_snapshot(cid: int | str, brand_slug: str, draft: dict) -> None:
-    """Persist a per-brand content snapshot so FSN and CathyTalk packages coexist on the same story."""
-    session = SessionLocal()
-    try:
-        c = session.get(StoryCluster, int(cid))
-        if c:
-            fsn: dict = {}
-            if c.fsn_state:
-                try:
-                    fsn = json.loads(c.fsn_state)
-                except Exception:
-                    pass
-            brand_drafts = fsn.get("brand_drafts") or {}
-            brand_drafts[brand_slug] = {
-                "headline":      draft.get("headline", ""),
-                "tag":           draft.get("tag", ""),
-                "scene":         draft.get("scene", ""),
-                "captions":      dict(draft.get("captions") or {}),
-                "first_comment": draft.get("first_comment", ""),
-                "saved_at":      datetime.now(timezone.utc).isoformat(),
-            }
-            fsn["brand_drafts"] = brand_drafts
-            c.fsn_state = json.dumps(fsn, ensure_ascii=False)
-            session.commit()
-    except Exception as exc:
-        session.rollback()
-        logger.error("_save_brand_draft_snapshot %s/%s: %s", cid, brand_slug, exc)
-    finally:
-        session.close()
-
 
 # ── Brand property helpers ────────────────────────────────────────────────────
 
@@ -2686,8 +2655,19 @@ async def pipeline_queue_generate_all_captions(request: Request, user: dict = De
             })
             if data.get("first_comment"):
                 item["draft"]["first_comment"] = data["first_comment"]
+            # Update item dict with brand snapshot before _save_fsn_queue writes it to DB
+            _snap2 = {
+                "headline":      item["draft"].get("headline", ""),
+                "tag":           item["draft"].get("tag", ""),
+                "scene":         item["draft"].get("scene", ""),
+                "captions":      dict(item["draft"].get("captions") or {}),
+                "first_comment": item["draft"].get("first_comment", ""),
+                "saved_at":      datetime.now(timezone.utc).isoformat(),
+            }
+            if not item.get("brand_drafts"):
+                item["brand_drafts"] = {}
+            item["brand_drafts"][brand_slug_writing] = _snap2
             _update_cluster_fsn(cluster_id, draft=item["draft"])
-            _save_brand_draft_snapshot(cluster_id, brand_slug_writing, item["draft"])
             _save_fsn_queue(items)
 
         return StreamingResponse(_stream(), media_type="text/plain")
@@ -3607,11 +3587,21 @@ async def pipeline_queue_story_generate_content(cid: str, request: Request, user
         })
         if data.get("first_comment"):
             item["draft"]["first_comment"] = data["first_comment"]
+
+        # Build brand snapshot and update item dict BEFORE _save_fsn_queue so it's included
+        _snap = {
+            "headline":      item["draft"].get("headline", ""),
+            "tag":           item["draft"].get("tag", ""),
+            "scene":         item["draft"].get("scene", ""),
+            "captions":      dict(item["draft"].get("captions") or {}),
+            "first_comment": item["draft"].get("first_comment", ""),
+            "saved_at":      datetime.now(timezone.utc).isoformat(),
+        }
+        if not item.get("brand_drafts"):
+            item["brand_drafts"] = {}
+        item["brand_drafts"][active_brand_slug] = _snap
+
         _update_cluster_fsn(cluster_id, draft=item["draft"])
-
-        # Save a per-brand snapshot so both FSN and CathyTalk packages coexist
-        _save_brand_draft_snapshot(cluster_id, active_brand_slug, item["draft"])
-
         _save_fsn_queue(items)
 
         return JSONResponse({"ok": True, "captions": item["draft"]["captions"],

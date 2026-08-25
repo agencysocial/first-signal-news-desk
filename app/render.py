@@ -2871,7 +2871,8 @@ function genContent(cid, voice) {{
     keys.forEach(function(k){{ var el=document.getElementById('cap-'+k+'-'+cid); if(el&&d.captions&&d.captions[k]) el.value=d.captions[k]; }});
     var fcEl=document.getElementById('cap-first_comment-'+cid);
     if(fcEl&&d.first_comment) fcEl.value=d.first_comment;
-    if(st){{ st.textContent=voice==='news'?'News Style loaded':'America First loaded'; setTimeout(function(){{st.textContent='';}},3000); }}
+    if(st){{ st.textContent=voice==='news'?'News Style loaded — refreshing...':'America First loaded — refreshing...'; }}
+    setTimeout(function(){{ window.location.reload(); }}, 800);
   }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});
 }}
 function regenCap(cid, variant) {{
@@ -2911,7 +2912,8 @@ function regenAllCaps(cid) {{
         keys.forEach(function(k){{ var el=document.getElementById('cap-'+k+'-'+cid); if(el&&d[k]) el.value=d[k]; }});
         var fcEl=document.getElementById('cap-first_comment-'+cid);
         if(fcEl&&d.first_comment) fcEl.value=d.first_comment;
-        if(st){{ st.textContent='Done!'; setTimeout(function(){{st.textContent='';}},2000); }}
+        if(st){{ st.textContent='Done — refreshing...'; }}
+        setTimeout(function(){{ window.location.reload(); }}, 800);
       }}catch(ex){{ if(st) st.textContent='Parse error: '+ex.message; }}
     }}); }}
     pump();
