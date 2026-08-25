@@ -2024,13 +2024,15 @@ def pipeline_queue_batch_status(user: dict = Depends(require_user)):
 
 
 def _generate_one_image(cid: str, key: str, item: dict, notes: str = "") -> None:
-    """Generate image for a single cluster, stamp logo, and update DB. Runs in a thread."""
+    """Generate image for a single cluster+brand, stamp logo, and update DB. Runs in a thread."""
     draft = item.get("draft") or {}
     headline = draft.get("headline") or item.get("text") or ""
     tag      = draft.get("tag") or "BREAKING NEWS"
     scene    = draft.get("scene") or draft.get("image_scene") or item.get("suggested_scene") or "United States Capitol building exterior, wide establishing shot"
     effective_notes = notes or draft.get("image_notes") or ""
     brand_slug_for_gen = item.get("brand_slug") or "first_signal"
+    # Brand-specific tmp path so FSN and CathyTalk images don't overwrite each other
+    tmp_file_id = f"{cid}__{brand_slug_for_gen}"
     try:
         brand = _get_brand(brand_slug_for_gen)
         if brand and brand.get("voice_instructions"):
@@ -2040,32 +2042,51 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "") -> None
         task_id = _kie_submit(prompt, key)
         kie_url = _kie_poll(task_id, key)
 
-        # Download and stamp logo
+        # Download and stamp logo into brand-specific tmp file
         r = httpx.get(kie_url, timeout=60, follow_redirects=True)
         r.raise_for_status()
-        _stamp_logo(r.content, cid, brand_slug=brand_slug_for_gen)
+        _stamp_logo(r.content, tmp_file_id, brand_slug=brand_slug_for_gen)
 
-        # Push previous CDN URL into image_history before overwriting
+        # Store brand-specific image data inside fsn_state under brand_images[slug]
         session = SessionLocal()
-        history: list = []
         try:
             c = session.get(StoryCluster, int(cid))
+            fsn: dict = {}
             if c and c.fsn_state:
-                prev = json.loads(c.fsn_state)
-                history = prev.get("image_history") or []
-                old_kie = prev.get("kie_result_url") or ""
-                if old_kie and old_kie not in history:
-                    history.append(old_kie)
-        except Exception:
-            pass
+                try:
+                    fsn = json.loads(c.fsn_state)
+                except Exception:
+                    pass
+            brand_images = fsn.get("brand_images") or {}
+            old_kie = (brand_images.get(brand_slug_for_gen) or {}).get("kie_result_url") or ""
+            history = list((brand_images.get(brand_slug_for_gen) or {}).get("image_history") or [])
+            if old_kie and old_kie not in history:
+                history.append(old_kie)
+            served_url = f"/pipeline-queue/image/{cid}/{brand_slug_for_gen}"
+            brand_images[brand_slug_for_gen] = {
+                "generated_image_url": served_url,
+                "kie_result_url": kie_url,
+                "image_gen_status": "done",
+                "image_history": history,
+            }
+            fsn["brand_images"] = brand_images
+            # Keep top-level fields in sync for the active brand (backwards compat)
+            fsn.update({
+                "generated_image_url": served_url,
+                "kie_result_url": kie_url,
+                "image_gen_status": "done",
+                "brand_slug": brand_slug_for_gen,
+            })
+            if c:
+                c.fsn_state = json.dumps(fsn, ensure_ascii=False)
+                session.commit()
+        except Exception as exc:
+            session.rollback()
+            logger.error("cloud image gen DB update %s: %s", cid, exc)
         finally:
             session.close()
 
-        # Store the served URL (ephemeral on Render; kie_result_url is the CDN fallback)
-        served_url = f"/pipeline-queue/image/{cid}"
-        _update_cluster_fsn(cid, generated_image_url=served_url, kie_result_url=kie_url,
-                            image_gen_status="done", image_history=history)
-        logger.info("cloud image gen cluster %s: done -> %s", cid, served_url)
+        logger.info("cloud image gen cluster %s brand %s: done -> %s", cid, brand_slug_for_gen, served_url)
     except Exception as exc:
         _update_cluster_fsn(cid, image_gen_status=f"error: {exc}")
         logger.error("cloud image gen cluster %s: %s", cid, exc)
@@ -3535,10 +3556,29 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         resolved_brand = brand_slug or item.get("brand_slug") or "first_signal"
         item["brand_slug"] = resolved_brand
 
-        # Clear old image so status shows "generating"
-        _update_cluster_fsn(cluster_id, generated_image_url="", image_gen_status="generating",
-                            kie_result_url="", draft=item["draft"],
-                            brand_slug=resolved_brand)
+        # Clear brand-specific image slot and mark generating
+        session = SessionLocal()
+        try:
+            c = session.get(StoryCluster, int(cluster_id))
+            fsn: dict = {}
+            if c and c.fsn_state:
+                try:
+                    fsn = json.loads(c.fsn_state)
+                except Exception:
+                    pass
+            brand_images = fsn.get("brand_images") or {}
+            brand_images[resolved_brand] = {"image_gen_status": "generating", "generated_image_url": "", "kie_result_url": ""}
+            fsn["brand_images"] = brand_images
+            fsn.update({"draft": item["draft"], "brand_slug": resolved_brand,
+                        "generated_image_url": "", "image_gen_status": "generating", "kie_result_url": ""})
+            if c:
+                c.fsn_state = json.dumps(fsn, ensure_ascii=False)
+                session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
+
         item["generated_image_url"] = ""
         item["image_gen_status"]    = "generating"
         item["kie_result_url"]      = ""
@@ -3556,14 +3596,23 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
 
 
 @app.get("/pipeline-queue/story/{cid}/image-status")
-def pipeline_queue_story_image_status(cid: str, user: dict = Depends(require_user)):
-    """Lightweight poll endpoint for workspace image generation status."""
+def pipeline_queue_story_image_status(cid: str, brand_slug: str = "first_signal", user: dict = Depends(require_user)):
+    """Lightweight poll endpoint for workspace image generation status (brand-aware)."""
     if not cid.isdigit():
         return JSONResponse({"error": "invalid id"}, status_code=400)
     cluster_id = int(cid)
     item = _queue_item_for(cluster_id)
     if not item:
         return JSONResponse({"error": "not found"}, status_code=404)
+    # Read brand-specific image state if available
+    fsn_brand_images = (item.get("brand_images") or {}).get(brand_slug)
+    if fsn_brand_images:
+        return JSONResponse({
+            "status":  fsn_brand_images.get("image_gen_status") or "",
+            "url":     fsn_brand_images.get("generated_image_url") or "",
+            "history": fsn_brand_images.get("image_history") or [],
+        })
+    # Fall back to top-level (legacy / same brand)
     return JSONResponse({
         "status":  item.get("image_gen_status") or "",
         "url":     item.get("generated_image_url") or "",
@@ -3656,39 +3705,66 @@ def pipeline_queue_story_remove(cid: str, user: dict = Depends(require_user)):
     return RedirectResponse("/pipeline-queue?msg=Story+removed", status_code=303)
 
 
-@app.get("/pipeline-queue/image/{cid}")
-def pipeline_queue_serve_image(cid: str, user: dict = Depends(require_user)):
-    """Serve a logo-stamped JPEG generated for a cluster. Re-stamps from Kie CDN if /tmp was cleared."""
-    # Sanitise: cid must be numeric
-    if not cid.isdigit():
-        return Response(status_code=400)
-    # Support both .jpg (new) and .png (legacy) in /tmp
-    tmp_path_jpg = Path("/tmp/fsn_images") / f"{cid}.jpg"
-    tmp_path_png = Path("/tmp/fsn_images") / f"{cid}.png"
-    if tmp_path_jpg.exists():
-        return Response(content=tmp_path_jpg.read_bytes(), media_type="image/jpeg")
-    if tmp_path_png.exists():
-        return Response(content=tmp_path_png.read_bytes(), media_type="image/png")
+def _serve_image_for_brand(cid: str, brand_slug: str):
+    """Core image serve logic: returns branded JPEG, re-stamping from Kie CDN if /tmp was cleared."""
+    file_id = f"{cid}__{brand_slug}"
+    tmp_dir = Path("/tmp/fsn_images")
+    tmp_path = tmp_dir / f"{file_id}.jpg"
+    # Legacy path (pre-multi-brand): fall back to bare cid file if brand file missing
+    tmp_legacy = tmp_dir / f"{cid}.jpg"
+    if tmp_path.exists():
+        return Response(content=tmp_path.read_bytes(), media_type="image/jpeg")
+    if tmp_legacy.exists() and brand_slug == "first_signal":
+        return Response(content=tmp_legacy.read_bytes(), media_type="image/jpeg")
 
     # /tmp was cleared (redeploy) — re-download from Kie CDN and re-stamp
     session = SessionLocal()
+    fsn: dict = {}
     try:
         c = session.get(StoryCluster, int(cid))
         if not c or not c.fsn_state:
             return Response(status_code=404)
         fsn = json.loads(c.fsn_state)
-        kie_url = fsn.get("kie_result_url")
-        if not kie_url:
-            return Response(status_code=404)
     finally:
         session.close()
 
+    # Prefer brand-specific kie_result_url; fall back to top-level
+    brand_images = fsn.get("brand_images") or {}
+    kie_url = (brand_images.get(brand_slug) or {}).get("kie_result_url") or fsn.get("kie_result_url")
+    if not kie_url:
+        return Response(status_code=404)
+
     r = httpx.get(kie_url, timeout=60, follow_redirects=True)
     r.raise_for_status()
-    brand_slug_img = (fsn.get("brand_slug") or "first_signal")
-    _stamp_logo(r.content, cid, brand_slug=brand_slug_img)
-    tmp_path_jpg = Path("/tmp/fsn_images") / f"{cid}.jpg"
-    return Response(content=tmp_path_jpg.read_bytes(), media_type="image/jpeg")
+    _stamp_logo(r.content, file_id, brand_slug=brand_slug)
+    return Response(content=tmp_path.read_bytes(), media_type="image/jpeg")
+
+
+@app.get("/pipeline-queue/image/{cid}/{brand_slug}")
+def pipeline_queue_serve_image_brand(cid: str, brand_slug: str, user: dict = Depends(require_user)):
+    """Serve a brand-specific logo-stamped JPEG for a cluster."""
+    if not cid.isdigit():
+        return Response(status_code=400)
+    return _serve_image_for_brand(cid, brand_slug)
+
+
+@app.get("/pipeline-queue/image/{cid}")
+def pipeline_queue_serve_image(cid: str, user: dict = Depends(require_user)):
+    """Serve image for a cluster — uses brand_slug stored in fsn_state, defaults to first_signal."""
+    if not cid.isdigit():
+        return Response(status_code=400)
+    session = SessionLocal()
+    brand_slug = "first_signal"
+    try:
+        c = session.get(StoryCluster, int(cid))
+        if c and c.fsn_state:
+            fsn = json.loads(c.fsn_state)
+            brand_slug = fsn.get("brand_slug") or "first_signal"
+    except Exception:
+        pass
+    finally:
+        session.close()
+    return _serve_image_for_brand(cid, brand_slug)
 
 
 @app.get("/pipeline-queue/output-image/{filename}")

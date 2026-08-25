@@ -2825,7 +2825,9 @@ function _startImagePoll(cid) {{
   var countTimer = setInterval(countdown, 5000);
   countdown();
   function poll() {{
-    fetch('/pipeline-queue/story/'+cid+'/image-status')
+    var brandSel = document.getElementById('draft-brand-'+cid);
+    var brandParam = brandSel ? ('&brand_slug='+encodeURIComponent(brandSel.value||'first_signal')) : '';
+    fetch('/pipeline-queue/story/'+cid+'/image-status?_='+Date.now()+brandParam)
       .then(function(r) {{ return r.json(); }})
       .then(function(d) {{
         if (d.url) {{
