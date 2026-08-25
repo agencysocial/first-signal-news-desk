@@ -59,6 +59,53 @@ _ANTI_SLOP = (
 )
 
 
+def _supabase_storage_upload(stamped_path: Path, cid: str, brand_slug: str) -> str | None:
+    """Upload stamped JPEG to Supabase Storage for permanent hosting. Returns public URL or None."""
+    from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return None
+    bucket = "card-images"
+    object_path = f"{brand_slug}/{cid}.jpg"
+    upload_url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{object_path}"
+    try:
+        with open(stamped_path, "rb") as f:
+            image_bytes = f.read()
+        r = httpx.put(
+            upload_url,
+            content=image_bytes,
+            headers={
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                "Content-Type": "image/jpeg",
+                "x-upsert": "true",
+            },
+            timeout=30,
+        )
+        if r.status_code in (200, 201):
+            return f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{object_path}"
+        logger.warning("Supabase Storage upload %s/%s: status %s", brand_slug, cid, r.status_code)
+    except Exception as exc:
+        logger.warning("Supabase Storage upload failed for %s/%s: %s", brand_slug, cid, exc)
+    return None
+
+
+def _ensure_supabase_bucket() -> None:
+    """Create the card-images bucket if it doesn't exist. Called once at startup."""
+    from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        return
+    try:
+        r = httpx.post(
+            f"{SUPABASE_URL}/storage/v1/bucket",
+            json={"id": "card-images", "name": "card-images", "public": True},
+            headers={"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},
+            timeout=10,
+        )
+        if r.status_code not in (200, 201, 400):  # 400 = already exists
+            logger.warning("Supabase bucket create: status %s", r.status_code)
+    except Exception as exc:
+        logger.warning("Supabase bucket create failed: %s", exc)
+
+
 def _get_kie_key() -> str | None:
     key = __import__("os").environ.get("KIE_AI_API_KEY", "").strip()
     if key and not key.startswith("YOUR_"):
@@ -270,6 +317,7 @@ def _load_fsn_queue() -> list[dict]:
                 "brand_slug":          fsn.get("brand_slug", ""),
                 "kie_result_url":      fsn.get("kie_result_url", ""),
                 "image_history":       fsn.get("image_history", []),
+                "brand_images":        fsn.get("brand_images", {}),
                 "momentum_score":      round(float(c.momentum_score or 0), 1),
                 "_source": "newsdesk_handoff",
             }
@@ -282,7 +330,7 @@ def _load_fsn_queue() -> list[dict]:
 _FSN_STATE_KEYS = {"queue_status", "post_type", "draft", "approved_at",
                    "generated_image_url", "image_gen_status", "image_history", "tobi_text", "output_file",
                    "video_titles", "reels_description", "script_short", "script_medium",
-                   "script_long", "poll_question", "video_first_comment", "brand_slug"}
+                   "script_long", "poll_question", "video_first_comment", "brand_slug", "brand_images"}
 
 
 def _save_fsn_queue(items: list[dict]) -> None:
@@ -1028,6 +1076,10 @@ async def lifespan(app: FastAPI):
         _seed_default_brands()
     except Exception as _e:
         logger.warning("brand_properties setup skipped: %s", _e)
+
+    # Ensure Supabase Storage bucket exists for permanent image hosting
+    import threading as _t_sb
+    _t_sb.Thread(target=_ensure_supabase_bucket, daemon=True).start()
 
     # Seed competitor URL list into /tmp on every startup so the FB Scanner
     # page always has a list to render — without this, the first page load
@@ -2053,7 +2105,10 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "") -> None
         # Download and stamp logo into brand-specific tmp file
         r = httpx.get(kie_url, timeout=60, follow_redirects=True)
         r.raise_for_status()
-        _stamp_logo(r.content, tmp_file_id, brand_slug=brand_slug_for_gen)
+        stamped_path = _stamp_logo(r.content, tmp_file_id, brand_slug=brand_slug_for_gen)
+
+        # Upload stamped image to Supabase Storage for permanent hosting (survives redeploys)
+        supabase_url = _supabase_storage_upload(stamped_path, cid, brand_slug_for_gen)
 
         # Store brand-specific image data inside fsn_state under brand_images[slug]
         session = SessionLocal()
@@ -2074,6 +2129,7 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "") -> None
             brand_images[brand_slug_for_gen] = {
                 "generated_image_url": served_url,
                 "kie_result_url": kie_url,
+                "supabase_image_url": supabase_url or "",
                 "image_gen_status": "done",
                 "image_history": history,
             }
@@ -3725,7 +3781,7 @@ def _serve_image_for_brand(cid: str, brand_slug: str):
     if tmp_legacy.exists() and brand_slug == "first_signal":
         return Response(content=tmp_legacy.read_bytes(), media_type="image/jpeg")
 
-    # /tmp was cleared (redeploy) — re-download from Kie CDN and re-stamp
+    # /tmp was cleared (redeploy) — try Supabase Storage first, then re-stamp from Kie CDN
     session = SessionLocal()
     fsn: dict = {}
     try:
@@ -3736,16 +3792,32 @@ def _serve_image_for_brand(cid: str, brand_slug: str):
     finally:
         session.close()
 
-    # Prefer brand-specific kie_result_url; fall back to top-level
     brand_images = fsn.get("brand_images") or {}
-    kie_url = (brand_images.get(brand_slug) or {}).get("kie_result_url") or fsn.get("kie_result_url")
+    brand_data = brand_images.get(brand_slug) or {}
+    supabase_img_url = brand_data.get("supabase_image_url") or ""
+    kie_url = brand_data.get("kie_result_url") or fsn.get("kie_result_url")
+
+    # Fast path: serve directly from Supabase Storage (already stamped, no re-processing)
+    if supabase_img_url:
+        try:
+            r = httpx.get(supabase_img_url, timeout=20, follow_redirects=True)
+            if r.status_code == 200:
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                tmp_path.write_bytes(r.content)
+                return Response(content=r.content, media_type="image/jpeg")
+        except Exception:
+            pass  # Fall through to Kie CDN re-stamp
+
     if not kie_url:
         return Response(status_code=404)
 
+    # Slow path: re-download from Kie CDN and re-stamp (Kie URLs may expire after ~7 days)
     r = httpx.get(kie_url, timeout=60, follow_redirects=True)
     r.raise_for_status()
-    _stamp_logo(r.content, file_id, brand_slug=brand_slug)
-    return Response(content=tmp_path.read_bytes(), media_type="image/jpeg")
+    stamped = _stamp_logo(r.content, file_id, brand_slug=brand_slug)
+    # Re-upload to Supabase so the next request is fast
+    _supabase_storage_upload(stamped, cid, brand_slug)
+    return Response(content=stamped.read_bytes(), media_type="image/jpeg")
 
 
 @app.get("/pipeline-queue/image/{cid}/{brand_slug}")

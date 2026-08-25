@@ -1180,6 +1180,31 @@ def render_pipeline_queue_page(
                 f'</div>'
             )
 
+            # Brand image status dots (FSN + CathyTalk)
+            _brand_images = item.get("brand_images") or {}
+            _BRAND_DEFS = [("first_signal", "FSN"), ("cathy_talk", "CT")]
+            _dot_parts = []
+            for _bslug, _blabel in _BRAND_DEFS:
+                _bdata = _brand_images.get(_bslug) or {}
+                _bstatus = _bdata.get("image_gen_status") or ""
+                if _bstatus == "done":
+                    _dot_color, _dot_title = "#4ade80", f"{_blabel}: image ready"
+                elif _bstatus == "generating":
+                    _dot_color, _dot_title = "#facc15", f"{_blabel}: generating"
+                elif _bstatus.startswith("error"):
+                    _dot_color, _dot_title = "#f87171", f"{_blabel}: error"
+                else:
+                    _dot_color, _dot_title = "#3a4055", f"{_blabel}: not generated"
+                _dot_parts.append(
+                    f'<span title="{_dot_title}" style="display:inline-flex;align-items:center;gap:3px;'
+                    f'font-size:10px;color:#8b93a3">'
+                    f'<span style="width:7px;height:7px;border-radius:50%;background:{_dot_color};display:inline-block"></span>'
+                    f'{_blabel}</span>'
+                )
+            brand_status_html = (
+                f'<div style="display:flex;gap:8px;margin-top:5px">{"".join(_dot_parts)}</div>'
+            ) if any(_brand_images.get(s) for s, _ in _BRAND_DEFS) else ""
+
             # Generated image display
             gen_img_url = item.get("generated_image_url") or ""
             gen_status  = item.get("image_gen_status") or ""
@@ -1208,6 +1233,7 @@ def render_pipeline_queue_page(
           <div style="font-size:13px;font-weight:500;line-height:1.4">{text}</div>
           <div style="color:#8b93a3;font-size:11px;margin-top:3px">{cat} &middot; {srcs} source(s) &middot; added {added}</div>
           <div style="margin-top:4px">{badges}</div>
+          {brand_status_html}
           {draft_html}{story_panel_html}
           {video_panel_html}
           <div style="display:flex;flex-wrap:wrap;align-items:flex-start">
