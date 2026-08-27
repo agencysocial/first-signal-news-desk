@@ -69,17 +69,16 @@ def _supabase_storage_upload(stamped_path: Path, cid: str, brand_slug: str) -> s
     upload_url = f"{SUPABASE_URL}/storage/v1/object/{bucket}/{object_path}"
     try:
         with open(stamped_path, "rb") as f:
-            image_bytes = f.read()
-        r = httpx.put(
-            upload_url,
-            content=image_bytes,
-            headers={
-                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-                "Content-Type": "image/jpeg",
-                "x-upsert": "true",
-            },
-            timeout=30,
-        )
+            r = httpx.put(
+                upload_url,
+                content=f,
+                headers={
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                    "Content-Type": "image/jpeg",
+                    "x-upsert": "true",
+                },
+                timeout=30,
+            )
         if r.status_code in (200, 201):
             return f"{SUPABASE_URL}/storage/v1/object/public/{bucket}/{object_path}"
         logger.warning("Supabase Storage upload %s/%s: status %s", brand_slug, cid, r.status_code)
@@ -145,7 +144,7 @@ def _build_image_prompt(headline: str, tag: str, scene: str, notes: str = "") ->
 
 def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") -> Path:
     """Download image bytes, stamp the brand logo at top-left, save to /tmp. Returns path."""
-    from PIL import Image as _PILImage
+    from PIL import Image as _PILImage, ImageStat as _ImageStat
     import io as _io
 
     LOGO_FIXED_WIDTH = 200
@@ -157,19 +156,19 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
     card = _PILImage.open(_io.BytesIO(image_bytes)).convert("RGBA")
     w, h = card.size
 
-    # Sample top-left region to decide light vs dark background
+    # Sample top-left region to decide light vs dark background.
+    # Use ImageStat instead of list(getdata()) — avoids materialising all pixels as Python objects.
     region_w = min(300, w // 3)
     region_h = min(120, h // 6)
     region = card.crop((0, 0, region_w, region_h)).convert("RGB")
-    pixels = list(region.getdata())
-    avg_brightness = sum(0.299 * r + 0.587 * g + 0.114 * b for r, g, b in pixels) / max(len(pixels), 1)
+    stat = _ImageStat.Stat(region)
+    region.close()
+    avg_brightness = 0.299 * stat.mean[0] + 0.587 * stat.mean[1] + 0.114 * stat.mean[2]
     is_light_bg = avg_brightness > BRIGHTNESS_THRESHOLD
 
     if brand_slug == "cathy_talk":
-        # CathyTalk: primary (pink+dark) on light bg, all-white version on dark bg
         logo_path = static_dir / ("cathy_talk_logo.png" if is_light_bg else "cathy_talk_logo_white.png")
     else:
-        # First Signal News: white text on dark bg, black text on light bg
         logo_path = static_dir / ("logo_black_text.png" if is_light_bg else "logo_white_text.png")
 
     logo = _PILImage.open(logo_path).convert("RGBA")
@@ -178,14 +177,17 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
     logo = logo.resize((LOGO_FIXED_WIDTH, logo_h), _PILImage.LANCZOS)
 
     card.paste(logo, (MARGIN, MARGIN), logo)
+    logo.close()
 
     out = _PILImage.new("RGB", card.size, (0, 0, 0))
     out.paste(card, mask=card.split()[3])
+    card.close()
 
     tmp_dir = Path("/tmp/fsn_images")
     tmp_dir.mkdir(parents=True, exist_ok=True)
     out_path = tmp_dir / f"{cid}.jpg"
     out.save(str(out_path), "JPEG", quality=88, optimize=True)
+    out.close()
     return out_path
 
 
@@ -2104,10 +2106,14 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "") -> None
         task_id = _kie_submit(prompt, key)
         kie_url = _kie_poll(task_id, key)
 
-        # Download and stamp logo into brand-specific tmp file
+        # Download and stamp logo into brand-specific tmp file.
+        # Capture bytes then release the httpx response before PIL starts work.
         r = httpx.get(kie_url, timeout=60, follow_redirects=True)
         r.raise_for_status()
-        stamped_path = _stamp_logo(r.content, tmp_file_id, brand_slug=brand_slug_for_gen)
+        _raw = r.content
+        del r
+        stamped_path = _stamp_logo(_raw, tmp_file_id, brand_slug=brand_slug_for_gen)
+        del _raw
 
         # Upload stamped image to Supabase Storage for permanent hosting (survives redeploys)
         supabase_url = _supabase_storage_upload(stamped_path, cid, brand_slug_for_gen)
