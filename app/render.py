@@ -245,8 +245,11 @@ def render_wire_page(clusters: list[dict], error_sources: list[tuple[str, str]],
         <td data-label="Updated" class="{fresh_class}">{escape(c.get('updated_ago', '-'))}{' <span class="new-dot">&bull;</span>' if c.get('is_fresh') else ''}</td>
         <td data-label="Status"><span class="badge status-{escape(c['status'])}">{escape(c['status'])}</span></td>
         <td data-label="Queue" style="white-space:nowrap">
-          <button type="button" onclick="queueStory(this,{c['id']})"
-            style="font-size:10px;padding:2px 8px;background:#0a1a28;border:1px solid #1a3a5a;color:#60a5fa;border-radius:3px;cursor:pointer;white-space:nowrap">&#43; Queue</button>
+          {(
+            '<button type="button" disabled style="font-size:10px;padding:2px 8px;background:#0a2010;border:1px solid #4ade80;color:#4ade80;border-radius:3px;cursor:default;white-space:nowrap">&#10003; Queued</button>'
+            if c.get("handoff_sent_at") else
+            f'<button type="button" onclick="queueStory(this,{c["id"]})" style="font-size:10px;padding:2px 8px;background:#0a1a28;border:1px solid #1a3a5a;color:#60a5fa;border-radius:3px;cursor:pointer;white-space:nowrap">&#43; Queue</button>'
+          )}
         </td>
       </tr>""")
 
@@ -2941,7 +2944,8 @@ function _startImagePoll(cid) {{
       .then(function(d) {{
         if (d.url) {{
           clearInterval(countTimer);
-          if (wrap) wrap.innerHTML = '<img src="'+d.url+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
+          var _freshUrl = d.url + '?t=' + Date.now();
+          if (wrap) wrap.innerHTML = '<img src="'+_freshUrl+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
             + '<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
           if (st) st.textContent = '';
           if (d.history && d.history.length) {{

@@ -119,11 +119,25 @@ def _get_kie_key() -> str | None:
     return None
 
 
+def _current_season() -> str:
+    """Return the current Northern Hemisphere season based on today's date."""
+    month = datetime.now().month
+    if month in (12, 1, 2):
+        return "winter"
+    elif month in (3, 4, 5):
+        return "spring"
+    elif month in (6, 7, 8):
+        return "summer"
+    else:
+        return "fall"
+
+
 def _build_image_prompt(headline: str, tag: str, scene: str, notes: str = "") -> str:
     notes_clause = f" Additional direction: {notes}." if notes else ""
+    season = _current_season()
     return (
         f"A 4:5 vertical portrait breaking-news share card with TWO ZONES — strictly no overlap between them.\n\n"
-        f"ZONE 1 — UPPER TWO-THIRDS (photo area): {scene}.{notes_clause} {_ANTI_SLOP}\n\n"
+        f"ZONE 1 — UPPER TWO-THIRDS (photo area): {scene}.{notes_clause} Season: {season} — outdoor scenes must reflect current {season} conditions (lighting, foliage, weather). {_ANTI_SLOP}\n\n"
         f"ZONE 2 — LOWER ONE-THIRD (footer panel): A SOLID FLAT PURE BLACK (#000000) rectangle spanning "
         f"the full width at the bottom of the card. Completely opaque, ZERO transparency, ZERO gradient, "
         f"ZERO bleed from the photo above. Inside this black panel, left-aligned with consistent left padding:\n"
@@ -609,12 +623,14 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
     tag_eng     = _hex_to_english(tag_bg_color)
     notes_clause = f" Additional direction: {notes}." if notes else ""
     brand_slug = brand.get("slug", "")
+    season = _current_season()
+    season_clause = f" Season: {season} — outdoor scenes must reflect current {season} conditions."
 
     # CathyTalk uses an approved distinct layout — white footer, editorial lifestyle card
     if brand_slug == "cathy_talk":
         return (
             f"A {aspect} vertical portrait editorial lifestyle share card with TWO ZONES — strictly no overlap.\n\n"
-            f"ZONE 1 — UPPER 63% (photo area): {scene}.{notes_clause} "
+            f"ZONE 1 — UPPER 63% (photo area): {scene}.{notes_clause}{season_clause} "
             f"Light, warm, editorial lifestyle photography — warm natural light, clean composition, "
             f"soft cream and warm tones. No dark backgrounds. {_ANTI_SLOP}\n\n"
             f"ZONE 2 — LOWER 37% (footer panel): A SOLID FLAT PURE WHITE rectangle spanning the full "
@@ -635,7 +651,7 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
     # Default layout (First Signal News and future brands)
     return (
         f"A {aspect} vertical portrait breaking-news share card with TWO ZONES — strictly no overlap between them.\n\n"
-        f"ZONE 1 — UPPER TWO-THIRDS (photo area): {scene}.{notes_clause} {_ANTI_SLOP}\n\n"
+        f"ZONE 1 — UPPER TWO-THIRDS (photo area): {scene}.{notes_clause}{season_clause} {_ANTI_SLOP}\n\n"
         f"ZONE 2 — LOWER ONE-THIRD (footer panel): A SOLID FLAT PURE BLACK (#000000) rectangle spanning "
         f"the full width at the bottom of the card. Completely opaque, ZERO transparency, ZERO gradient, "
         f"ZERO bleed from the photo above. Inside this black panel, left-aligned with consistent left padding:\n"
@@ -1345,6 +1361,7 @@ def _wire_response(
             "viral_score": c.viral_score,
             "confidence_score": c.confidence_score,
             "momentum_score": c.momentum_score,
+            "handoff_sent_at": c.handoff_sent_at.isoformat() if c.handoff_sent_at else "",
         } for c in clusters]
 
         error_sources = session.execute(
