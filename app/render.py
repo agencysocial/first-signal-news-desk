@@ -2865,8 +2865,18 @@ function applyAngle(cid,idx){{
   window._activeAngle[cid]=a;
   var lbl=document.getElementById('meme-angle-used-'+cid);
   if(lbl){{lbl.style.display='block';lbl.textContent='Angle applied: '+a.angle_type+' - '+a.hook;}}
+  [hlEl,tagEl,scEl].forEach(function(el,i){{
+    if(!el) return;
+    el.style.transition='background 0.2s';el.style.background='#14532d';
+    setTimeout(function(){{el.style.transition='background 0.6s';el.style.background=['','','#11151f'][i];}},1200);
+  }});
+  if(hlEl) hlEl.scrollIntoView({{behavior:'smooth',block:'center'}});
   if(typeof saveDraft==='function') saveDraft(cid);
 }}
+document.addEventListener('click',function(e){{
+  var btn=e.target.closest('.apply-angle-btn');
+  if(btn){{applyAngle(btn.getAttribute('data-cid'),parseInt(btn.getAttribute('data-idx')));return;}}
+}});
 </script>
 <script>
 function copyField(id) {{
