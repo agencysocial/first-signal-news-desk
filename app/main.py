@@ -4634,14 +4634,19 @@ async def pipeline_queue_suggest_meme_text(cid: str, request: Request, user: dic
         )
 
     prompt = (
-        f"You write viral internet meme text for political/lifestyle Facebook share cards. "
+        f"You write viral internet meme text and scene direction for political/lifestyle Facebook share cards. "
         f"Classic meme format: TOP TEXT is a short hook in all-caps Impact font (3-8 words max). "
         f"BOTTOM TEXT is the punchline/headline in all-caps Impact font (6-12 words max). "
         f"Both lines must be punchy, scannable, and drive comments. No em-dashes. No hashtags.\n\n"
         f"{voice_note}\n\n"
+        f"Also suggest an IMAGE SCENE: a short plain-English description of the photo that should appear "
+        f"behind the text (e.g. 'US Capitol building exterior at night, dramatic wide shot' or "
+        f"'busy school hallway with students walking, warm natural light'). "
+        f"Match the scene to the story — thematic, photorealistic, no famous faces unless the story is directly about them.\n\n"
         f"Story headline: {headline}\n\n"
         f"Return ONLY valid JSON with exactly these keys: "
-        f'{{\"top\": \"TOP TEXT HERE\", \"bottom\": \"BOTTOM TEXT HERE\", \"alt_top\": \"ALTERNATE TOP\", \"alt_bottom\": \"ALTERNATE BOTTOM\"}}'
+        f'{{\"top\": \"TOP TEXT\", \"bottom\": \"BOTTOM TEXT\", \"scene\": \"image scene description\", '
+        f'\"alt_top\": \"ALTERNATE TOP\", \"alt_bottom\": \"ALTERNATE BOTTOM\"}}'
     )
 
     import anthropic as _anth

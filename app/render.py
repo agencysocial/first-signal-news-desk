@@ -3269,10 +3269,12 @@ function suggestMemeText(cid) {{
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
     if(btn){{ btn.textContent='&#10024; Suggest meme text'; btn.disabled=false; }}
     if(d.error){{ alert('Suggest failed: '+d.error); return; }}
-    var topEl = document.getElementById('meme-top-'+cid);
-    var botEl = document.getElementById('meme-bot-'+cid);
-    if(topEl) topEl.value = (d.top||'').toUpperCase();
-    if(botEl) botEl.value = (d.bottom||'').toUpperCase();
+    var topEl   = document.getElementById('meme-top-'+cid);
+    var botEl   = document.getElementById('meme-bot-'+cid);
+    var sceneEl = document.getElementById('meme-scene-'+cid);
+    if(topEl)   topEl.value   = (d.top||'').toUpperCase();
+    if(botEl)   botEl.value   = (d.bottom||'').toUpperCase();
+    if(sceneEl && d.scene) sceneEl.value = d.scene;
     // Show alt suggestion
     var alts = document.getElementById('meme-alts-'+cid);
     var altTop = document.getElementById('meme-alt-top-'+cid);
