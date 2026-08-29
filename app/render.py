@@ -2906,14 +2906,66 @@ function saveDraft(cid) {{
   var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value || '';
   var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value || '';
   var st    = document.getElementById('draft-save-status-'+cid);
-  if (st) st.textContent = 'Saving...';
+  if (st) {{ st.textContent = 'Saving...'; st.style.color='#8b93a3'; }}
   fetch('/pipeline-queue/story/'+cid+'/save-draft',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&brand_slug='+encodeURIComponent(brand)
   }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
   .then(function(d){{
-    if (st) {{ st.textContent = d.ok ? 'Saved!' : ('Error: '+(d.error||'?')); }}
+    if (st) {{ st.style.color = d.ok ? '#4ade80' : '#f87171'; st.textContent = d.ok ? 'Saved!' : ('Error: '+(d.error||'?')); }}
     if (d.ok) setTimeout(function(){{ if(st) st.textContent=''; }},2000);
-  }}).catch(function(e){{ if(st) st.textContent='Save failed: '+e.message; }});
+  }}).catch(function(e){{ if(st) {{ st.style.color='#f87171'; st.textContent='Save failed: '+e.message; }} }});
+}}
+var _imgPollTimer2={{}};
+function _startImagePoll(cid) {{
+  if (_imgPollTimer2[cid]) clearTimeout(_imgPollTimer2[cid]);
+  var st = document.getElementById('img-status-'+cid);
+  var wrap = document.getElementById('img-wrap-'+cid);
+  var secs = 90;
+  function countdown() {{ if (st && wrap && !wrap.querySelector('img')) {{ st.textContent='Checking in '+secs+'s...'; secs=Math.max(0,secs-5); }} }}
+  var ct = setInterval(countdown, 5000); countdown();
+  function poll() {{
+    var bsel = document.getElementById('draft-brand-'+cid);
+    var bp = bsel ? ('&brand_slug='+encodeURIComponent(bsel.value||'first_signal')) : '';
+    fetch('/pipeline-queue/story/'+cid+'/image-status?_='+Date.now()+bp)
+      .then(function(r){{ return r.json(); }})
+      .then(function(d){{
+        if (d.url) {{
+          clearInterval(ct);
+          if (st) st.textContent='';
+          if (wrap) wrap.innerHTML='<img src="'+d.url+'?t='+Date.now()+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
+            +'<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
+        }} else if (d.status==='generating'||d.status==='') {{
+          _imgPollTimer2[cid]=setTimeout(poll,5000);
+        }} else {{ clearInterval(ct); if(st) st.textContent=d.status||''; }}
+      }}).catch(function(){{ _imgPollTimer2[cid]=setTimeout(poll,10000); }});
+  }}
+  _imgPollTimer2[cid]=setTimeout(poll,5000);
+}}
+function regenImage(cid) {{
+  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
+  var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var notes = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var st    = document.getElementById('img-status-'+cid);
+  var wrap  = document.getElementById('img-wrap-'+cid);
+  var btn   = document.querySelector('[onclick*="regenImage(\''+cid+'\'"]');
+  function _showErr(msg) {{
+    if (wrap) wrap.innerHTML='<div style="width:200px;height:250px;background:#0d111a;border:1px solid #7a1010;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#f87171;font-size:12px;padding:12px;text-align:center">'+msg+'</div>';
+    if (st) st.textContent='';
+  }}
+  if (!hl && !scene && !tag) {{ _showErr('Enter a headline or scene first.'); return; }}
+  if (st) st.textContent='Queued...';
+  if (wrap) wrap.innerHTML='<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
+  var brand=(document.getElementById('draft-brand-'+cid)||{{}}).value||(window._wsBrandDefault||'first_signal');
+  fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)
+  }}).then(function(r){{
+    if(!r.ok) return r.text().then(function(t){{ throw new Error('HTTP '+r.status+': '+t.slice(0,200)); }});
+    return r.json();
+  }}).then(function(d){{
+    if(d.error){{ _showErr('Error: '+d.error); return; }}
+    _startImagePoll(cid);
+  }}).catch(function(e){{ _showErr('Request failed: '+e.message); }});
 }}
 </script>
 <script>
