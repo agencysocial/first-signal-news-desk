@@ -510,14 +510,37 @@ def render_detail_page(cluster: dict, articles: list[dict], flash: str | None = 
       <button type="submit">Add to Watchlist</button></form>
     <form method="post" action="/stories/{cluster['id']}/status"><input type="hidden" name="new_status" value="Dismissed">
       <button type="submit">Dismiss</button></form>
-    <form method="post" action="/stories/{cluster['id']}/handoff">
-      <button type="submit" class="primary">Send to First Signal Pipeline</button></form>
+    <button id="handoff-btn" class="primary" onclick="sendToPipeline({cluster['id']}, this)" {'disabled title=\\"Already sent\\"' if cluster.get('handoff_sent_at') else ''}>{'&#10003; Sent' if cluster.get('handoff_sent_at') else 'Send to First Signal Pipeline'}</button>
     <form method="post" action="/stories/{cluster['id']}/merge" class="inline-form">
       <input type="number" name="target_cluster_id" placeholder="target story #" required style="width:110px">
       <button type="submit">Merge into &rarr;</button>
     </form>
   </div>
-  {'<div class="sub">Sent to pipeline at ' + escape(cluster['handoff_sent_at']) + '</div>' if cluster.get('handoff_sent_at') else ''}
+  <div id="handoff-msg" class="sub">{'Sent to pipeline at ' + escape(cluster['handoff_sent_at']) if cluster.get('handoff_sent_at') else ''}</div>
+<script>
+function sendToPipeline(clusterId, btn) {{
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  fetch('/stories/' + clusterId + '/handoff', {{method:'POST',headers:{{'X-Requested-With':'XMLHttpRequest'}}}})
+    .then(function(r){{ return r.json(); }})
+    .then(function(d){{
+      if (d.ok) {{
+        btn.textContent = '✓ Sent';
+        var msg = document.getElementById('handoff-msg');
+        if (msg) msg.textContent = 'Sent to pipeline at ' + new Date().toLocaleString();
+      }} else {{
+        btn.disabled = false;
+        btn.textContent = 'Send to First Signal Pipeline';
+        alert('Error: ' + (d.detail || 'Unknown error'));
+      }}
+    }})
+    .catch(function(e){{
+      btn.disabled = false;
+      btn.textContent = 'Send to First Signal Pipeline';
+      alert('Network error: ' + e.message);
+    }});
+}}
+</script>
 
   <h2>Mark Covered</h2>
   <form method="post" action="/stories/{cluster['id']}/status" class="filter-form">
