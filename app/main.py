@@ -963,7 +963,35 @@ _scan_state = {"running": False, "completed_unacknowledged": False, "last_result
 
 # Social scanner (Twitter + Reddit) state — stored in /tmp so the worker thread
 # can write progress that the poll endpoint can read.
-_SOCIAL_JOB_PATH = Path("/tmp/social_scan_job.json")
+_SOCIAL_JOB_PATH      = Path("/tmp/social_scan_job.json")
+_TWITTER_ACCOUNTS_PATH = Path("/tmp/twitter_accounts.json")
+
+# Default Twitter accounts to scan when none have been added yet
+_DEFAULT_TWITTER_ACCOUNTS: list[str] = [
+    "realDonaldTrump",
+    "JDVance",
+    "SpeakerJohnson",
+    "GOPLeader",
+    "DonaldJTrumpJr",
+    "TuckerCarlson",
+    "bennyjohnson",
+]
+
+
+def _load_twitter_accounts() -> list[str]:
+    if _TWITTER_ACCOUNTS_PATH.exists():
+        try:
+            data = json.loads(_TWITTER_ACCOUNTS_PATH.read_text())
+            if isinstance(data, list):
+                return data
+        except Exception:
+            pass
+    _TWITTER_ACCOUNTS_PATH.write_text(json.dumps(_DEFAULT_TWITTER_ACCOUNTS))
+    return list(_DEFAULT_TWITTER_ACCOUNTS)
+
+
+def _save_twitter_accounts(accounts: list[str]) -> None:
+    _TWITTER_ACCOUNTS_PATH.write_text(json.dumps(accounts))
 
 def _social_read_job() -> dict:
     try:
@@ -3545,7 +3573,10 @@ def _social_scan_worker(token: str, platform: str, queries_or_subs: list[str], h
         _social_write_job(job)
 
         if platform == "twitter":
-            run_id = _social.start_twitter_scan(token, queries_or_subs or None, hours=hours)
+            # queries_or_subs contains handles (stripped of @) when accounts are selected
+            run_id = _social.start_twitter_scan(
+                token, handles=queries_or_subs or None, hours=hours
+            )
         else:
             run_id = _social.start_reddit_scan(token, queries_or_subs or None, hours=hours)
 
@@ -3586,6 +3617,7 @@ def social_scanner_page(tab: str = "twitter", msg: str = "", user: dict = Depend
         job=_social_read_job(),
         active_tab=tab,
         msg=msg,
+        twitter_accounts=_load_twitter_accounts(),
     ))
 
 
@@ -3599,6 +3631,12 @@ async def social_scanner_scan(
     hours = int(form.get("hours") or 24)
     raw_queries = str(form.get("queries", "")).strip()
     queries_or_subs = [q.strip() for q in raw_queries.splitlines() if q.strip()] or None
+
+    # For Twitter, if no manual queries typed, use the selected accounts from the account list
+    if platform == "twitter" and not queries_or_subs:
+        selected_handles = form.getlist("handle")
+        if selected_handles:
+            queries_or_subs = [h.strip().lstrip("@") for h in selected_handles if h.strip()]
 
     job = _social_read_job()
     if job.get("status") == "running":
@@ -3617,6 +3655,29 @@ def social_scanner_reset(user: dict = Depends(require_user)):
     _social_write_job({"status": "idle"})
     _social_write_results([])
     return RedirectResponse("/social-scanner?msg=Cleared", status_code=303)
+
+
+@app.post("/social-scanner/accounts/add")
+async def social_scanner_accounts_add(request: Request, user: dict = Depends(require_user)):
+    form = await request.form()
+    handle = str(form.get("handle", "")).strip().lstrip("@")
+    if handle:
+        accounts = _load_twitter_accounts()
+        if handle not in accounts:
+            accounts.append(handle)
+            _save_twitter_accounts(accounts)
+    return RedirectResponse("/social-scanner?tab=twitter&msg=Account+added", status_code=303)
+
+
+@app.post("/social-scanner/accounts/delete")
+async def social_scanner_accounts_delete(request: Request, user: dict = Depends(require_user)):
+    form = await request.form()
+    handle = str(form.get("handle", "")).strip().lstrip("@")
+    if handle:
+        accounts = _load_twitter_accounts()
+        accounts = [a for a in accounts if a != handle]
+        _save_twitter_accounts(accounts)
+    return RedirectResponse("/social-scanner?tab=twitter&msg=Account+removed", status_code=303)
 
 
 @app.get("/social-scanner/results.json")

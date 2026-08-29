@@ -73,11 +73,27 @@ def social_engagement_score(item: dict) -> int:
 
 # ── Twitter/X ─────────────────────────────────────────────────────────────────
 
-def start_twitter_scan(token: str, queries: list[str] | None = None, hours: int = 24) -> str:
-    queries = queries or _DEFAULT_TWITTER_QUERIES
+def start_twitter_scan(
+    token: str,
+    queries: list[str] | None = None,
+    hours: int = 24,
+    handles: list[str] | None = None,
+) -> str:
     since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d")
+    if handles:
+        # Scan specific accounts by handle — surfaces their recent tweets
+        return _apify_run(token, _TWITTER_ACTOR, {
+            "twitterHandles": handles,
+            "maxItems": 60,
+            "since": since,
+            "minimumRetweets": 0,
+            "minimumLikes": 5,
+            "lang": "en",
+        })
+    # Fall back to keyword queries
+    q = queries or _DEFAULT_TWITTER_QUERIES
     return _apify_run(token, _TWITTER_ACTOR, {
-        "searchTerms": queries,
+        "searchTerms": q,
         "maxItems": 60,
         "since": since,
         "onlyVerifiedUsers": False,
