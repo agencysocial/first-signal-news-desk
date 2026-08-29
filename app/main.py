@@ -29,8 +29,10 @@ from app.render import (
     render_wire_page, render_detail_page, render_sources_page,
     render_pipeline_queue_page, render_login_page,
     render_story_workspace_page, render_fb_scanner_page,
+    render_social_scanner_page,
 )
 from app import fb_scanner as _fb
+from app import social_scanner as _social
 
 # ── First Signal pipeline paths ───────────────────────────────────────────────
 _FSN_ROOT = Path(
@@ -348,7 +350,7 @@ _FSN_STATE_KEYS = {"queue_status", "post_type", "draft", "approved_at",
                    "generated_image_url", "image_gen_status", "image_history", "tobi_text", "output_file",
                    "video_titles", "reels_description", "script_short", "script_medium",
                    "script_long", "poll_question", "video_first_comment", "brand_slug", "brand_images",
-                   "brand_drafts"}
+                   "brand_drafts", "article_text", "article_url", "meme_kie_url"}
 
 
 def _save_fsn_queue(items: list[dict]) -> None:
@@ -670,6 +672,25 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
     )
 
 
+def _build_meme_prompt(headline: str, scene: str, top_text: str = "", notes: str = "") -> str:
+    """Build a Kie.ai prompt for a meme-format card: full-bleed photo + Impact text overlay."""
+    season = _current_season()
+    notes_clause = f" Additional direction: {notes}." if notes else ""
+    top_clause = f' Top text (large Impact-style white with thick black outline, upper area): "{top_text}".' if top_text else ""
+    return (
+        f"A 4:5 vertical portrait internet meme-style political share card — full-bleed photo, no footer panel.\n\n"
+        f"PHOTO: {scene}.{notes_clause} Season: {season} — outdoor scenes reflect current {season} conditions. {_ANTI_SLOP}\n\n"
+        f"TEXT OVERLAY (baked into the image — critical):  "
+        f"{top_clause}"
+        f' Bottom text (large Impact-style BOLD WHITE ALL-CAPS with a thick solid BLACK outline, 4-6px stroke, '
+        f'positioned in the lower 20% of the image, centered): "{headline}".\n\n'
+        f"TEXT RULES: Font is classic Impact or Haettenschweiler — wide, bold, all-caps. "
+        f"White fill with a thick black outline (stroke) so text is readable on any background. "
+        f"NO footer panel, NO coloured background behind text — text floats over the photo. "
+        f"NO watermark, no social handles. 4:5 vertical portrait format, photorealistic, sharp."
+    )
+
+
 def _get_brand_voice_system(brand: dict, task: str = "captions") -> str:
     """Return a system prompt combining brand voice with task instructions."""
     voice = brand.get("voice_instructions") or _FSN_VOICE
@@ -940,6 +961,36 @@ VALID_STATUSES = {
 # would be noise, not signal.
 _scan_state = {"running": False, "completed_unacknowledged": False, "last_result": None}
 
+# Social scanner (Twitter + Reddit) state — stored in /tmp so the worker thread
+# can write progress that the poll endpoint can read.
+_SOCIAL_JOB_PATH = Path("/tmp/social_scan_job.json")
+
+def _social_read_job() -> dict:
+    try:
+        return json.loads(_SOCIAL_JOB_PATH.read_text()) if _SOCIAL_JOB_PATH.exists() else {"status": "idle"}
+    except Exception:
+        return {"status": "idle"}
+
+def _social_write_job(data: dict) -> None:
+    try:
+        _SOCIAL_JOB_PATH.write_text(json.dumps(data, ensure_ascii=False))
+    except Exception:
+        pass
+
+_SOCIAL_RESULTS_PATH = Path("/tmp/social_scan_results.json")
+
+def _social_read_results() -> list[dict]:
+    try:
+        return json.loads(_SOCIAL_RESULTS_PATH.read_text()) if _SOCIAL_RESULTS_PATH.exists() else []
+    except Exception:
+        return []
+
+def _social_write_results(results: list[dict]) -> None:
+    try:
+        _SOCIAL_RESULTS_PATH.write_text(json.dumps(results, ensure_ascii=False))
+    except Exception:
+        pass
+
 VALID_SORTS = {"latest", "viral"}
 WINDOW_MINUTES = {
     "15m": 15, "1h": 60, "3h": 180,
@@ -1100,6 +1151,15 @@ async def lifespan(app: FastAPI):
     # Ensure Supabase Storage bucket exists for permanent image hosting
     import threading as _t_sb
     _t_sb.Thread(target=_ensure_supabase_bucket, daemon=True).start()
+
+    # Seed NYC and competitor RSS sources (idempotent — skips names already in DB)
+    try:
+        from app.source_seeds import seed_news_sources as _seed_news
+        _added = _seed_news()
+        if _added:
+            logger.info("source_seeds: added %d new sources (NYC + Competitor Monitor)", _added)
+    except Exception as _se:
+        logger.warning("source_seeds failed: %s", _se)
 
     # Seed competitor URL list into /tmp on every startup so the FB Scanner
     # page always has a list to render — without this, the first page load
@@ -3473,6 +3533,176 @@ async def fb_scanner_send_selected(request: Request, user: dict = Depends(requir
     return JSONResponse({"queued": queued, "skipped": skipped})
 
 
+# ── Social Scanner (Twitter + Reddit) ─────────────────────────────────────────
+
+def _social_scan_worker(token: str, platform: str, queries_or_subs: list[str], hours: int) -> None:
+    """Background thread: run Twitter or Reddit Apify actor, poll, store results."""
+    try:
+        job = _social_read_job()
+        job["status"] = "running"
+        job["platform"] = platform
+        job["started_at"] = datetime.now(timezone.utc).isoformat()
+        _social_write_job(job)
+
+        if platform == "twitter":
+            run_id = _social.start_twitter_scan(token, queries_or_subs or None, hours=hours)
+        else:
+            run_id = _social.start_reddit_scan(token, queries_or_subs or None, hours=hours)
+
+        job["run_id"] = run_id
+        _social_write_job(job)
+
+        status, dataset_id = _social.poll_until_done(token, run_id, timeout=900)
+        job = _social_read_job()
+        job["apify_status"] = status
+
+        if status == "SUCCEEDED" and dataset_id:
+            results = _social.fetch_results(token, dataset_id, platform)
+            existing = _social_read_results()
+            # Merge: add new results on top (dedup by url), cap at 200 total
+            seen_urls = {r["url"] for r in results}
+            for r in existing:
+                if r["url"] not in seen_urls and r.get("platform") != platform:
+                    results.append(r)
+            results.sort(key=lambda x: x["engagement_score"], reverse=True)
+            _social_write_results(results[:200])
+            job["status"] = "done"
+            job["result_count"] = len(results[:200])
+        else:
+            job["status"] = "error"
+            job["error"] = f"Apify status: {status}"
+        job["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _social_write_job(job)
+    except Exception as exc:
+        _social_write_job({"status": "error", "error": str(exc)})
+        logger.error("social scan worker (%s): %s", platform, exc)
+
+
+@app.get("/social-scanner", response_class=HTMLResponse)
+def social_scanner_page(tab: str = "twitter", msg: str = "", user: dict = Depends(require_user)):
+    from app.render import render_social_scanner_page
+    return HTMLResponse(render_social_scanner_page(
+        results=_social_read_results(),
+        job=_social_read_job(),
+        active_tab=tab,
+        msg=msg,
+    ))
+
+
+@app.post("/social-scanner/scan")
+async def social_scanner_scan(
+    request: Request, background_tasks: BackgroundTasks,
+    user: dict = Depends(require_user),
+):
+    form = await request.form()
+    platform = str(form.get("platform", "twitter")).strip()
+    hours = int(form.get("hours") or 24)
+    raw_queries = str(form.get("queries", "")).strip()
+    queries_or_subs = [q.strip() for q in raw_queries.splitlines() if q.strip()] or None
+
+    job = _social_read_job()
+    if job.get("status") == "running":
+        return RedirectResponse("/social-scanner?msg=Scan+already+running", status_code=303)
+
+    token = _get_apify_token()
+    if not token:
+        return RedirectResponse("/social-scanner?msg=APIFY_TOKEN+not+set", status_code=303)
+
+    background_tasks.add_task(_social_scan_worker, token, platform, queries_or_subs or [], hours)
+    return RedirectResponse(f"/social-scanner?tab={platform}&msg=Scan+started", status_code=303)
+
+
+@app.post("/social-scanner/reset")
+def social_scanner_reset(user: dict = Depends(require_user)):
+    _social_write_job({"status": "idle"})
+    _social_write_results([])
+    return RedirectResponse("/social-scanner?msg=Cleared", status_code=303)
+
+
+@app.get("/social-scanner/results.json")
+def social_scanner_results_json(user: dict = Depends(require_user)):
+    return JSONResponse({"results": _social_read_results(), "job": _social_read_job()})
+
+
+@app.post("/social-scanner/send-to-queue")
+async def social_scanner_send_to_queue(request: Request, user: dict = Depends(require_user)):
+    """Send a single social post to the FSN production queue (mirrors fb-scanner/send-to-queue)."""
+    form = await request.form()
+    text    = str(form.get("text", "")).strip()
+    url     = str(form.get("url", "")).strip()
+    platform = str(form.get("platform", "twitter")).strip()
+    image_url = str(form.get("image_url", "")).strip()
+    if not text:
+        return JSONResponse({"error": "no text"}, status_code=400)
+
+    session = SessionLocal()
+    try:
+        from app.clustering import assign_cluster
+        from app.models import RawArticle, NormalizedArticle, Source
+        from app.normalize import canonicalize_url, normalize_headline, compute_hashes
+        from app.dedup import find_duplicate
+        from sqlalchemy import select as _sel
+
+        # Find or create a source record for this platform
+        source_name = f"Social: {platform.title()}"
+        src = session.execute(_sel(Source).where(Source.name == source_name)).scalar_one_or_none()
+        if not src:
+            src = Source(name=source_name, type="social", url=url or f"https://{platform}.com",
+                         category="Social", credibility_tier=4, polling_tier="low", enabled=False)
+            session.add(src)
+            session.flush()
+
+        canonical_url = canonicalize_url(url) if url else f"social://{platform}/{hash(text)}"
+        norm_headline = normalize_headline(text[:200])
+        url_hash, headline_hash, content_hash = compute_hashes(canonical_url, norm_headline, text[:500])
+        dup_of, dup_level, dup_score = find_duplicate(
+            session, canonical_url=canonical_url, url_hash=url_hash,
+            headline_hash=headline_hash, content_hash=content_hash, normalized_headline=norm_headline,
+        )
+        raw = RawArticle(source_id=src.id, url=url or canonical_url, headline=text[:500],
+                         description=text[:2000], raw_payload=json.dumps({"platform": platform, "image_url": image_url}))
+        session.add(raw)
+        session.flush()
+        norm = NormalizedArticle(
+            raw_article_id=raw.id, source_id=src.id, canonical_url=canonical_url,
+            url_hash=url_hash, normalized_headline=norm_headline, headline_hash=headline_hash,
+            content_hash=content_hash, description=text[:2000], source_tier=src.credibility_tier,
+            duplicate_of_id=dup_of, duplicate_level=dup_level, duplicate_similarity_score=dup_score,
+        )
+        session.add(norm)
+        session.flush()
+        cluster = assign_cluster(session, norm, raw_headline=text[:200])
+        session.commit()
+
+        # Also push to FSN queue
+        items = _load_fsn_queue()
+        now = datetime.now(timezone.utc)
+        cid = cluster.id if cluster else None
+        existing = next((x for x in items if x.get("cluster_id") == cid), None) if cid else None
+        if not existing:
+            items.append({
+                "cluster_id": cid,
+                "text": text[:300],
+                "category": "Social",
+                "post_url": url,
+                "image_url": image_url,
+                "queue_status": "pending",
+                "post_type": "image_card",
+                "added_to_queue_at": now.isoformat(),
+                "draft": {},
+                "source": f"social_{platform}",
+                "_source": f"social_{platform}",
+            })
+            _save_fsn_queue(items)
+        return JSONResponse({"ok": True, "cluster_id": cid})
+    except Exception as exc:
+        session.rollback()
+        logger.error("social send-to-queue: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    finally:
+        session.close()
+
+
 # ── Story Workspace Routes ─────────────────────────────────────────────────────
 
 @app.get("/pipeline-queue/story/{cid}", response_class=HTMLResponse)
@@ -3723,15 +3953,17 @@ def pipeline_queue_story_image_status(cid: str, brand_slug: str = "first_signal"
     fsn_brand_images = (item.get("brand_images") or {}).get(brand_slug)
     if fsn_brand_images:
         return JSONResponse({
-            "status":  fsn_brand_images.get("image_gen_status") or "",
-            "url":     fsn_brand_images.get("generated_image_url") or "",
-            "history": fsn_brand_images.get("image_history") or [],
+            "status":   fsn_brand_images.get("image_gen_status") or "",
+            "url":      fsn_brand_images.get("generated_image_url") or "",
+            "history":  fsn_brand_images.get("image_history") or [],
+            "variants": fsn_brand_images.get("variants") or [],
         })
     # Fall back to top-level (legacy / same brand)
     return JSONResponse({
-        "status":  item.get("image_gen_status") or "",
-        "url":     item.get("generated_image_url") or "",
-        "history": item.get("image_history") or [],
+        "status":   item.get("image_gen_status") or "",
+        "url":      item.get("generated_image_url") or "",
+        "history":  item.get("image_history") or [],
+        "variants": [],
     })
 
 
@@ -4013,3 +4245,325 @@ def api_brands(user: dict = Depends(require_user)):
     """Return enabled brands for the workspace dropdown."""
     brands = [b for b in _get_all_brands() if b["enabled"]]
     return JSONResponse({"brands": [{"slug": b["slug"], "name": b["name"]} for b in brands]})
+
+
+# ── 3 Image Variants ───────────────────────────────────────────────────────────
+
+def _generate_variant(cid: str, key: str, prompt: str, brand_slug: str, variant_idx: int) -> dict:
+    """Generate one image variant for a cluster. Returns dict with kie_url or error."""
+    try:
+        task_id = _kie_submit(prompt, key)
+        kie_url = _kie_poll(task_id, key)
+        tmp_id  = f"{cid}__{brand_slug}__v{variant_idx}"
+        r = httpx.get(kie_url, timeout=60, follow_redirects=True)
+        r.raise_for_status()
+        _raw = r.content
+        del r
+        stamped_path = _stamp_logo(_raw, tmp_id, brand_slug=brand_slug)
+        del _raw
+        supabase_url = _supabase_storage_upload(stamped_path, f"{cid}_v{variant_idx}", brand_slug)
+        served_url = f"/pipeline-queue/image/{cid}/{brand_slug}?v={variant_idx}&t={int(time.time())}"
+        return {"ok": True, "kie_url": kie_url, "supabase_url": supabase_url or "", "served_url": served_url, "variant": variant_idx}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "variant": variant_idx}
+
+
+def _generate_variants_background(cid: str, key: str, prompts: list[str], brand_slug: str) -> None:
+    """Generate 3 image variants in parallel. Stores results in fsn_state.brand_images[slug].variants."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    _update_cluster_fsn(cid, image_gen_status="generating_variants")
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {
+            pool.submit(_generate_variant, cid, key, prompt, brand_slug, idx): idx
+            for idx, prompt in enumerate(prompts)
+        }
+        variants = []
+        for future in as_completed(futures):
+            result = future.result()
+            variants.append(result)
+        variants.sort(key=lambda x: x.get("variant", 0))
+
+    # Store all variant kie_urls in fsn_state so workspace can display them
+    kie_urls = [v.get("kie_url") for v in variants if v.get("ok") and v.get("kie_url")]
+    session = SessionLocal()
+    try:
+        c = session.get(StoryCluster, int(cid))
+        if c:
+            fsn: dict = {}
+            if c.fsn_state:
+                try: fsn = json.loads(c.fsn_state)
+                except Exception: pass
+            brand_images = fsn.get("brand_images") or {}
+            slot = dict(brand_images.get(brand_slug) or {})
+            slot["variants"] = kie_urls
+            slot["image_gen_status"] = "variants_done"
+            brand_images[brand_slug] = slot
+            fsn["brand_images"] = brand_images
+            fsn["image_gen_status"] = "variants_done"
+            c.fsn_state = json.dumps(fsn, ensure_ascii=False)
+            session.commit()
+    except Exception as exc:
+        session.rollback()
+        logger.error("variants DB update %s: %s", cid, exc)
+    finally:
+        session.close()
+    logger.info("variants done for cluster %s: %d generated", cid, len(kie_urls))
+
+
+_VARIANT_ATMOSPHERES = [
+    "dramatic golden hour backlight, long shadows, high contrast",
+    "crisp overcast daylight, neutral tones, photojournalism flat light",
+    "blue-hour dusk, deep contrast, broadcast news texture",
+]
+
+
+@app.post("/pipeline-queue/story/{cid}/generate-variants")
+async def pipeline_queue_story_generate_variants(
+    cid: str, request: Request, background_tasks: BackgroundTasks,
+    user: dict = Depends(require_user),
+):
+    """Launch 3 parallel Kie.ai jobs with different atmospheres. Results shown in workspace."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    headline   = str(form.get("headline", "")).strip()
+    tag        = str(form.get("tag", "BREAKING")).strip()
+    scene      = str(form.get("scene", "")).strip()
+    brand_slug = str(form.get("brand_slug", "first_signal")).strip()
+    notes      = str(form.get("notes", "")).strip()
+    template   = str(form.get("template", "standard")).strip()
+
+    key = _get_kie_key()
+    if not key:
+        return JSONResponse({"error": "KIE_AI_API_KEY not set"}, status_code=400)
+
+    item = _queue_item_for(cluster_id)
+    if not item:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if not headline:
+        headline = (item.get("draft") or {}).get("headline") or item.get("text", "")
+    if not scene:
+        scene = (item.get("draft") or {}).get("scene") or "US Capitol dome, dramatic sky, American flag"
+
+    brand = _get_brand(brand_slug)
+    prompts = []
+    for atm in _VARIANT_ATMOSPHERES:
+        atm_notes = f"{notes} Atmosphere: {atm}." if notes else f"Atmosphere: {atm}."
+        if template == "meme":
+            top_text = tag
+            p = _build_meme_prompt(headline, scene, top_text=top_text, notes=atm_notes)
+        elif brand and brand.get("voice_instructions"):
+            p = _build_image_prompt_for_brand(headline, tag, scene, brand, notes=atm_notes)
+        else:
+            p = _build_image_prompt(headline, tag, scene, atm_notes)
+        prompts.append(p)
+
+    _update_cluster_fsn(cluster_id, image_gen_status="generating_variants")
+    background_tasks.add_task(_generate_variants_background, str(cluster_id), key, prompts, brand_slug)
+    return JSONResponse({"ok": True, "msg": "3 variants generating — check back in ~2 min"})
+
+
+# ── Article Text Extraction ────────────────────────────────────────────────────
+
+@app.post("/pipeline-queue/story/{cid}/fetch-article")
+async def pipeline_queue_fetch_article(cid: str, request: Request, user: dict = Depends(require_user)):
+    """Fetch full article text via Apify article extractor. Stores in fsn_state for caption context."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    url = str(form.get("url", "")).strip()
+    if not url:
+        # Try to find URL from cluster articles
+        session = SessionLocal()
+        try:
+            row = session.execute(
+                select(NormalizedArticle.canonical_url)
+                .join(StoryClusterArticle, StoryClusterArticle.normalized_article_id == NormalizedArticle.id)
+                .where(StoryClusterArticle.cluster_id == cluster_id)
+                .limit(1)
+            ).scalar_one_or_none()
+            url = row or ""
+        finally:
+            session.close()
+    if not url:
+        return JSONResponse({"error": "no source URL found"}, status_code=400)
+
+    token = _get_apify_token()
+    if not token:
+        return JSONResponse({"error": "APIFY_TOKEN not set"}, status_code=400)
+
+    # Run extraction synchronously (max 90s) so caller gets the text back immediately
+    import threading as _t
+    result: dict = {}
+    def _extract():
+        result["text"] = _social.extract_article_text(token, url, timeout=90)
+    t = _t.Thread(target=_extract, daemon=True)
+    t.start()
+    t.join(timeout=95)
+    article_text = result.get("text") or ""
+
+    if article_text:
+        _update_cluster_fsn(cluster_id, article_text=article_text, article_url=url)
+        return JSONResponse({"ok": True, "text": article_text, "length": len(article_text)})
+    return JSONResponse({"ok": False, "error": "Could not extract article text"}, status_code=200)
+
+
+# ── Quote Card Auto-Generator ──────────────────────────────────────────────────
+
+@app.post("/pipeline-queue/story/{cid}/extract-quotes")
+async def pipeline_queue_extract_quotes(cid: str, request: Request, user: dict = Depends(require_user)):
+    """Use Claude AI to extract real quotes from the article text or headline.
+    Returns up to 3 candidate quotes for the operator to pick for a Template B card."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    custom_text = str(form.get("text", "")).strip()
+
+    item = _queue_item_for(cluster_id)
+    if not item:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    # Prefer fetched article text, fall back to provided text, then headline
+    session2 = SessionLocal()
+    article_text = ""
+    try:
+        c = session2.get(StoryCluster, cluster_id)
+        if c and c.fsn_state:
+            fsn = json.loads(c.fsn_state)
+            article_text = fsn.get("article_text") or ""
+    except Exception:
+        pass
+    finally:
+        session2.close()
+
+    source_text = custom_text or article_text or item.get("text") or ""
+    if not source_text:
+        return JSONResponse({"error": "no source text"}, status_code=400)
+
+    key = _get_anthropic_key()
+    if not key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
+
+    import anthropic as _anth
+    client = _anth.Anthropic(api_key=key)
+    prompt = (
+        f"Extract up to 3 strong, real, verbatim quotes from real public figures that appear in the text below. "
+        f"Only use quotes that are explicitly attributed ('X said', 'X tweeted', '\"...\" -- X'). "
+        f"Do not fabricate quotes. If no real attributed quotes exist, return an empty list.\n\n"
+        f"For each quote return: speaker (full name), quote (exact words, no paraphrase), and a 3-word all-caps tag (e.g. 'TRUMP FIRES BACK').\n\n"
+        f"TEXT:\n{source_text[:4000]}\n\n"
+        f"Return ONLY valid JSON: {{\"quotes\": [{{\"speaker\": \"...\", \"quote\": \"...\", \"tag\": \"...\"}}]}}"
+    )
+    try:
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=800,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = (msg.content[0].text if msg.content else "{}").strip()
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        data = json.loads(raw)
+        return JSONResponse(data)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc), "quotes": []}, status_code=200)
+
+
+# ── Meme Card Generation ────────────────────────────────────────────────────────
+
+@app.post("/pipeline-queue/story/{cid}/generate-meme")
+async def pipeline_queue_generate_meme(
+    cid: str, request: Request, background_tasks: BackgroundTasks,
+    user: dict = Depends(require_user),
+):
+    """Generate a meme-format card (Impact text over full-bleed photo). Template M."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    headline   = str(form.get("headline", "")).strip()
+    top_text   = str(form.get("top_text", "")).strip()
+    scene      = str(form.get("scene", "")).strip()
+    brand_slug = str(form.get("brand_slug", "first_signal")).strip()
+    notes      = str(form.get("notes", "")).strip()
+
+    key = _get_kie_key()
+    if not key:
+        return JSONResponse({"error": "KIE_AI_API_KEY not set"}, status_code=400)
+
+    item = _queue_item_for(cluster_id)
+    if not item:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if not headline:
+        headline = (item.get("draft") or {}).get("headline") or item.get("text", "")
+    if not scene:
+        scene = (item.get("draft") or {}).get("scene") or "US Capitol exterior, dramatic sky"
+
+    prompt = _build_meme_prompt(headline, scene, top_text=top_text, notes=notes)
+    _update_cluster_fsn(cluster_id, image_gen_status="generating")
+
+    def _run_meme():
+        _generate_one_image.__wrapped__ if hasattr(_generate_one_image, "__wrapped__") else None
+        # Build a synthetic item dict for _generate_one_image with the meme prompt override
+        synthetic_item = dict(item)
+        synthetic_item.setdefault("draft", {})
+        synthetic_item["draft"]["headline"] = headline
+        synthetic_item["draft"]["scene"] = scene
+        synthetic_item["draft"]["image_notes"] = f"MEME FORMAT. {notes}" if notes else "MEME FORMAT."
+        synthetic_item["brand_slug"] = brand_slug
+        try:
+            task_id = _kie_submit(prompt, key)
+            kie_url = _kie_poll(task_id, key)
+            r = httpx.get(kie_url, timeout=60, follow_redirects=True)
+            r.raise_for_status()
+            _raw = r.content
+            del r
+            tmp_id = f"{cluster_id}__{brand_slug}__meme"
+            stamped_path = _stamp_logo(_raw, tmp_id, brand_slug=brand_slug)
+            del _raw
+            supabase_url = _supabase_storage_upload(stamped_path, f"{cluster_id}_meme", brand_slug)
+            served_url = f"/pipeline-queue/image/{cluster_id}/{brand_slug}"
+            # Store meme result inside brand_images alongside regular image
+            session = SessionLocal()
+            try:
+                c = session.get(StoryCluster, cluster_id)
+                fsn: dict = {}
+                if c and c.fsn_state:
+                    try: fsn = json.loads(c.fsn_state)
+                    except Exception: pass
+                brand_images = fsn.get("brand_images") or {}
+                slot = dict(brand_images.get(brand_slug) or {})
+                # Store meme as a separate key so it doesn't replace the main card
+                meme_key = f"{brand_slug}__meme"
+                brand_images[meme_key] = {
+                    "generated_image_url": served_url,
+                    "kie_result_url": kie_url,
+                    "supabase_image_url": supabase_url or "",
+                    "image_gen_status": "done",
+                    "image_history": slot.get("image_history") or [],
+                    "template": "meme",
+                }
+                fsn["brand_images"] = brand_images
+                fsn["meme_kie_url"] = kie_url
+                fsn["image_gen_status"] = "done"
+                if c:
+                    c.fsn_state = json.dumps(fsn, ensure_ascii=False)
+                    session.commit()
+            except Exception as exc:
+                session.rollback()
+                logger.error("meme DB update %s: %s", cluster_id, exc)
+            finally:
+                session.close()
+        except Exception as exc:
+            _update_cluster_fsn(cluster_id, image_gen_status=f"error: {exc}")
+            logger.error("meme gen cluster %s: %s", cluster_id, exc)
+
+    background_tasks.add_task(_run_meme)
+    return JSONResponse({"ok": True, "msg": "Meme card generating"})

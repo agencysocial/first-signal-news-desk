@@ -118,6 +118,7 @@ NAV = """
       <a href="/sources">Sources</a>
       <a href="/pipeline-queue">&#9654; Production Queue</a>
       <a href="/fb-scanner">&#128269; FB Scanner</a>
+      <a href="/social-scanner">&#128038; Social</a>
     </div>
     <div style="display:flex;align-items:center;gap:12px">
       <span id="_qcounts" style="font-size:11px;color:#8b93a3;letter-spacing:.3px"></span>
@@ -2702,15 +2703,47 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
     <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <span style="color:#c7cbd4;font-size:13px;font-weight:600">Image</span>
-        <button type="button" onclick="regenImage('{cid}')"
-          style="font-size:11px;padding:4px 12px;background:#1a0a00;border:1px solid #7a3010;color:#fb923c;cursor:pointer;border-radius:4px">
-          {regen_label}</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button type="button" onclick="regenImage('{cid}')"
+            style="font-size:11px;padding:4px 12px;background:#1a0a00;border:1px solid #7a3010;color:#fb923c;cursor:pointer;border-radius:4px">
+            {regen_label}</button>
+          <button type="button" onclick="genVariants('{cid}')"
+            style="font-size:11px;padding:4px 12px;background:#0a1a00;border:1px solid #1a7a00;color:#4ade80;cursor:pointer;border-radius:4px"
+            title="Generate 3 variations with different atmospheres">&#9678; 3 Variants</button>
+          <button type="button" onclick="genMeme('{cid}')"
+            style="font-size:11px;padding:4px 10px;background:#1a001a;border:1px solid #7a007a;color:#c084fc;cursor:pointer;border-radius:4px"
+            title="Generate a meme-format card (Impact text over full-bleed photo)">&#127867; Meme</button>
+        </div>
       </div>
-      <textarea id="img-notes-{cid}" placeholder="Optional notes for this generation — e.g. &quot;show a courtroom&quot;, &quot;darker mood&quot;, &quot;wide shot of Capitol&quot;" rows="2"
+      <textarea id="img-notes-{cid}" placeholder="Optional notes — e.g. &quot;show a courtroom&quot;, &quot;darker mood&quot;, &quot;wide shot of Capitol&quot;" rows="2"
         style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:6px;font-family:inherit;resize:vertical;margin-bottom:8px"></textarea>
       <div id="img-wrap-{cid}">{img_html}</div>
-      <div id="img-status-{cid}" style="font-size:11px;color:#8b93a3;margin-top:4px">{"Generating... refresh in ~60s" if img_status=="generating" else ""}</div>
+      <div id="img-status-{cid}" style="font-size:11px;color:#8b93a3;margin-top:4px">{"Generating... refresh in ~60s" if img_status in ("generating","generating_variants") else ""}</div>
       <div id="img-history-{cid}">{_render_img_history(img_history, cid)}</div>
+      <!-- 3 Variants gallery -->
+      <div id="variants-wrap-{cid}" style="margin-top:10px;display:none">
+        <div style="color:#4ade80;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">3 Variants (click to use)</div>
+        <div id="variants-grid-{cid}" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
+    </div>
+
+    <!-- Article Text + Quote Card -->
+    <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="color:#c7cbd4;font-size:13px;font-weight:600">Article &amp; Quotes</span>
+        <div style="display:flex;gap:6px">
+          <button type="button" onclick="fetchArticle('{cid}')"
+            style="font-size:11px;padding:4px 12px;background:#0a1a2a;border:1px solid #1a4a8a;color:#60a5fa;cursor:pointer;border-radius:4px">
+            &#128196; Fetch Article</button>
+          <button type="button" onclick="extractQuotes('{cid}')"
+            style="font-size:11px;padding:4px 12px;background:#1a1a00;border:1px solid #6a6a00;color:#facc15;cursor:pointer;border-radius:4px">
+            &#128172; Extract Quotes</button>
+        </div>
+      </div>
+      <div id="article-status-{cid}" style="color:#8b93a3;font-size:11px;margin-bottom:6px"></div>
+      <textarea id="article-text-{cid}" rows="4" placeholder="Full article text appears here after fetching — used for quote extraction and AI context."
+        style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:8px;font-family:inherit;resize:vertical;margin-bottom:8px"></textarea>
+      <div id="quotes-{cid}"></div>
     </div>
 
     <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
@@ -2967,8 +3000,12 @@ function _startImagePoll(cid) {{
               histDiv.innerHTML = html;
             }}
           }}
-        }} else if (d.status === 'generating' || d.status === '') {{
+        }} else if (d.status === 'generating' || d.status === 'generating_variants' || d.status === '') {{
           _imgPollTimer[cid] = setTimeout(poll, 5000);
+        }} else if (d.status === 'variants_done' && d.variants && d.variants.length) {{
+          clearInterval(countTimer);
+          if (st) st.textContent = '';
+          _showVariants(cid, d.variants);
         }} else if (d.status === 'done' || d.status === 'completed') {{
           clearInterval(countTimer);
           if (st) st.textContent = '';
@@ -3069,9 +3106,155 @@ document.addEventListener('click', function(e) {{
   var tbtn = e.target.closest('.use-tobi-btn');
   if (tbtn) {{ useTOBIopt(tbtn.getAttribute('data-cid'), parseInt(tbtn.getAttribute('data-idx'))); return; }}
 }});
+// ── 3 Variants ────────────────────────────────────────────────────────────────
+function genVariants(cid) {{
+  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
+  var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
+  var notes = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var st    = document.getElementById('img-status-'+cid);
+  if(st) st.textContent = 'Generating 3 variants (~2 min)...';
+  var wrap = document.getElementById('variants-wrap-'+cid);
+  var grid = document.getElementById('variants-grid-'+cid);
+  if(wrap) wrap.style.display='none';
+  fetch('/pipeline-queue/story/'+cid+'/generate-variants',{{method:'POST',
+    headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)
+      +'&scene='+encodeURIComponent(scene)+'&brand_slug='+encodeURIComponent(brand)
+      +'&notes='+encodeURIComponent(notes)
+  }}).then(function(r){{ return r.json(); }}).then(function(d){{
+    if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
+    if(st) st.textContent = d.msg||'Variants generating...';
+    // Poll for variants_done
+    _pollVariants(cid, 0);
+  }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});
+}}
+function _pollVariants(cid, tries) {{
+  if(tries>30) return;
+  setTimeout(function(){{
+    fetch('/pipeline-queue/story/'+cid+'/image-status')
+    .then(function(r){{ return r.json(); }}).then(function(d){{
+      var status = d.status||'';
+      if(status==='variants_done') {{
+        _showVariants(cid, d.variants||[]);
+      }} else if(status.indexOf('error')>=0) {{
+        var st=document.getElementById('img-status-'+cid);
+        if(st) st.textContent='Variant error: '+status;
+      }} else {{
+        _pollVariants(cid, tries+1);
+      }}
+    }}).catch(function(){{ _pollVariants(cid, tries+1); }});
+  }}, 8000);
+}}
+function _showVariants(cid, urls) {{
+  var wrap = document.getElementById('variants-wrap-'+cid);
+  var grid = document.getElementById('variants-grid-'+cid);
+  var st   = document.getElementById('img-status-'+cid);
+  if(st) st.textContent = urls.length+' variants ready — click one to use it';
+  if(!wrap||!grid) return;
+  wrap.style.display='block';
+  grid.innerHTML = urls.map(function(url,i){{
+    return '<div style="flex:0 0 auto">'
+      +'<img src="'+_esc(url)+'?t='+Date.now()+'" style="width:120px;border-radius:5px;display:block;cursor:pointer;border:2px solid transparent" '
+      +'onclick="useVariant(\''+_esc(cid)+'\',\''+_esc(url)+'\')" '
+      +'onmouseover="this.style.borderColor=\'#4ade80\'" onmouseout="this.style.borderColor=\'transparent\'">'
+      +'<div style="color:#5a8a5a;font-size:10px;text-align:center;margin-top:3px">V'+(i+1)+'</div>'
+      +'</div>';
+  }}).join('');
+}}
+function useVariant(cid, kieUrl) {{
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
+  fetch('/pipeline-queue/story/'+cid+'/set-image',{{method:'POST',
+    headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'kie_url='+encodeURIComponent(kieUrl)+'&brand_slug='+encodeURIComponent(brand)
+  }}).then(function(r){{ return r.json(); }}).then(function(d){{
+    if(d.ok && d.url) {{
+      var wrap = document.getElementById('img-wrap-'+cid);
+      if(wrap) wrap.innerHTML='<img src="'+_esc(d.url)+'?t='+Date.now()+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
+        +'<a href="'+_esc(d.url)+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
+    }}
+  }}).catch(function(){{}});
+}}
+// ── Meme card ─────────────────────────────────────────────────────────────────
+function genMeme(cid) {{
+  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
+  var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
+  var notes = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var st    = document.getElementById('img-status-'+cid);
+  if(st) st.textContent='Meme card generating (~60s)...';
+  fetch('/pipeline-queue/story/'+cid+'/generate-meme',{{method:'POST',
+    headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'headline='+encodeURIComponent(hl)+'&top_text='+encodeURIComponent(tag)
+      +'&scene='+encodeURIComponent(scene)+'&brand_slug='+encodeURIComponent(brand)
+      +'&notes='+encodeURIComponent(notes)
+  }}).then(function(r){{ return r.json(); }}).then(function(d){{
+    if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
+    if(st) st.textContent='Meme generating...';
+    _startImagePoll(cid);
+  }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});
+}}
+// ── Article fetch + Quote extraction ─────────────────────────────────────────
+function fetchArticle(cid) {{
+  var st = document.getElementById('article-status-'+cid);
+  var ta = document.getElementById('article-text-'+cid);
+  if(st) st.textContent='Fetching article (~30-60s via Apify)...';
+  if(ta) ta.value='';
+  fetch('/pipeline-queue/story/'+cid+'/fetch-article',{{method:'POST',
+    headers:{{'Content-Type':'application/x-www-form-urlencoded'}}, body:''
+  }}).then(function(r){{ return r.json(); }}).then(function(d){{
+    if(d.ok && d.text) {{
+      if(ta) ta.value = d.text;
+      if(st) st.textContent='Fetched '+d.length+' chars';
+    }} else {{
+      if(st) st.textContent='Could not fetch: '+(d.error||'no text returned');
+    }}
+  }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});
+}}
+function extractQuotes(cid) {{
+  var st   = document.getElementById('article-status-'+cid);
+  var ta   = document.getElementById('article-text-'+cid);
+  var qdiv = document.getElementById('quotes-'+cid);
+  var customText = ta ? ta.value : '';
+  if(st) st.textContent='Extracting quotes...';
+  if(qdiv) qdiv.innerHTML='';
+  var body='text='+encodeURIComponent(customText);
+  fetch('/pipeline-queue/story/'+cid+'/extract-quotes',{{method:'POST',
+    headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:body
+  }}).then(function(r){{ return r.json(); }}).then(function(d){{
+    var quotes = d.quotes||[];
+    if(!quotes.length){{
+      if(st) st.textContent='No attributed quotes found';
+      return;
+    }}
+    if(st) st.textContent=quotes.length+' quote(s) found';
+    if(!qdiv) return;
+    qdiv.innerHTML = '<div style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Quote Cards (Template B)</div>'
+      + quotes.map(function(q,i){{
+        return '<div style="background:#11151f;border:1px solid #2a3555;border-radius:5px;padding:10px;margin-bottom:8px">'
+          +'<div style="color:#facc15;font-size:12px;font-weight:600;margin-bottom:4px">"'+_esc(q.quote)+'"</div>'
+          +'<div style="color:#8b93a3;font-size:11px;margin-bottom:6px">— '+_esc(q.speaker)+'</div>'
+          +'<div style="display:flex;gap:6px">'
+          +'<span style="background:#3a0808;color:#f87171;font-size:10px;padding:2px 8px;border-radius:3px">'+_esc(q.tag||'QUOTE')+'</span>'
+          +'<button type="button" onclick="useQuoteCard(\''+_esc(cid)+'\','+JSON.stringify(q)+')" '
+          +'style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">&#9654; Use as Template B</button>'
+          +'</div></div>';
+      }}).join('');
+  }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});
+}}
+function useQuoteCard(cid, q) {{
+  // Populate the draft fields with the quote card data, then user can generate
+  var hl = document.getElementById('draft-hl-'+cid);
+  var tag = document.getElementById('draft-tag-'+cid);
+  if(hl) hl.value = '"'+q.quote+'" — '+q.speaker;
+  if(tag) tag.value = q.tag||'QUOTE CARD';
+  saveDraft(cid);
+}}
 // Auto-start image polling on page load only when server says status=generating
 (function() {{
-  if ({str(img_status == "generating").lower()}) {{ _startImagePoll('{cid}'); }}
+  if ({str(img_status in ("generating", "generating_variants")).lower()}) {{ _startImagePoll('{cid}'); }}
 }})();
 // Populate brand dropdown from /api/brands
 (function() {{
@@ -3889,6 +4072,233 @@ def render_settings_brand_edit_page(brand=None, msg: str = "") -> str:
       <a href="/settings" style="color:#8b93a3;font-size:13px;align-self:center">Cancel</a>
     </div>
   </form>
+"""
+    return PAGE_HEAD + body + PAGE_TAIL
+
+
+# ── Social Scanner Page ────────────────────────────────────────────────────────
+
+def render_social_scanner_page(
+    results: list[dict],
+    job: dict,
+    active_tab: str = "twitter",
+    msg: str = "",
+) -> str:
+    """Twitter/X + Reddit social scanner page."""
+    status   = job.get("status", "idle")
+    platform = job.get("platform", "")
+    count    = len(results)
+    err      = job.get("error", "")
+    finished = job.get("finished_at", "")
+
+    flash_html = f'<div class="flash">{escape(msg)}</div>' if msg else ""
+
+    if status == "running":
+        status_html = (
+            f'<div style="background:#1a1800;border:1px solid #5a5000;border-radius:6px;'
+            f'padding:10px 14px;margin-bottom:14px;font-size:13px;display:flex;align-items:center;'
+            f'justify-content:space-between;gap:12px">'
+            f'<span>&#9203; Scanning {escape(platform.title())} &nbsp;'
+            f'<span style="color:#8b93a3;font-size:11px">(page refreshes every 10s)</span></span>'
+            f'<form method="post" action="/social-scanner/reset" style="margin:0">'
+            f'<button type="submit" style="font-size:11px;padding:3px 10px;background:#3a1414;'
+            f'border-color:#7a2020;color:#f87171">&#9726; Reset</button>'
+            f'</form></div>'
+        )
+        page_meta = '<meta http-equiv="refresh" content="10">'
+    elif status == "error":
+        status_html = (
+            f'<div style="background:#1a0000;border:1px solid #7a0000;border-radius:6px;'
+            f'padding:10px 14px;margin-bottom:14px;font-size:13px;color:#f87171">'
+            f'&#9888; Scan failed: {escape(err[:300])}</div>'
+        )
+        page_meta = ""
+    elif status == "done":
+        status_html = (
+            f'<div style="background:#0a1800;border:1px solid #1a5000;border-radius:6px;'
+            f'padding:10px 14px;margin-bottom:14px;font-size:13px">'
+            f'&#10003; {count} results ranked by engagement'
+            + (f' &middot; <span style="color:#8b93a3">{finished[:16].replace("T"," ")}</span>' if finished else "")
+            + '</div>'
+        )
+        page_meta = ""
+    else:
+        status_html = ""
+        page_meta   = ""
+
+    is_running = status == "running"
+
+    # Tab selector
+    def tab_btn(tab_id, label):
+        active = active_tab == tab_id
+        bg = "#1e3a8a" if active else "#0a1020"
+        border = "#2563eb" if active else "#2a3555"
+        color = "#fff" if active else "#8b93a3"
+        return (
+            f'<a href="/social-scanner?tab={tab_id}" '
+            f'style="padding:7px 18px;background:{bg};border:1px solid {border};'
+            f'color:{color};border-radius:4px;text-decoration:none;font-size:13px">{label}</a>'
+        )
+
+    tabs = (
+        f'<div style="display:flex;gap:8px;margin-bottom:20px">'
+        f'{tab_btn("twitter", "&#128038; Twitter/X")}'
+        f'{tab_btn("reddit", "&#128009; Reddit")}'
+        f'</div>'
+    )
+
+    # Scan form
+    twitter_queries_default = "\n".join([
+        "Trump breaking", "Congress breaking news", "MAGA America First news",
+        "immigration America First", "Mamdani NYC", "Vance breaking",
+    ])
+    reddit_subs_default = "politics\nConservative\nnews\nRepublican"
+
+    if active_tab == "twitter":
+        form_content = (
+            f'<textarea name="queries" rows="5" style="width:100%;box-sizing:border-box;'
+            f'background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;'
+            f'border-radius:4px;padding:8px;font-family:inherit;resize:vertical;margin-bottom:8px" '
+            f'placeholder="One search query per line">{escape(twitter_queries_default)}</textarea>'
+            f'<input type="hidden" name="platform" value="twitter">'
+        )
+    else:
+        form_content = (
+            f'<textarea name="queries" rows="4" style="width:100%;box-sizing:border-box;'
+            f'background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;'
+            f'border-radius:4px;padding:8px;font-family:inherit;resize:vertical;margin-bottom:8px" '
+            f'placeholder="One subreddit per line (no r/)">{escape(reddit_subs_default)}</textarea>'
+            f'<input type="hidden" name="platform" value="reddit">'
+        )
+
+    scan_form = (
+        f'<form method="post" action="/social-scanner/scan">'
+        f'{form_content}'
+        f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+        f'<select name="hours" style="font-size:12px;padding:5px 8px">'
+        f'<option value="24">Last 24 hours</option>'
+        f'<option value="48">Last 48 hours</option>'
+        f'<option value="72">Last 72 hours</option>'
+        f'</select>'
+        f'<button type="submit" class="primary" style="padding:6px 18px;font-size:13px"'
+        + (' disabled' if is_running else '') + '>'
+        + ('&#9203; Scanning...' if is_running else '&#128269; Scan Now')
+        + '</button>'
+        f'<form method="post" action="/social-scanner/reset" style="margin:0">'
+        f'<button type="submit" style="font-size:12px;padding:5px 14px;background:#1a0008;border-color:#5a0028;color:#f9a8d4">'
+        f'&#9726; Clear</button></form>'
+        f'</div></form>'
+    )
+
+    # Results table
+    if results:
+        tw_results = [r for r in results if r.get("platform") == "twitter"]
+        rd_results = [r for r in results if r.get("platform") == "reddit"]
+        show_results = tw_results if active_tab == "twitter" else rd_results
+        if not show_results:
+            show_results = results
+
+        rows_html = ""
+        for i, p in enumerate(show_results[:60], 1):
+            preview   = escape((p.get("preview") or "")[:200])
+            url       = escape(p.get("url") or "")
+            author    = escape(p.get("page_display") or p.get("page_name") or "")
+            score     = int(p.get("engagement_score") or 0)
+            reactions = int(p.get("reactions") or 0)
+            shares    = int(p.get("shares") or 0)
+            comments  = int(p.get("comments") or 0)
+            plat      = escape(p.get("platform") or "")
+            score_col = "#4ade80" if score > 5000 else "#facc15" if score > 500 else "#8b93a3"
+            full_text = escape((p.get("text") or "")[:600])
+            rows_html += (
+                f'<tr data-score="{score}">'
+                f'<td style="font-size:11px;color:#8b93a3;width:30px">{i}</td>'
+                f'<td style="font-size:11px;color:#60a5fa;white-space:nowrap">{author}</td>'
+                f'<td style="font-size:12px;max-width:380px">'
+                f'<a href="{url}" target="_blank" rel="noopener" style="color:#c7cbd4;text-decoration:none">{preview}</a>'
+                f'</td>'
+                f'<td style="font-size:11px;color:{score_col};text-align:right;white-space:nowrap;font-weight:600">{score:,}</td>'
+                f'<td style="font-size:10px;color:#8b93a3;white-space:nowrap">'
+                f'&#10084;{reactions:,}&nbsp;&#8635;{shares:,}&nbsp;&#128172;{comments:,}</td>'
+                f'<td style="white-space:nowrap">'
+                f'<button type="button" data-text="{full_text}" data-url="{url}" data-platform="{plat}" '
+                f'class="social-q-btn" style="font-size:10px;padding:2px 8px;background:#0a1a2a;'
+                f'border:1px solid #1a4a8a;color:#60a5fa;cursor:pointer;border-radius:3px">&#43; Queue</button>'
+                f'</td>'
+                f'</tr>'
+            )
+
+        results_html = (
+            f'<div style="overflow-x:auto;margin-top:16px">'
+            f'<table style="width:100%;border-collapse:collapse;font-size:12px">'
+            f'<thead><tr style="border-bottom:1px solid #1a1f2b">'
+            f'<th style="padding:6px 8px;color:#8b93a3;font-size:10px;text-align:left">#</th>'
+            f'<th style="padding:6px 8px;color:#8b93a3;font-size:10px;text-align:left">Account</th>'
+            f'<th style="padding:6px 8px;color:#8b93a3;font-size:10px;text-align:left">Post</th>'
+            f'<th style="padding:6px 8px;color:#8b93a3;font-size:10px;text-align:right">Score</th>'
+            f'<th style="padding:6px 8px;color:#8b93a3;font-size:10px">Breakdown</th>'
+            f'<th style="padding:6px 8px;color:#8b93a3;font-size:10px">Action</th>'
+            f'</tr></thead>'
+            f'<tbody>{rows_html}</tbody>'
+            f'</table></div>'
+        )
+    else:
+        results_html = '<div style="color:#8b93a3;padding:20px 0;font-size:13px">No results yet. Run a scan to surface trending political content.</div>'
+
+    body = f"""
+<div style="max-width:1200px;margin:0 auto">
+{page_meta}
+{flash_html}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+  <div>
+    <h1 style="margin:0 0 4px;font-size:18px">Social Scanner</h1>
+    <div style="color:#8b93a3;font-size:12px">Surface viral political content on Twitter/X and Reddit before it breaks on Facebook.</div>
+  </div>
+  <a href="/fb-scanner" style="color:#8b93a3;font-size:12px;text-decoration:none">&#8592; FB Scanner</a>
+</div>
+{tabs}
+
+<div style="display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start">
+  <div>
+    <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px">
+      <div style="color:#c7cbd4;font-size:13px;font-weight:600;margin-bottom:10px">
+        {'&#128038; Twitter/X Scan' if active_tab == 'twitter' else '&#128009; Reddit Scan'}
+      </div>
+      {status_html}
+      {scan_form}
+    </div>
+  </div>
+
+  <div>
+    {results_html}
+    <div id="queue-status" style="margin-top:8px;font-size:12px;color:#4ade80"></div>
+  </div>
+</div>
+</div>
+<script>
+document.addEventListener('click', function(e) {{
+  var btn = e.target.closest('.social-q-btn');
+  if (!btn) return;
+  var text = btn.getAttribute('data-text')||'';
+  var url  = btn.getAttribute('data-url')||'';
+  var plat = btn.getAttribute('data-platform')||'';
+  btn.disabled = true; btn.textContent = 'Queuing...';
+  fetch('/social-scanner/send-to-queue',{{method:'POST',
+    headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'text='+encodeURIComponent(text)+'&url='+encodeURIComponent(url)+'&platform='+encodeURIComponent(plat)
+  }}).then(function(r){{ return r.json(); }}).then(function(d){{
+    if(d.ok) {{
+      btn.textContent='&#10003; Queued';
+      btn.style.background='#0a2010'; btn.style.borderColor='#1a6030'; btn.style.color='#4ade80';
+      var qs = document.getElementById('queue-status');
+      if(qs) {{ qs.textContent='Added to production queue!'; setTimeout(function(){{qs.textContent=''}},3000); }}
+    }} else {{
+      btn.disabled=false; btn.textContent='&#43; Queue';
+      alert('Error: '+(d.error||'unknown'));
+    }}
+  }}).catch(function(e){{ btn.disabled=false; btn.textContent='&#43; Queue'; alert('Error: '+e.message); }});
+}});
+</script>
 """
     return PAGE_HEAD + body + PAGE_TAIL
 
