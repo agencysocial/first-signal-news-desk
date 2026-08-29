@@ -2695,6 +2695,48 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
       </div>
     </div>
 
+    <!-- Meme Card -->
+    <div style="background:#0d111a;border:1px solid #3a1055;border-radius:6px;padding:14px;margin-bottom:16px">
+      <div style="color:#c084fc;font-size:13px;font-weight:600;margin-bottom:10px">&#127867; Meme Card</div>
+      <div style="display:grid;gap:8px;margin-bottom:8px">
+        <div>
+          <label style="font-size:10px;color:#9b7ab8;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:3px">
+            Top text <span style="color:#5a4068;font-weight:400;text-transform:none;letter-spacing:0">(hook · 3-8 words · Impact all-caps)</span>
+          </label>
+          <input id="meme-top-{cid}" type="text" placeholder="e.g. THEY HID THIS FROM YOU"
+            style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #3a2055;color:#e0d0f0;font-size:13px;font-family:Impact,'Arial Narrow',sans-serif;letter-spacing:.03em;border-radius:4px;padding:6px 8px;text-transform:uppercase">
+        </div>
+        <div>
+          <label style="font-size:10px;color:#9b7ab8;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:3px">
+            Bottom text <span style="color:#5a4068;font-weight:400;text-transform:none;letter-spacing:0">(punchline · 6-12 words · Impact all-caps)</span>
+          </label>
+          <input id="meme-bot-{cid}" type="text" placeholder="e.g. SENATE VOTES TO CUT BORDER WALL FUNDING"
+            style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #3a2055;color:#e0d0f0;font-size:13px;font-family:Impact,'Arial Narrow',sans-serif;letter-spacing:.03em;border-radius:4px;padding:6px 8px;text-transform:uppercase">
+        </div>
+        <div>
+          <label style="font-size:10px;color:#9b7ab8;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:3px">
+            Image scene <span style="color:#5a4068;font-weight:400;text-transform:none;letter-spacing:0">(what the photo shows)</span>
+          </label>
+          <input id="meme-scene-{cid}" type="text" placeholder="e.g. US Capitol building exterior at night, dramatic wide shot"
+            style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #3a2055;color:#c0c8d8;font-size:12px;border-radius:4px;padding:6px 8px">
+        </div>
+      </div>
+      <div id="meme-alts-{cid}" style="display:none;background:#080010;border:1px solid #3a1055;border-radius:4px;padding:8px;margin-bottom:8px;font-size:11px">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6b5078;margin-bottom:4px">Alt suggestion (click to swap in)</div>
+        <div id="meme-alt-top-{cid}" style="font-family:Impact,'Arial Narrow',sans-serif;font-size:12px;color:#c084fc;cursor:pointer;margin-bottom:2px" onclick="useMemeAlt('{cid}')"></div>
+        <div id="meme-alt-bot-{cid}" style="font-family:Impact,'Arial Narrow',sans-serif;font-size:12px;color:#c084fc;cursor:pointer" onclick="useMemeAlt('{cid}')"></div>
+      </div>
+      <div id="meme-angle-used-{cid}" style="display:none;font-size:10px;color:#7a5090;margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" onclick="suggestMemeText('{cid}')" id="meme-suggest-btn-{cid}"
+          style="font-size:11px;padding:5px 14px;background:#1a0030;border:1px solid #7a00aa;color:#d084fc;border-radius:4px;cursor:pointer">
+          &#10024; AI Suggest</button>
+        <button type="button" onclick="genMemeFromPanel('{cid}')" id="meme-gen-btn-{cid}"
+          style="font-size:11px;padding:5px 14px;background:#2a0040;border:1px solid #9900cc;color:#e084fc;border-radius:4px;cursor:pointer;font-weight:600">
+          &#127867; Generate Meme Card</button>
+      </div>
+    </div>
+
     {tobi_block}
   </div>
 
@@ -2710,69 +2752,10 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
           <button type="button" onclick="genVariants('{cid}')"
             style="font-size:11px;padding:4px 12px;background:#0a1a00;border:1px solid #1a7a00;color:#4ade80;cursor:pointer;border-radius:4px"
             title="Generate 3 variations with different atmospheres">&#9678; 3 Variants</button>
-          <button type="button" onclick="toggleMemePanel('{cid}')"
-            id="meme-btn-{cid}"
-            style="font-size:11px;padding:4px 10px;background:#1a001a;border:1px solid #7a007a;color:#c084fc;cursor:pointer;border-radius:4px"
-            title="Generate a meme-format card (Impact text over full-bleed photo)">&#127867; Meme</button>
         </div>
       </div>
       <textarea id="img-notes-{cid}" placeholder="Optional notes — e.g. &quot;show a courtroom&quot;, &quot;darker mood&quot;, &quot;wide shot of Capitol&quot;" rows="2"
         style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:6px;font-family:inherit;resize:vertical;margin-bottom:8px"></textarea>
-
-      <!-- Meme text panel (hidden until Meme button clicked) -->
-      <div id="meme-panel-{cid}" style="display:none;background:#0d0014;border:1px solid #5a007a;border-radius:6px;padding:12px;margin-bottom:10px">
-        <div style="color:#c084fc;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">
-          &#127867; Meme Text
-        </div>
-        <div style="display:grid;gap:8px;margin-bottom:10px">
-          <div>
-            <label style="font-size:10px;color:#9b7ab8;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:3px">
-              Top text <span style="color:#6b5078;font-weight:400;text-transform:none;letter-spacing:0">(hook · 3–8 words · Impact all-caps)</span>
-            </label>
-            <input id="meme-top-{cid}" type="text" placeholder="e.g. THEY HID THIS FROM YOU"
-              style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #3a2055;color:#e0d0f0;
-                     font-size:13px;font-family:Impact,'Arial Narrow',sans-serif;letter-spacing:.03em;
-                     border-radius:4px;padding:6px 8px;text-transform:uppercase">
-          </div>
-          <div>
-            <label style="font-size:10px;color:#9b7ab8;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:3px">
-              Bottom text <span style="color:#6b5078;font-weight:400;text-transform:none;letter-spacing:0">(punchline · 6–12 words · Impact all-caps)</span>
-            </label>
-            <input id="meme-bot-{cid}" type="text" placeholder="e.g. SENATE VOTES TO CUT BORDER WALL FUNDING"
-              style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #3a2055;color:#e0d0f0;
-                     font-size:13px;font-family:Impact,'Arial Narrow',sans-serif;letter-spacing:.03em;
-                     border-radius:4px;padding:6px 8px;text-transform:uppercase">
-          </div>
-        </div>
-          <div>
-            <label style="font-size:10px;color:#9b7ab8;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:3px">
-              Image scene <span style="color:#6b5078;font-weight:400;text-transform:none;letter-spacing:0">(what the photo shows)</span>
-            </label>
-            <input id="meme-scene-{cid}" type="text" placeholder="e.g. US Capitol building exterior at night, dramatic wide shot"
-              style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #3a2055;color:#c0c8d8;
-                     font-size:12px;border-radius:4px;padding:6px 8px">
-          </div>
-        <!-- Alt suggestion row (shown after suggest) -->
-        <div id="meme-alts-{cid}" style="display:none;background:#080010;border:1px solid #3a1055;border-radius:4px;padding:8px;margin-bottom:10px;font-size:11px;color:#9b7ab8">
-          <div style="margin-bottom:4px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6b5078">Alt suggestion</div>
-          <div id="meme-alt-top-{cid}" style="font-family:Impact,'Arial Narrow',sans-serif;font-size:12px;color:#c084fc;cursor:pointer;margin-bottom:2px"
-            onclick="useMemeAlt('{cid}')"></div>
-          <div id="meme-alt-bot-{cid}" style="font-family:Impact,'Arial Narrow',sans-serif;font-size:12px;color:#c084fc;cursor:pointer"
-            onclick="useMemeAlt('{cid}')"></div>
-          <div style="font-size:10px;color:#5a4068;margin-top:4px">&#8593; click to swap in</div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button type="button" onclick="suggestMemeText('{cid}')" id="meme-suggest-btn-{cid}"
-            style="font-size:11px;padding:5px 14px;background:#1a0030;border:1px solid #7a00aa;color:#d084fc;border-radius:4px;cursor:pointer">
-            &#10024; Suggest meme text</button>
-          <button type="button" onclick="genMemeFromPanel('{cid}')" id="meme-gen-btn-{cid}"
-            style="font-size:11px;padding:5px 14px;background:#2a0040;border:1px solid #9900cc;color:#e084fc;border-radius:4px;cursor:pointer;font-weight:600">
-            &#127867; Generate meme card</button>
-          <button type="button" onclick="toggleMemePanel('{cid}')"
-            style="font-size:11px;padding:5px 10px;background:transparent;border:1px solid #3a2055;color:#6b5078;border-radius:4px;cursor:pointer">
-            &#10005;</button>
-        </div>
-      </div>
 
       <div id="img-wrap-{cid}">{img_html}</div>
       <div id="img-status-{cid}" style="font-size:11px;color:#8b93a3;margin-top:4px">{"Generating... refresh in ~60s" if img_status in ("generating","generating_variants") else ""}</div>
@@ -2878,6 +2861,10 @@ function applyAngle(cid,idx){{
   if(hlEl) hlEl.value=a.hook;
   if(tagEl) tagEl.value=a.tag;
   if(scEl) scEl.value=a.image_scene;
+  if(!window._activeAngle) window._activeAngle={{}};
+  window._activeAngle[cid]=a;
+  var lbl=document.getElementById('meme-angle-used-'+cid);
+  if(lbl){{lbl.style.display='block';lbl.textContent='Angle applied: '+a.angle_type+' - '+a.hook;}}
   if(typeof saveDraft==='function') saveDraft(cid);
 }}
 </script>
@@ -2988,8 +2975,11 @@ function applyAngle(cid, idx) {{
   if (hlEl) hlEl.value = a.hook;
   if (tagEl) tagEl.value = a.tag;
   if (scEl)  scEl.value = a.image_scene;
+  if (!window._activeAngle) window._activeAngle = {{}};
+  window._activeAngle[cid] = a;
+  var lbl = document.getElementById('meme-angle-used-'+cid);
+  if (lbl) {{ lbl.style.display='block'; lbl.textContent='Angle applied: '+a.angle_type+' - '+a.hook; }}
   saveDraft(cid);
-  // Flash fields green then restore original backgrounds, and scroll to headline
   var origBg = ['', '', '#11151f'];
   [hlEl, tagEl, scEl].forEach(function(el, i) {{
     if (!el) return;
@@ -3289,40 +3279,22 @@ function useVariant(cid, kieUrl) {{
   }}).catch(function(){{}});
 }}
 // -- Meme card --
-function toggleMemePanel(cid) {{
-  var panel = document.getElementById('meme-panel-'+cid);
-  if (!panel) return;
-  var open = panel.style.display !== 'none';
-  panel.style.display = open ? 'none' : 'block';
-  if (!open) {{
-    // Pre-fill from draft fields if inputs are empty
-    var topEl   = document.getElementById('meme-top-'+cid);
-    var botEl   = document.getElementById('meme-bot-'+cid);
-    var sceneEl = document.getElementById('meme-scene-'+cid);
-    if (topEl && !topEl.value) {{
-      var tag = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
-      topEl.value = tag.toUpperCase();
-    }}
-    if (botEl && !botEl.value) {{
-      var hl = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
-      botEl.value = hl.toUpperCase();
-    }}
-    if (sceneEl && !sceneEl.value) {{
-      var draftScene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
-      sceneEl.value = draftScene;
-    }}
-  }}
-}}
 function suggestMemeText(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
   var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
   var btn   = document.getElementById('meme-suggest-btn-'+cid);
+  var activeAngle = (window._activeAngle||{{}})[cid];
   if(btn) {{ btn.textContent='Thinking...'; btn.disabled=true; }}
+  var body = 'headline='+encodeURIComponent(hl)+'&brand_slug='+encodeURIComponent(brand);
+  if(activeAngle) {{
+    body += '&angle_hook='+encodeURIComponent(activeAngle.hook||'');
+    body += '&angle_type='+encodeURIComponent(activeAngle.angle_type||'');
+    body += '&angle_scene='+encodeURIComponent(activeAngle.image_scene||'');
+  }}
   fetch('/pipeline-queue/story/'+cid+'/suggest-meme-text',{{method:'POST',
-    headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'headline='+encodeURIComponent(hl)+'&brand_slug='+encodeURIComponent(brand)
+    headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:body
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
-    if(btn){{ btn.textContent='&#10024; Suggest meme text'; btn.disabled=false; }}
+    if(btn){{ btn.textContent='&#10024; AI Suggest'; btn.disabled=false; }}
     if(d.error){{ alert('Suggest failed: '+d.error); return; }}
     var topEl   = document.getElementById('meme-top-'+cid);
     var botEl   = document.getElementById('meme-bot-'+cid);
@@ -3330,7 +3302,6 @@ function suggestMemeText(cid) {{
     if(topEl)   topEl.value   = (d.top||'').toUpperCase();
     if(botEl)   botEl.value   = (d.bottom||'').toUpperCase();
     if(sceneEl && d.scene) sceneEl.value = d.scene;
-    // Show alt suggestion
     var alts = document.getElementById('meme-alts-'+cid);
     var altTop = document.getElementById('meme-alt-top-'+cid);
     var altBot = document.getElementById('meme-alt-bot-'+cid);
@@ -3340,9 +3311,14 @@ function suggestMemeText(cid) {{
       alts.style.display = 'block';
     }}
   }}).catch(function(e){{
-    if(btn){{ btn.textContent='&#10024; Suggest meme text'; btn.disabled=false; }}
+    if(btn){{ btn.textContent='&#10024; AI Suggest'; btn.disabled=false; }}
     alert('Error: '+e.message);
   }});
+}}
+function useMemeFromQuote(cid, q) {{
+  var botEl = document.getElementById('meme-bot-'+cid);
+  if(botEl) botEl.value = ('"'+q.quote+'" '+q.speaker).toUpperCase();
+  suggestMemeText(cid);
 }}
 function useMemeAlt(cid) {{
   var altTop = document.getElementById('meme-alt-top-'+cid);
@@ -3421,10 +3397,12 @@ function extractQuotes(cid) {{
         return '<div style="background:#11151f;border:1px solid #2a3555;border-radius:5px;padding:10px;margin-bottom:8px">'
           +'<div style="color:#facc15;font-size:12px;font-weight:600;margin-bottom:4px">"'+_esc(q.quote)+'"</div>'
           +'<div style="color:#8b93a3;font-size:11px;margin-bottom:6px">- '+_esc(q.speaker)+'</div>'
-          +'<div style="display:flex;gap:6px">'
+          +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
           +'<span style="background:#3a0808;color:#f87171;font-size:10px;padding:2px 8px;border-radius:3px">'+_esc(q.tag||'QUOTE')+'</span>'
           +'<button type="button" onclick="useQuoteCard(\''+_esc(cid)+'\','+JSON.stringify(q)+')" '
           +'style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">&#9654; Use as Template B</button>'
+          +'<button type="button" onclick="useMemeFromQuote(\''+_esc(cid)+'\','+JSON.stringify(q)+')" '
+          +'style="font-size:10px;padding:2px 8px;background:#1a0030;border:1px solid #7a00aa;color:#d084fc;cursor:pointer;border-radius:3px">&#127867; Use for Meme</button>'
           +'</div></div>';
       }}).join('');
   }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});

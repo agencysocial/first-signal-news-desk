@@ -4610,9 +4610,12 @@ async def pipeline_queue_suggest_meme_text(cid: str, request: Request, user: dic
     if not cid.isdigit():
         return JSONResponse({"error": "invalid id"}, status_code=400)
     cluster_id = int(cid)
-    form       = await request.form()
-    headline   = str(form.get("headline", "")).strip()
-    brand_slug = str(form.get("brand_slug", "first_signal")).strip()
+    form        = await request.form()
+    headline    = str(form.get("headline", "")).strip()
+    brand_slug  = str(form.get("brand_slug", "first_signal")).strip()
+    angle_hook  = str(form.get("angle_hook", "")).strip()
+    angle_type  = str(form.get("angle_type", "")).strip()
+    angle_scene = str(form.get("angle_scene", "")).strip()
 
     item = _queue_item_for(cluster_id)
     if not item:
@@ -4641,6 +4644,14 @@ async def pipeline_queue_suggest_meme_text(cid: str, request: Request, user: dic
             "BOTTOM TEXT is the punchy political punchline — direct, specific, outrage-adjacent but factual."
         )
 
+    angle_context = ""
+    if angle_hook:
+        angle_context = (
+            f"\nSelected angle ({angle_type}): \"{angle_hook}\""
+            + (f"\nAngle scene direction: {angle_scene}" if angle_scene else "")
+            + "\nUse this angle as the frame — the top/bottom text should express this specific angle, not just the raw headline."
+        )
+
     prompt = (
         f"You write viral internet meme text and scene direction for political/lifestyle Facebook share cards. "
         f"Classic meme format: TOP TEXT is a short hook in all-caps Impact font (3-8 words max). "
@@ -4651,7 +4662,7 @@ async def pipeline_queue_suggest_meme_text(cid: str, request: Request, user: dic
         f"behind the text (e.g. 'US Capitol building exterior at night, dramatic wide shot' or "
         f"'busy school hallway with students walking, warm natural light'). "
         f"Match the scene to the story — thematic, photorealistic, no famous faces unless the story is directly about them.\n\n"
-        f"Story headline: {headline}\n\n"
+        f"Story headline: {headline}{angle_context}\n\n"
         f"Return ONLY valid JSON with exactly these keys: "
         f'{{\"top\": \"TOP TEXT\", \"bottom\": \"BOTTOM TEXT\", \"scene\": \"image scene description\", '
         f'\"alt_top\": \"ALTERNATE TOP\", \"alt_bottom\": \"ALTERNATE BOTTOM\"}}'
