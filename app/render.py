@@ -2948,7 +2948,6 @@ function regenImage(cid) {{
   var notes = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
   var st    = document.getElementById('img-status-'+cid);
   var wrap  = document.getElementById('img-wrap-'+cid);
-  var btn   = document.querySelector('[onclick*="regenImage(\''+cid+'\'"]');
   function _showErr(msg) {{
     if (wrap) wrap.innerHTML='<div style="width:200px;height:250px;background:#0d111a;border:1px solid #7a1010;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#f87171;font-size:12px;padding:12px;text-align:center">'+msg+'</div>';
     if (st) st.textContent='';
