@@ -1392,12 +1392,12 @@ function previewSource(cid, btn) {
   var panel = document.getElementById('preview-' + cid);
   if (!panel) return;
   if (panel.style.display !== 'none') { panel.style.display = 'none'; btn.textContent = 'Preview'; return; }
-  if (panel.dataset.loaded) { panel.style.display = 'block'; btn.textContent = '▲ Hide'; return; }
+  if (panel.dataset.loaded) { panel.style.display = 'block'; btn.textContent = '[^] Hide'; return; }
   var url = btn.dataset.url;
   if (!url) return;
   panel.style.display = 'block';
   panel.innerHTML = '<span style="color:#8b93a3;font-size:11px">Fetching article...</span>';
-  btn.textContent = '▲ Hide';
+  btn.textContent = '[^] Hide';
   var xhr = new XMLHttpRequest();
   xhr.open('GET', '/pipeline-queue/preview-url?url=' + encodeURIComponent(url));
   xhr.onload = function() {
@@ -2564,7 +2564,7 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
             f'style="font-size:11px;padding:5px 14px;background:#0a0e18;border:1px solid {_bcolor};'
             f'color:{_bcolor};cursor:pointer;border-radius:4px;font-weight:600" '
             f'id="brand-pkg-btn-{_bslug}-{cid}">'
-            f'{escape(_blabel)} &#9660;</button>'
+            f'{escape(_blabel)} [v]</button>'
         )
 
     brand_packages_section = ""
@@ -2847,7 +2847,7 @@ function toggleBrandPkg(bslug, cid) {{
   if (!panel) return;
   var open = panel.style.display !== 'none';
   panel.style.display = open ? 'none' : 'block';
-  if (btn) btn.innerHTML = btn.innerHTML.replace(open ? '▲' : '▼', open ? '▼' : '▲');
+  if (btn) btn.innerHTML = btn.innerHTML.replace(open ? '[^]' : '[v]', open ? '[v]' : '[^]');
 }}
 function onTypeChange(cid, sel) {{
   fetch('/pipeline-queue/set-post-type', {{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&post_type='+encodeURIComponent(sel.value)}});
@@ -2967,7 +2967,7 @@ function genContent(cid, voice) {{
     keys.forEach(function(k){{ var el=document.getElementById('cap-'+k+'-'+cid); if(el&&d.captions&&d.captions[k]) el.value=d.captions[k]; }});
     var fcEl=document.getElementById('cap-first_comment-'+cid);
     if(fcEl&&d.first_comment) fcEl.value=d.first_comment;
-    if(st){{ st.textContent=voice==='news'?'News Style loaded — refreshing...':'America First loaded — refreshing...'; }}
+    if(st){{ st.textContent=voice==='news'?'News Style loaded - refreshing...':'America First loaded - refreshing...'; }}
     setTimeout(function(){{ window.location.reload(); }}, 800);
   }}).catch(function(e){{ if(st) st.textContent='Error: '+e.message; }});
 }}
@@ -3008,7 +3008,7 @@ function regenAllCaps(cid) {{
         keys.forEach(function(k){{ var el=document.getElementById('cap-'+k+'-'+cid); if(el&&d[k]) el.value=d[k]; }});
         var fcEl=document.getElementById('cap-first_comment-'+cid);
         if(fcEl&&d.first_comment) fcEl.value=d.first_comment;
-        if(st){{ st.textContent='Done — refreshing...'; }}
+        if(st){{ st.textContent='Done - refreshing...'; }}
         setTimeout(function(){{ window.location.reload(); }}, 800);
       }}catch(ex){{ if(st) st.textContent='Parse error: '+ex.message; }}
     }}); }}
@@ -3023,7 +3023,7 @@ function _startImagePoll(cid) {{
   var secs = 90;
   function countdown() {{
     if (st && !document.getElementById('img-wrap-'+cid).querySelector('img')) {{
-      st.textContent = 'Checking in ' + secs + 's…';
+      st.textContent = 'Checking in ' + secs + 's...';
       secs = Math.max(0, secs - 5);
     }}
   }}
@@ -3092,7 +3092,7 @@ function regenImage(cid) {{
   }}
   if (!hl && !scene && !tag) {{ _showErr('Enter a headline or scene first, or apply an angle.'); return; }}
   if (st) st.textContent = 'Queued...';
-  if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating…</div>';
+  if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
   var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'{escape(brand_slug)}';
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)
@@ -3166,7 +3166,7 @@ document.addEventListener('click', function(e) {{
   var tbtn = e.target.closest('.use-tobi-btn');
   if (tbtn) {{ useTOBIopt(tbtn.getAttribute('data-cid'), parseInt(tbtn.getAttribute('data-idx'))); return; }}
 }});
-// ── 3 Variants ────────────────────────────────────────────────────────────────
+// -- 3 Variants --
 function genVariants(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
   var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
@@ -3236,7 +3236,7 @@ function useVariant(cid, kieUrl) {{
     }}
   }}).catch(function(){{}});
 }}
-// ── Meme card ─────────────────────────────────────────────────────────────────
+// -- Meme card --
 function toggleMemePanel(cid) {{
   var panel = document.getElementById('meme-panel-'+cid);
   if (!panel) return;
@@ -3329,7 +3329,7 @@ function genMemeFromPanel(cid) {{
     if(st) st.textContent='Error: '+e.message;
   }});
 }}
-// ── Article fetch + Quote extraction ─────────────────────────────────────────
+// -- Article fetch + Quote extraction --
 function fetchArticle(cid) {{
   var st = document.getElementById('article-status-'+cid);
   var ta = document.getElementById('article-text-'+cid);
