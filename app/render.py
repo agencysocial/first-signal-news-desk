@@ -2830,6 +2830,58 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
 </div>
 </div>
 <script>
+var _ws_angles={{}};
+function _esc(s){{return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}}
+function _renderAngles(cid,angles,div){{
+  var typeC={{accountability:'#f87171',outrage:'#fb923c',breaking:'#facc15',vindication:'#4ade80',poll:'#60a5fa',analysis:'#c084fc'}};
+  var html=angles.map(function(a,i){{
+    return '<div style="background:#11151f;border:1px solid #2a3555;border-radius:5px;padding:10px;margin-bottom:8px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+      +'<span style="color:'+(typeC[a.angle_type]||'#8b93a3')+';font-size:10px;font-weight:700;text-transform:uppercase">'+_esc(a.angle_type)+'</span>'
+      +'<button type="button" data-cid="'+_esc(cid)+'" data-idx="'+i+'" class="apply-angle-btn" style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">Use This Angle</button>'
+      +'</div>'
+      +'<div style="color:#facc15;font-size:13px;font-weight:600;margin-bottom:4px">'+_esc(a.hook)+'</div>'
+      +'<div style="color:#e6e8ec;font-size:12px;margin-bottom:4px">'+_esc(a.caption_lead)+'</div>'
+      +'<div style="display:flex;gap:10px;font-size:11px;color:#8b93a3;flex-wrap:wrap">'
+      +'<span>Tag: <b style="color:#f87171">'+_esc(a.tag)+'</b></span>'
+      +'<span>Scene: '+_esc(a.image_scene)+'</span>'
+      +'</div>'
+      +'<div style="color:#8b93a3;font-size:11px;font-style:italic;margin-top:4px">'+_esc(a.why)+'</div>'
+      +'</div>';
+  }}).join('');
+  if(div) div.innerHTML=html||'<div style="color:#f87171">No angles returned</div>';
+}}
+function getAngles(cid){{
+  var btn=document.getElementById('angles-btn-'+cid);
+  var div=document.getElementById('angles-'+cid);
+  var notes=(document.getElementById('angles-notes-'+cid)||{{}}).value||'';
+  if(btn) btn.textContent='Loading...';
+  if(div) div.innerHTML='<div style="color:#8b93a3;font-size:12px">Getting angles...</div>';
+  fetch('/pipeline-queue/expand-angles',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:'cluster_id='+cid+'&notes='+encodeURIComponent(notes)}})
+  .then(function(r){{
+    if(!r.ok){{return r.text().then(function(t){{throw new Error('HTTP '+r.status+': '+t.slice(0,200));}});}}
+    return r.json();
+  }})
+  .then(function(d){{
+    if(btn) btn.innerHTML='&#8635; Refresh Angles';
+    if(d.error){{if(div) div.innerHTML='<div style="color:#f87171">Error: '+_esc(d.error)+'</div>';return;}}
+    _ws_angles[cid]=d.angles||[];
+    _renderAngles(cid,_ws_angles[cid],div);
+  }}).catch(function(e){{if(btn) btn.innerHTML='&#9888; Error';if(div) div.innerHTML='<div style="color:#f87171;font-size:11px">'+_esc(e.message)+'</div>';}});
+}}
+function applyAngle(cid,idx){{
+  var a=(_ws_angles[cid]||[])[idx];
+  if(!a) return;
+  var hlEl=document.getElementById('draft-hl-'+cid);
+  var tagEl=document.getElementById('draft-tag-'+cid);
+  var scEl=document.getElementById('draft-scene-'+cid);
+  if(hlEl) hlEl.value=a.hook;
+  if(tagEl) tagEl.value=a.tag;
+  if(scEl) scEl.value=a.image_scene;
+  if(typeof saveDraft==='function') saveDraft(cid);
+}}
+</script>
+<script>
 function copyField(id) {{
   var el = document.getElementById(id);
   if (!el) return;
