@@ -1743,7 +1743,7 @@ function queueStory(btn, storyId) {
         var color = overall === 'APPROVE' ? '#4ade80' : '#f87171';
         var issues = d.issues || [];
         var html = '<div style="background:#060910;border:1px solid #1a2340;border-radius:6px;padding:12px;font-size:12px">';
-        html += '<div style="font-weight:700;color:' + color + ';margin-bottom:8px">' + overall + ' — ' + (d.summary||'') + '</div>';
+        html += '<div style="font-weight:700;color:' + color + ';margin-bottom:8px">' + overall + ' - ' + (d.summary||'') + '</div>';
         html += '<div style="color:#8b93a3;font-size:10px;margin-bottom:6px">Portraits: ' + (d.portrait_count||0) + '/2 cap &nbsp;|&nbsp; Topic variety: ' + (d.topic_variety||'?') + '</div>';
         if (issues.length) {
           issues.forEach(function(iss){
@@ -2066,7 +2066,7 @@ function toggleHist(id) {
     var capEl = document.getElementById('cap-' + pid);
     var variant = capEl ? (capEl.dataset.variant || 'short') : 'short';
     var capText = caps[variant] || caps['short'] || '';
-    var pkg = capText + (fc ? '\n\n——\nFirst comment: ' + fc : '');
+    var pkg = capText + (fc ? '\n\nFirst comment: ' + fc : '');
     copyText(pkg, btn || {textContent:'',style:{}});
   }
 

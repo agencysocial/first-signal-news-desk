@@ -1,6 +1,9 @@
 import json
 import logging
 import os
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("aim-news-desk")
 import subprocess
 import sys
 import threading
@@ -918,9 +921,6 @@ def _run_batch_background(picks: dict, batch_dir: str) -> None:
     job["status"] = "done"
     job["finished_at"] = datetime.now(timezone.utc).isoformat()
     _write_job(job)
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("aim-news-desk")
 
 scheduler = BackgroundScheduler()
 
