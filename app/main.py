@@ -1191,6 +1191,10 @@ async def lifespan(app: FastAPI):
             _conn.execute(_sql_text(
                 "ALTER TABLE sources ADD COLUMN IF NOT EXISTS show_in_main_feed BOOLEAN NOT NULL DEFAULT TRUE"
             ))
+            # NYC sources are topic-only — exclude from main feed
+            _conn.execute(_sql_text(
+                "UPDATE sources SET show_in_main_feed = FALSE WHERE category = 'NYC'"
+            ))
             _conn.commit()
     except Exception as _e:
         logger.warning("schema migration skipped: %s", _e)

@@ -5,7 +5,7 @@ Website Monitor. Called once at startup — idempotent (skips URLs already in DB
 from __future__ import annotations
 
 _SEEDS = [
-    # ── NYC Topic Pipeline ─────────────────────────────────────────────────────
+    # ── NYC Topic Pipeline (excluded from main feed — NYC tab only) ────────────
     {
         "name": "NY Post",
         "type": "rss",
@@ -13,6 +13,7 @@ _SEEDS = [
         "category": "NYC",
         "credibility_tier": 3,
         "polling_tier": "standard",
+        "show_in_main_feed": False,
     },
     {
         "name": "Gothamist",
@@ -21,6 +22,7 @@ _SEEDS = [
         "category": "NYC",
         "credibility_tier": 3,
         "polling_tier": "standard",
+        "show_in_main_feed": False,
     },
     {
         "name": "NYC Mayor Office (Google News)",
@@ -29,6 +31,7 @@ _SEEDS = [
         "category": "NYC",
         "credibility_tier": 2,
         "polling_tier": "priority",
+        "show_in_main_feed": False,
     },
     {
         "name": "NYC Politics (Google News)",
@@ -37,6 +40,7 @@ _SEEDS = [
         "category": "NYC",
         "credibility_tier": 2,
         "polling_tier": "standard",
+        "show_in_main_feed": False,
     },
     # ── Competitor Website Monitor ─────────────────────────────────────────────
     {
@@ -112,7 +116,7 @@ def seed_news_sources() -> int:
                 credibility_tier=s["credibility_tier"],
                 polling_tier=s["polling_tier"],
                 enabled=True,
-                show_in_main_feed=True,
+                show_in_main_feed=s.get("show_in_main_feed", True),
             )
             session.add(src)
             added += 1
