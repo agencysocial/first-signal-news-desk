@@ -2744,6 +2744,14 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
                      border-radius:4px;padding:6px 8px;text-transform:uppercase">
           </div>
         </div>
+          <div>
+            <label style="font-size:10px;color:#9b7ab8;letter-spacing:.05em;text-transform:uppercase;display:block;margin-bottom:3px">
+              Image scene <span style="color:#6b5078;font-weight:400;text-transform:none;letter-spacing:0">(what the photo shows)</span>
+            </label>
+            <input id="meme-scene-{cid}" type="text" placeholder="e.g. US Capitol building exterior at night, dramatic wide shot"
+              style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #3a2055;color:#c0c8d8;
+                     font-size:12px;border-radius:4px;padding:6px 8px">
+          </div>
         <!-- Alt suggestion row (shown after suggest) -->
         <div id="meme-alts-{cid}" style="display:none;background:#080010;border:1px solid #3a1055;border-radius:4px;padding:8px;margin-bottom:10px;font-size:11px;color:#9b7ab8">
           <div style="margin-bottom:4px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#6b5078">Alt suggestion</div>
@@ -3233,8 +3241,9 @@ function toggleMemePanel(cid) {{
   panel.style.display = open ? 'none' : 'block';
   if (!open) {{
     // Pre-fill from draft fields if inputs are empty
-    var topEl = document.getElementById('meme-top-'+cid);
-    var botEl = document.getElementById('meme-bot-'+cid);
+    var topEl   = document.getElementById('meme-top-'+cid);
+    var botEl   = document.getElementById('meme-bot-'+cid);
+    var sceneEl = document.getElementById('meme-scene-'+cid);
     if (topEl && !topEl.value) {{
       var tag = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
       topEl.value = tag.toUpperCase();
@@ -3242,6 +3251,10 @@ function toggleMemePanel(cid) {{
     if (botEl && !botEl.value) {{
       var hl = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
       botEl.value = hl.toUpperCase();
+    }}
+    if (sceneEl && !sceneEl.value) {{
+      var draftScene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+      sceneEl.value = draftScene;
     }}
   }}
 }}
@@ -3285,7 +3298,8 @@ function useMemeAlt(cid) {{
 function genMemeFromPanel(cid) {{
   var topText = (document.getElementById('meme-top-'+cid)||{{}}).value||'';
   var botText = (document.getElementById('meme-bot-'+cid)||{{}}).value||'';
-  var scene   = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var scene   = (document.getElementById('meme-scene-'+cid)||{{}}).value
+             || (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var brand   = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
   var notes   = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
   var st      = document.getElementById('img-status-'+cid);
