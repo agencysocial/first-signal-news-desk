@@ -2900,6 +2900,21 @@ document.addEventListener('click',function(e){{
   var btn=e.target.closest('.apply-angle-btn');
   if(btn){{applyAngle(btn.getAttribute('data-cid'),parseInt(btn.getAttribute('data-idx')));return;}}
 }});
+function saveDraft(cid) {{
+  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value || '';
+  var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value || '';
+  var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value || '';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value || '';
+  var st    = document.getElementById('draft-save-status-'+cid);
+  if (st) st.textContent = 'Saving...';
+  fetch('/pipeline-queue/story/'+cid+'/save-draft',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&brand_slug='+encodeURIComponent(brand)
+  }}).then(function(r){{ if(!r.ok) return r.json().then(function(e){{throw new Error(e.error||r.status)}}); return r.json(); }})
+  .then(function(d){{
+    if (st) {{ st.textContent = d.ok ? 'Saved!' : ('Error: '+(d.error||'?')); }}
+    if (d.ok) setTimeout(function(){{ if(st) st.textContent=''; }},2000);
+  }}).catch(function(e){{ if(st) st.textContent='Save failed: '+e.message; }});
+}}
 </script>
 <script>
 function copyField(id) {{
