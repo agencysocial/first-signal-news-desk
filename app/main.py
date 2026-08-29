@@ -4594,6 +4594,75 @@ async def pipeline_queue_extract_quotes(cid: str, request: Request, user: dict =
         return JSONResponse({"error": str(exc), "quotes": []}, status_code=200)
 
 
+# ── Meme Text Suggester ────────────────────────────────────────────────────────
+
+@app.post("/pipeline-queue/story/{cid}/suggest-meme-text")
+async def pipeline_queue_suggest_meme_text(cid: str, request: Request, user: dict = Depends(require_user)):
+    """Use Claude Haiku to rewrite the story headline into meme-voice top + bottom text."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form       = await request.form()
+    headline   = str(form.get("headline", "")).strip()
+    brand_slug = str(form.get("brand_slug", "first_signal")).strip()
+
+    item = _queue_item_for(cluster_id)
+    if not item:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    if not headline:
+        headline = (item.get("draft") or {}).get("headline") or item.get("text") or ""
+    if not headline:
+        return JSONResponse({"error": "no headline"}, status_code=400)
+
+    key = _get_anthropic_key()
+    if not key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY not set"}, status_code=400)
+
+    if brand_slug == "cathy_talk":
+        voice_note = (
+            "This is for CathyTalk — a women's lifestyle and culture page. "
+            "Warm, relatable, direct. Speaks to everyday women and moms. "
+            "TOP TEXT should be a hook that grabs a woman scrolling fast (e.g. 'EVERY MOM NEEDS THIS', 'WAIT FOR IT', 'DID YOU KNOW'). "
+            "BOTTOM TEXT is the punchline — personal, specific, slightly surprising."
+        )
+    else:
+        voice_note = (
+            "This is for First Signal News — America First / conservative news. "
+            "Sharp, accountability-driven, partisan. "
+            "TOP TEXT is a short viral hook (e.g. 'THEY HID THIS', 'BREAKING', 'WATCH THIS', 'CAUGHT ON TAPE', 'NO ONE IS TALKING ABOUT THIS'). "
+            "BOTTOM TEXT is the punchy political punchline — direct, specific, outrage-adjacent but factual."
+        )
+
+    prompt = (
+        f"You write viral internet meme text for political/lifestyle Facebook share cards. "
+        f"Classic meme format: TOP TEXT is a short hook in all-caps Impact font (3-8 words max). "
+        f"BOTTOM TEXT is the punchline/headline in all-caps Impact font (6-12 words max). "
+        f"Both lines must be punchy, scannable, and drive comments. No em-dashes. No hashtags.\n\n"
+        f"{voice_note}\n\n"
+        f"Story headline: {headline}\n\n"
+        f"Return ONLY valid JSON with exactly these keys: "
+        f'{{\"top\": \"TOP TEXT HERE\", \"bottom\": \"BOTTOM TEXT HERE\", \"alt_top\": \"ALTERNATE TOP\", \"alt_bottom\": \"ALTERNATE BOTTOM\"}}'
+    )
+
+    import anthropic as _anth
+    client = _anth.Anthropic(api_key=key)
+    try:
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = (msg.content[0].text if msg.content else "{}").strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        data = json.loads(raw)
+        return JSONResponse({"ok": True, **data})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=200)
+
+
 # ── Meme Card Generation ────────────────────────────────────────────────────────
 
 @app.post("/pipeline-queue/story/{cid}/generate-meme")
