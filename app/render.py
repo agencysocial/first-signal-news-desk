@@ -4084,6 +4084,7 @@ def render_social_scanner_page(
     active_tab: str = "twitter",
     msg: str = "",
     twitter_accounts: list[str] | None = None,
+    reddit_subs: list[str] | None = None,
 ) -> str:
     """Twitter/X + Reddit social scanner page."""
     status   = job.get("status", "idle")
@@ -4194,11 +4195,40 @@ def render_social_scanner_page(
             f'<input type="hidden" name="platform" value="twitter">'
         )
     else:
+        subs = reddit_subs or []
+        sub_rows = ""
+        for s in subs:
+            sub_rows += (
+                f'<div style="display:flex;align-items:center;justify-content:space-between;'
+                f'padding:4px 6px;border-bottom:1px solid #12192a">'
+                f'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;font-size:12px;color:#c0c8d8">'
+                f'<input type="checkbox" name="subreddit" value="{escape(s)}" checked style="accent-color:#ff4500"> r/{escape(s)}'
+                f'</label>'
+                f'<form method="post" action="/social-scanner/subreddits/delete" style="margin:0">'
+                f'<input type="hidden" name="subreddit" value="{escape(s)}">'
+                f'<button type="submit" style="font-size:10px;padding:2px 8px;background:#1a0008;'
+                f'border-color:#5a0028;color:#f9a8d4;line-height:1.4">&#10005;</button>'
+                f'</form></div>'
+            )
+        add_sub_form = (
+            f'<form method="post" action="/social-scanner/subreddits/add" '
+            f'style="display:flex;gap:6px;margin-top:8px">'
+            f'<input name="subreddit" placeholder="subreddit (no r/)" '
+            f'style="flex:1;font-size:12px;padding:5px 8px;background:#060910;'
+            f'border:1px solid #2a3555;color:#c0c8d8;border-radius:4px" required>'
+            f'<button type="submit" style="font-size:12px;padding:5px 12px;white-space:nowrap">'
+            f'+ Add</button></form>'
+        )
+        no_subs_msg = (
+            '<div style="color:#8b93a3;font-size:12px;padding:10px 6px">No subreddits yet. Add one below.</div>'
+            if not subs else ""
+        )
         form_content = (
-            f'<textarea name="queries" rows="4" style="width:100%;box-sizing:border-box;'
-            f'background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;'
-            f'border-radius:4px;padding:8px;font-family:inherit;resize:vertical;margin-bottom:8px" '
-            f'placeholder="One subreddit per line (no r/)">{escape(reddit_subs_default)}</textarea>'
+            f'<div style="border:1px solid #2a3555;border-radius:4px;background:#060910;'
+            f'margin-bottom:8px;max-height:220px;overflow-y:auto">'
+            f'{sub_rows or no_subs_msg}'
+            f'</div>'
+            f'{add_sub_form}'
             f'<input type="hidden" name="platform" value="reddit">'
         )
 

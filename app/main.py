@@ -964,7 +964,8 @@ _scan_state = {"running": False, "completed_unacknowledged": False, "last_result
 # Social scanner (Twitter + Reddit) state — stored in /tmp so the worker thread
 # can write progress that the poll endpoint can read.
 _SOCIAL_JOB_PATH      = Path("/tmp/social_scan_job.json")
-_TWITTER_ACCOUNTS_PATH = Path("/tmp/twitter_accounts.json")
+_TWITTER_ACCOUNTS_PATH  = Path("/tmp/twitter_accounts.json")
+_REDDIT_SUBS_PATH       = Path("/tmp/reddit_subs.json")
 
 # Default Twitter accounts to scan when none have been added yet
 _DEFAULT_TWITTER_ACCOUNTS: list[str] = [
@@ -992,6 +993,33 @@ def _load_twitter_accounts() -> list[str]:
 
 def _save_twitter_accounts(accounts: list[str]) -> None:
     _TWITTER_ACCOUNTS_PATH.write_text(json.dumps(accounts))
+
+
+_DEFAULT_REDDIT_SUBS: list[str] = [
+    "politics",
+    "Conservative",
+    "news",
+    "Republican",
+    "PoliticalDiscussion",
+    "AmericaFirst",
+    "Conservative_News",
+]
+
+
+def _load_reddit_subs() -> list[str]:
+    if _REDDIT_SUBS_PATH.exists():
+        try:
+            data = json.loads(_REDDIT_SUBS_PATH.read_text())
+            if isinstance(data, list):
+                return data
+        except Exception:
+            pass
+    _REDDIT_SUBS_PATH.write_text(json.dumps(_DEFAULT_REDDIT_SUBS))
+    return list(_DEFAULT_REDDIT_SUBS)
+
+
+def _save_reddit_subs(subs: list[str]) -> None:
+    _REDDIT_SUBS_PATH.write_text(json.dumps(subs))
 
 def _social_read_job() -> dict:
     try:
@@ -3580,6 +3608,7 @@ def _social_scan_worker(token: str, platform: str, queries_or_subs: list[str], h
         else:
             run_id = _social.start_reddit_scan(token, queries_or_subs or None, hours=hours)
 
+
         job["run_id"] = run_id
         _social_write_job(job)
 
@@ -3618,6 +3647,7 @@ def social_scanner_page(tab: str = "twitter", msg: str = "", user: dict = Depend
         active_tab=tab,
         msg=msg,
         twitter_accounts=_load_twitter_accounts(),
+        reddit_subs=_load_reddit_subs(),
     ))
 
 
@@ -3632,11 +3662,15 @@ async def social_scanner_scan(
     raw_queries = str(form.get("queries", "")).strip()
     queries_or_subs = [q.strip() for q in raw_queries.splitlines() if q.strip()] or None
 
-    # For Twitter, if no manual queries typed, use the selected accounts from the account list
+    # For Twitter, use selected accounts; for Reddit, use selected subreddits
     if platform == "twitter" and not queries_or_subs:
         selected_handles = form.getlist("handle")
         if selected_handles:
             queries_or_subs = [h.strip().lstrip("@") for h in selected_handles if h.strip()]
+    elif platform == "reddit" and not queries_or_subs:
+        selected_subs = form.getlist("subreddit")
+        if selected_subs:
+            queries_or_subs = [s.strip().lstrip("r/") for s in selected_subs if s.strip()]
 
     job = _social_read_job()
     if job.get("status") == "running":
@@ -3655,6 +3689,29 @@ def social_scanner_reset(user: dict = Depends(require_user)):
     _social_write_job({"status": "idle"})
     _social_write_results([])
     return RedirectResponse("/social-scanner?msg=Cleared", status_code=303)
+
+
+@app.post("/social-scanner/subreddits/add")
+async def social_scanner_subs_add(request: Request, user: dict = Depends(require_user)):
+    form = await request.form()
+    sub = str(form.get("subreddit", "")).strip().lstrip("r/").lstrip("/")
+    if sub:
+        subs = _load_reddit_subs()
+        if sub not in subs:
+            subs.append(sub)
+            _save_reddit_subs(subs)
+    return RedirectResponse("/social-scanner?tab=reddit&msg=Subreddit+added", status_code=303)
+
+
+@app.post("/social-scanner/subreddits/delete")
+async def social_scanner_subs_delete(request: Request, user: dict = Depends(require_user)):
+    form = await request.form()
+    sub = str(form.get("subreddit", "")).strip().lstrip("r/").lstrip("/")
+    if sub:
+        subs = _load_reddit_subs()
+        subs = [s for s in subs if s != sub]
+        _save_reddit_subs(subs)
+    return RedirectResponse("/social-scanner?tab=reddit&msg=Subreddit+removed", status_code=303)
 
 
 @app.post("/social-scanner/accounts/add")
