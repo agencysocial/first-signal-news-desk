@@ -1195,6 +1195,10 @@ async def lifespan(app: FastAPI):
             _conn.execute(_sql_text(
                 "UPDATE sources SET show_in_main_feed = FALSE WHERE category = 'NYC'"
             ))
+            # Chronically broken sources — disable permanently
+            _conn.execute(_sql_text(
+                "UPDATE sources SET enabled = FALSE WHERE name IN ('Politico Picks', 'Washington Examiner')"
+            ))
             _conn.commit()
     except Exception as _e:
         logger.warning("schema migration skipped: %s", _e)
