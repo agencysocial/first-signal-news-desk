@@ -139,12 +139,12 @@ NAV = """
         if(d.queued)parts.push(d.queued+' queued');
         if(d.generating)parts.push(d.generating+' generating');
         if(d.approved)parts.push(d.approved+' approved');
-        el.textContent=parts.length?parts.join(' · '):'';
+        el.textContent=parts.length?parts.join(' | '):'';
       }).catch(function(){});
     }
     _loadCounts();
     setInterval(_loadCounts,30000);
-    // Keepalive — ping every 2 minutes so Render doesn't spin down; also ping on tab focus
+    // Keepalive - ping every 2 minutes so Render does not spin down; also ping on tab focus
     setInterval(function(){fetch('/api/ping').catch(function(){});},120000);
     document.addEventListener('visibilitychange',function(){if(!document.hidden)fetch('/api/ping').catch(function(){});});
   })();
@@ -3211,7 +3211,7 @@ function _showVariants(cid, urls) {{
   var wrap = document.getElementById('variants-wrap-'+cid);
   var grid = document.getElementById('variants-grid-'+cid);
   var st   = document.getElementById('img-status-'+cid);
-  if(st) st.textContent = urls.length+' variants ready — click one to use it';
+  if(st) st.textContent = urls.length+' variants ready - click one to use it';
   if(!wrap||!grid) return;
   wrap.style.display='block';
   grid.innerHTML = urls.map(function(url,i){{
@@ -3368,7 +3368,7 @@ function extractQuotes(cid) {{
       + quotes.map(function(q,i){{
         return '<div style="background:#11151f;border:1px solid #2a3555;border-radius:5px;padding:10px;margin-bottom:8px">'
           +'<div style="color:#facc15;font-size:12px;font-weight:600;margin-bottom:4px">"'+_esc(q.quote)+'"</div>'
-          +'<div style="color:#8b93a3;font-size:11px;margin-bottom:6px">— '+_esc(q.speaker)+'</div>'
+          +'<div style="color:#8b93a3;font-size:11px;margin-bottom:6px">- '+_esc(q.speaker)+'</div>'
           +'<div style="display:flex;gap:6px">'
           +'<span style="background:#3a0808;color:#f87171;font-size:10px;padding:2px 8px;border-radius:3px">'+_esc(q.tag||'QUOTE')+'</span>'
           +'<button type="button" onclick="useQuoteCard(\''+_esc(cid)+'\','+JSON.stringify(q)+')" '
@@ -3381,7 +3381,7 @@ function useQuoteCard(cid, q) {{
   // Populate the draft fields with the quote card data, then user can generate
   var hl = document.getElementById('draft-hl-'+cid);
   var tag = document.getElementById('draft-tag-'+cid);
-  if(hl) hl.value = '"'+q.quote+'" — '+q.speaker;
+  if(hl) hl.value = '"'+q.quote+'" - '+q.speaker;
   if(tag) tag.value = q.tag||'QUOTE CARD';
   saveDraft(cid);
 }}
