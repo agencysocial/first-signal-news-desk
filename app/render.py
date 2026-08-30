@@ -2966,6 +2966,23 @@ function regenImage(cid) {{
     _startImagePoll(cid);
   }}).catch(function(e){{ _showErr('Request failed: '+e.message); }});
 }}
+// Populate brand dropdown from /api/brands
+(function() {{
+  var sel = document.getElementById('draft-brand-{cid}');
+  if (!sel) return;
+  var current = sel.getAttribute('data-current') || '{escape(brand_slug)}';
+  fetch('/api/brands').then(function(r){{ return r.json(); }}).then(function(d){{
+    var brands = d.brands || [];
+    if (!brands.length) return;
+    sel.innerHTML = brands.map(function(b){{
+      return '<option value="'+b.slug+'"'+(b.slug===current?' selected':'')+'>'+b.name+'</option>';
+    }}).join('');
+  }}).catch(function(){{}});
+}})();
+// Auto-start image polling on page load when server says status=generating
+(function() {{
+  if ({str(img_status in ("generating", "generating_variants")).lower()}) {{ _startImagePoll('{cid}'); }}
+}})();
 </script>
 <script>
 function copyField(id) {{
