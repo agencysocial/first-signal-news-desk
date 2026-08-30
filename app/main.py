@@ -1489,7 +1489,7 @@ def _wire_response(
         } for c in clusters]
 
         error_sources = session.execute(
-            select(Source).where(Source.last_error.is_not(None))
+            select(Source).where(Source.last_error.is_not(None), Source.enabled.is_(True))
         ).scalars().all()
 
         last_fetch = session.execute(
