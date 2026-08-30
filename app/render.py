@@ -2983,6 +2983,84 @@ function regenImage(cid) {{
 (function() {{
   if ({str(img_status in ("generating", "generating_variants")).lower()}) {{ _startImagePoll('{cid}'); }}
 }})();
+function suggestMemeText(cid) {{
+  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
+  var btn   = document.getElementById('meme-suggest-btn-'+cid);
+  var activeAngle = (window._activeAngle||{{}})[cid];
+  if(btn) {{ btn.textContent='Thinking...'; btn.disabled=true; }}
+  var body = 'headline='+encodeURIComponent(hl)+'&brand_slug='+encodeURIComponent(brand);
+  if(activeAngle) {{
+    body += '&angle_hook='+encodeURIComponent(activeAngle.hook||'');
+    body += '&angle_type='+encodeURIComponent(activeAngle.angle_type||'');
+    body += '&angle_scene='+encodeURIComponent(activeAngle.image_scene||'');
+  }}
+  fetch('/pipeline-queue/story/'+cid+'/suggest-meme-text',{{method:'POST',
+    headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:body
+  }}).then(function(r){{ return r.json(); }}).then(function(d){{
+    if(btn){{ btn.textContent='&#10024; AI Suggest'; btn.disabled=false; }}
+    if(d.error){{ alert('Suggest failed: '+d.error); return; }}
+    var topEl   = document.getElementById('meme-top-'+cid);
+    var botEl   = document.getElementById('meme-bot-'+cid);
+    var sceneEl = document.getElementById('meme-scene-'+cid);
+    if(topEl)   topEl.value   = (d.top||'').toUpperCase();
+    if(botEl)   botEl.value   = (d.bottom||'').toUpperCase();
+    if(sceneEl && d.scene) sceneEl.value = d.scene;
+    var alts = document.getElementById('meme-alts-'+cid);
+    var altTop = document.getElementById('meme-alt-top-'+cid);
+    var altBot = document.getElementById('meme-alt-bot-'+cid);
+    if(alts && d.alt_top) {{
+      if(altTop) altTop.textContent = (d.alt_top||'').toUpperCase();
+      if(altBot) altBot.textContent = (d.alt_bottom||'').toUpperCase();
+      alts.style.display = 'block';
+    }}
+  }}).catch(function(e){{
+    if(btn){{ btn.textContent='&#10024; AI Suggest'; btn.disabled=false; }}
+    alert('Error: '+e.message);
+  }});
+}}
+function useMemeFromQuote(cid, q) {{
+  var botEl = document.getElementById('meme-bot-'+cid);
+  if(botEl) botEl.value = ('"'+q.quote+'" '+q.speaker).toUpperCase();
+  suggestMemeText(cid);
+}}
+function useMemeAlt(cid) {{
+  var altTop = document.getElementById('meme-alt-top-'+cid);
+  var altBot = document.getElementById('meme-alt-bot-'+cid);
+  var topEl  = document.getElementById('meme-top-'+cid);
+  var botEl  = document.getElementById('meme-bot-'+cid);
+  if(topEl && altTop) topEl.value = altTop.textContent;
+  if(botEl && altBot) botEl.value = altBot.textContent;
+}}
+function genMemeFromPanel(cid) {{
+  var topText = (document.getElementById('meme-top-'+cid)||{{}}).value||'';
+  var botText = (document.getElementById('meme-bot-'+cid)||{{}}).value||'';
+  var scene   = (document.getElementById('meme-scene-'+cid)||{{}}).value
+             || (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var brand   = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
+  var notes   = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var st      = document.getElementById('img-status-'+cid);
+  var btn     = document.getElementById('meme-gen-btn-'+cid);
+  if(!botText){{ alert('Enter bottom text first.'); return; }}
+  if(btn){{ btn.textContent='Sending to Kie.ai...'; btn.disabled=true; }}
+  if(st) st.textContent='Meme card generating (~60s)...';
+  fetch('/pipeline-queue/story/'+cid+'/generate-meme',{{method:'POST',
+    headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'headline='+encodeURIComponent(botText)
+      +'&top_text='+encodeURIComponent(topText)
+      +'&scene='+encodeURIComponent(scene)
+      +'&brand_slug='+encodeURIComponent(brand)
+      +'&notes='+encodeURIComponent(notes)
+  }}).then(function(r){{ return r.json(); }}).then(function(d){{
+    if(btn){{ btn.textContent='&#127867; Generate meme card'; btn.disabled=false; }}
+    if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
+    if(st) st.textContent='Meme generating...';
+    _startImagePoll(cid);
+  }}).catch(function(e){{
+    if(btn){{ btn.textContent='&#127867; Generate meme card'; btn.disabled=false; }}
+    if(st) st.textContent='Error: '+e.message;
+  }});
+}}
 </script>
 <script>
 function copyField(id) {{
