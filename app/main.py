@@ -210,39 +210,58 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
     return out_path
 
 
-def _kie_submit(prompt: str, key: str) -> str:
+def _kie_submit(prompt: str, key: str, retries: int = 3) -> str:
     body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": "4:5", "resolution": "1K"}}
-    r = httpx.post(_KIE_CREATE, headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                   json=body, timeout=60)
-    r.raise_for_status()
-    payload = r.json()
-    if payload.get("code") != 200:
-        raise RuntimeError(f"Kie createTask: code={payload.get('code')} msg={payload.get('msg')}")
-    task_id = (payload.get("data") or {}).get("taskId")
-    if not task_id:
-        raise RuntimeError(f"Kie createTask: no taskId in {payload}")
-    return task_id
+    last_exc: Exception = RuntimeError("Kie submit: no attempts made")
+    for attempt in range(retries):
+        try:
+            r = httpx.post(_KIE_CREATE, headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                           json=body, timeout=60)
+            r.raise_for_status()
+            payload = r.json()
+            if payload.get("code") != 200:
+                raise RuntimeError(f"Kie createTask: code={payload.get('code')} msg={payload.get('msg')}")
+            task_id = (payload.get("data") or {}).get("taskId")
+            if not task_id:
+                raise RuntimeError(f"Kie createTask: no taskId in {payload}")
+            return task_id
+        except Exception as exc:
+            last_exc = exc
+            logger.warning("Kie submit attempt %d/%d failed: %s", attempt + 1, retries, exc)
+            if attempt < retries - 1:
+                time.sleep(5 * (attempt + 1))
+    raise last_exc
 
 
-def _kie_poll(task_id: str, key: str) -> str:
-    deadline = time.time() + _KIE_POLL_TIMEOUT
-    while time.time() < deadline:
-        r = httpx.get(f"{_KIE_RECORD}?taskId={task_id}",
-                      headers={"Authorization": f"Bearer {key}"}, timeout=30)
-        r.raise_for_status()
-        data = (r.json().get("data") or {})
-        state = data.get("state")
-        if state == "success":
-            raw = data.get("resultJson")
-            parsed = json.loads(raw) if isinstance(raw, str) else (raw or {})
-            urls = parsed.get("resultUrls") or []
-            if not urls:
-                raise RuntimeError("Kie: success but no resultUrls")
-            return urls[0]
-        if state == "fail":
-            raise RuntimeError(f"Kie task failed: {data.get('failMsg')}")
-        time.sleep(_KIE_POLL_INTERVAL)
-    raise TimeoutError(f"Kie task {task_id} timed out after {_KIE_POLL_TIMEOUT}s")
+def _kie_poll(task_id: str, key: str, prompt: str = "", retries: int = 2) -> str:
+    """Poll until done. On 'fail', re-submit and retry up to `retries` times."""
+    for attempt in range(retries + 1):
+        deadline = time.time() + _KIE_POLL_TIMEOUT
+        current_task = task_id if attempt == 0 else _kie_submit(prompt, key, retries=2)
+        while time.time() < deadline:
+            r = httpx.get(f"{_KIE_RECORD}?taskId={current_task}",
+                          headers={"Authorization": f"Bearer {key}"}, timeout=30)
+            r.raise_for_status()
+            data = (r.json().get("data") or {})
+            state = data.get("state")
+            if state == "success":
+                raw = data.get("resultJson")
+                parsed = json.loads(raw) if isinstance(raw, str) else (raw or {})
+                urls = parsed.get("resultUrls") or []
+                if not urls:
+                    raise RuntimeError("Kie: success but no resultUrls")
+                return urls[0]
+            if state == "fail":
+                fail_msg = data.get("failMsg") or "Internal Error"
+                logger.warning("Kie task %s failed (attempt %d/%d): %s", current_task, attempt + 1, retries + 1, fail_msg)
+                break  # retry with a new task submission
+            time.sleep(_KIE_POLL_INTERVAL)
+        else:
+            raise TimeoutError(f"Kie task {current_task} timed out after {_KIE_POLL_TIMEOUT}s")
+        if attempt == retries:
+            raise RuntimeError(f"Kie task failed after {retries + 1} attempts")
+        time.sleep(10)
+    raise RuntimeError("Kie poll: exhausted retries")
 
 def _is_local() -> bool:
     """True when running on the local Windows machine (FSN pipeline exists)."""
@@ -2245,7 +2264,7 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "") -> None
         else:
             prompt = _build_image_prompt(headline, tag, scene, effective_notes)
         task_id = _kie_submit(prompt, key)
-        kie_url = _kie_poll(task_id, key)
+        kie_url = _kie_poll(task_id, key, prompt=prompt)
 
         # Download and stamp logo into brand-specific tmp file.
         # Capture bytes then release the httpx response before PIL starts work.
@@ -4379,7 +4398,7 @@ def _generate_variant(cid: str, key: str, prompt: str, brand_slug: str, variant_
     """Generate one image variant for a cluster. Returns dict with kie_url or error."""
     try:
         task_id = _kie_submit(prompt, key)
-        kie_url = _kie_poll(task_id, key)
+        kie_url = _kie_poll(task_id, key, prompt=prompt)
         tmp_id  = f"{cid}__{brand_slug}__v{variant_idx}"
         r = httpx.get(kie_url, timeout=60, follow_redirects=True)
         r.raise_for_status()
@@ -4731,7 +4750,7 @@ async def pipeline_queue_generate_meme(
         synthetic_item["brand_slug"] = brand_slug
         try:
             task_id = _kie_submit(prompt, key)
-            kie_url = _kie_poll(task_id, key)
+            kie_url = _kie_poll(task_id, key, prompt=prompt)
             r = httpx.get(kie_url, timeout=60, follow_redirects=True)
             r.raise_for_status()
             _raw = r.content
