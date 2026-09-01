@@ -51,7 +51,7 @@ _batch_lock = threading.Lock()
 # ── Kie.ai cloud image generation ─────────────────────────────────────────────
 _KIE_CREATE = "https://api.kie.ai/api/v1/jobs/createTask"
 _KIE_RECORD = "https://api.kie.ai/api/v1/jobs/recordInfo"
-_KIE_MODEL  = "gpt-image-2-image-to-image"
+_KIE_MODEL  = "gpt-image-2-text-to-image"
 _KIE_POLL_INTERVAL = 5
 _KIE_POLL_TIMEOUT  = 600  # 10 min
 
