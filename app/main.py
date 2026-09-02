@@ -690,6 +690,10 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             "#CE3175": "vivid deep rose pink",
             "#1a1a2e": "deep navy blue",
             "#e94560": "vivid rose pink",
+            "#011A3B": "deep navy blue",
+            "#C9A84C": "antique gold",
+            "#B22234": "heritage red",
+            "#F5ECD7": "warm parchment cream",
         }
         return mapping.get(h.upper() if h else "", f"the color {h}")
 
@@ -720,6 +724,29 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"It must look like a magazine cover headline, impossible to miss at a glance on a phone screen.\n\n"
             f"RULES: Flat 2D text — no drop shadows, no glows, no gradients on text. "
             f"No watermark text at the bottom. No logos rendered in the image — the logo is overlaid separately. "
+            f"{aspect} vertical portrait format, photorealistic, sharp, magazine-quality."
+        )
+
+    # The American — navy footer, solid antique gold rule, white Oswald Bold headline
+    if brand_slug == "the_american":
+        return (
+            f"A {aspect} vertical portrait American history and heritage share card with TWO ZONES — strictly no overlap.\n\n"
+            f"ZONE 1 — UPPER 63% (photo area): {scene}.{notes_clause}{season_clause} "
+            f"Dramatic, cinematic, high-contrast photography — think Life Magazine covers, historic documentary photography. "
+            f"Deep shadows, strong directional light, bold composition. Scroll-stopping imagery that commands attention. {_ANTI_SLOP}\n\n"
+            f"ZONE 2 — LOWER 37% (footer panel): A SOLID FLAT DEEP NAVY BLUE rectangle spanning the full "
+            f"width at the bottom of the card. Completely opaque, ZERO transparency, ZERO gradient, "
+            f"ZERO bleed from the photo above. "
+            f"At the very top edge of this navy panel: a SOLID ANTIQUE GOLD horizontal line, 3px tall, spanning the full width edge to edge — NOT a gradient, solid color all the way across. "
+            f"Inside the navy panel, left-aligned with consistent left padding:\n"
+            f"  - FIRST LINE: a solid HERITAGE RED rounded rectangle pill "
+            f"containing the text \"{tag}\" in bold white uppercase letters. Font size ~18-20pt.\n"
+            f"  - DIRECTLY BELOW THE PILL: the headline \"{headline}\" in BOLD UPPERCASE Oswald or condensed sans-serif. "
+            f"Font size: 48-58pt — large, dominant, fills the panel width. "
+            f"Color: SOLID BRIGHT WHITE — clean, sharp, maximum legibility against the navy. NOT cream, NOT yellow, pure white.\n\n"
+            f"CRITICAL RULES: No watermark or page name text in the footer. "
+            f"Flat 2D text only — no drop shadows, no outer glows. "
+            f"No logos, no URLs, no social handles in the image. "
             f"{aspect} vertical portrait format, photorealistic, sharp, magazine-quality."
         )
 
