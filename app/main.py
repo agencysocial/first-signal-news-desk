@@ -187,6 +187,17 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
 
     if brand_slug == "cathy_talk":
         logo_path = static_dir / ("cathy_talk_logo.png" if is_light_bg else "cathy_talk_logo_white.png")
+    elif brand_slug == "the_american":
+        # No logo yet — skip stamping entirely, return image as-is
+        out = _PILImage.new("RGB", card.size, (0, 0, 0))
+        out.paste(card, mask=card.split()[3])
+        card.close()
+        tmp_dir = Path("/tmp/fsn_images")
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        out_path = tmp_dir / f"{cid}.jpg"
+        out.save(str(out_path), "JPEG", quality=88, optimize=True)
+        out.close()
+        return out_path
     else:
         logo_path = static_dir / ("logo_black_text.png" if is_light_bg else "logo_white_text.png")
 
@@ -738,8 +749,9 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"width at the bottom of the card. Completely opaque, ZERO transparency, ZERO gradient, "
             f"ZERO bleed from the photo above. "
             f"At the very top edge of this navy panel: a SOLID ANTIQUE GOLD horizontal line, 3px tall, spanning the full width edge to edge — NOT a gradient, solid color all the way across. "
+            f"Below this gold line, leave 10-12px of empty navy space before any text begins. "
             f"Inside the navy panel, left-aligned with consistent left padding:\n"
-            f"  - FIRST LINE: a solid HERITAGE RED rounded rectangle pill "
+            f"  - FIRST LINE (after the 10-12px gap below the gold rule): a solid HERITAGE RED rounded rectangle pill "
             f"containing the text \"{tag}\" in bold white uppercase letters. Font size ~18-20pt.\n"
             f"  - DIRECTLY BELOW THE PILL: the headline \"{headline}\" in BOLD UPPERCASE Oswald or condensed sans-serif. "
             f"Font size: 48-58pt — large, dominant, fills the panel width. "
