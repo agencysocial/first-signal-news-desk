@@ -555,10 +555,10 @@ _THEAMERICAN_IMAGE_SETTINGS = json.dumps({
     "resolution":         "1K",
     "output_format":      "png",
     "watermark_text":     "The American",
-    "watermark_position": "bottom_center",
-    "headline_font":      "Playfair Display Bold Italic",
-    "tag_font":           "Oswald condensed bold",
-    "footer_style":       "navy with thin antique gold rule divider above footer",
+    "watermark_position": "top_left",
+    "headline_font":      "Oswald Bold",
+    "tag_font":           "Oswald Bold condensed",
+    "footer_style":       "solid navy footer, solid antique gold rule divider, no footer watermark text",
 })
 _THEAMERICAN_VOICE = (
     "You are The American — a celebration of American history, icons, presidents, inventors, "
