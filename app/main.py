@@ -541,9 +541,53 @@ _CATHYTALK_CAPTION_SETTINGS = json.dumps({
 _CATHYTALK_LOGO_URL       = "/static/cathy_talk_logo.png"       # primary (pink+dark) — light backgrounds
 _CATHYTALK_LOGO_WHITE_URL = "/static/cathy_talk_logo_white.png"  # all-white — dark backgrounds
 
+# The American — American history, icons, presidents, inventors, nostalgia
+_THEAMERICAN_BRAND_COLORS = json.dumps({
+    "color_footer":     "#011a3b",   # Navy
+    "color_headline":   "#C9A84C",   # Antique Gold
+    "color_tag_bg":     "#B22234",   # Heritage Red
+    "color_tag_text":   "#FFFFFF",
+    "color_text":       "#F5ECD7",   # Parchment
+    "color_rule":       "#C9A84C",   # Gold divider rule above footer
+})
+_THEAMERICAN_IMAGE_SETTINGS = json.dumps({
+    "aspect_ratio":       "4:5",
+    "resolution":         "1K",
+    "output_format":      "png",
+    "watermark_text":     "The American",
+    "watermark_position": "bottom_center",
+    "headline_font":      "Playfair Display Bold Italic",
+    "tag_font":           "Oswald condensed bold",
+    "footer_style":       "navy with thin antique gold rule divider above footer",
+})
+_THEAMERICAN_VOICE = (
+    "You are The American — a celebration of American history, icons, presidents, inventors, "
+    "entrepreneurs, traditions, and nostalgia. Voice: proud, warm, authoritative, and inspiring. "
+    "Write like a trusted historian who loves America's story. "
+    "Be specific: name the real person, the real date, the real achievement. "
+    "Avoid partisan framing — this page unites Americans across the political spectrum around "
+    "shared history and pride. "
+    "Captions should feel like a great story being told around a campfire — gripping, specific, "
+    "and ending with a question that invites the reader to share their own connection to the story "
+    "(e.g. 'Who is YOUR greatest American?' / 'Did you know this about [NAME]?' / "
+    "'Which president did this best?'). "
+    "No em-dashes. Never fabricate historical facts."
+)
+_THEAMERICAN_CAPTION_SETTINGS = json.dumps({
+    "short":        [10, 15],
+    "medium":       [40, 60],
+    "long":         [100, 150],
+    "extra_long":   [200, 300],
+    "first_comment":[5, 15],
+    "agreement_hook": True,
+    "hashtags":     False,
+    "emojis":       False,
+})
+_THEAMERICAN_LOGO_URL = ""   # operator will upload via Settings UI when ready
+
 
 def _seed_default_brands() -> None:
-    """Upsert First Signal News and CathyTalk brand properties on every startup.
+    """Upsert brand properties on every startup.
     Creates rows if missing; updates logo_url, colors, voice, and settings if already present
     so config changes in code take effect without manual DB edits."""
     from app.models import BrandProperty as _BP
@@ -559,6 +603,13 @@ def _seed_default_brands() -> None:
             colors=_CATHYTALK_BRAND_COLORS, image_settings=_CATHYTALK_IMAGE_SETTINGS,
             voice_instructions=_CATHYTALK_VOICE, caption_settings=_CATHYTALK_CAPTION_SETTINGS,
             logo_url=_CATHYTALK_LOGO_URL, notes="Women's lifestyle and culture media property.",
+        ),
+        dict(
+            slug="the_american", name="The American", enabled=True, sort_order=2,
+            colors=_THEAMERICAN_BRAND_COLORS, image_settings=_THEAMERICAN_IMAGE_SETTINGS,
+            voice_instructions=_THEAMERICAN_VOICE, caption_settings=_THEAMERICAN_CAPTION_SETTINGS,
+            logo_url=_THEAMERICAN_LOGO_URL,
+            notes="American history, icons, presidents, inventors, entrepreneurs, nostalgia. 160K+ followers.",
         ),
     ]
     session = SessionLocal()
