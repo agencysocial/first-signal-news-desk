@@ -2750,13 +2750,17 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
         <div id="meme-alt-bot-{cid}" style="font-family:Impact,'Arial Narrow',sans-serif;font-size:12px;color:#c084fc;cursor:pointer" onclick="useMemeAlt('{cid}')"></div>
       </div>
       <div id="meme-angle-used-{cid}" style="display:none;font-size:10px;color:#7a5090;margin-bottom:8px"></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button type="button" onclick="suggestMemeText('{cid}')" id="meme-suggest-btn-{cid}"
           style="font-size:11px;padding:5px 14px;background:#1a0030;border:1px solid #7a00aa;color:#d084fc;border-radius:4px;cursor:pointer">
           &#10024; AI Suggest</button>
         <button type="button" onclick="genMemeFromPanel('{cid}')" id="meme-gen-btn-{cid}"
           style="font-size:11px;padding:5px 14px;background:#2a0040;border:1px solid #9900cc;color:#e084fc;border-radius:4px;cursor:pointer;font-weight:600">
           &#127867; Generate Meme Card</button>
+        <span id="meme-status-{cid}" style="font-size:11px;color:#9b7ab8"></span>
+      </div>
+      <div id="meme-note-{cid}" style="display:none;font-size:10px;color:#7a5090;margin-top:6px">
+        Generating (~60s) &mdash; image will appear in the <strong style="color:#9b7ab8">Image panel</strong> on the right when ready.
       </div>
     </div>
 
@@ -2998,7 +3002,7 @@ function suggestMemeText(cid) {{
   fetch('/pipeline-queue/story/'+cid+'/suggest-meme-text',{{method:'POST',
     headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:body
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
-    if(btn){{ btn.textContent='&#10024; AI Suggest'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#10024; AI Suggest'; btn.disabled=false; }}
     if(d.error){{ alert('Suggest failed: '+d.error); return; }}
     var topEl   = document.getElementById('meme-top-'+cid);
     var botEl   = document.getElementById('meme-bot-'+cid);
@@ -3015,7 +3019,7 @@ function suggestMemeText(cid) {{
       alts.style.display = 'block';
     }}
   }}).catch(function(e){{
-    if(btn){{ btn.textContent='&#10024; AI Suggest'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#10024; AI Suggest'; btn.disabled=false; }}
     alert('Error: '+e.message);
   }});
 }}
@@ -3039,11 +3043,12 @@ function genMemeFromPanel(cid) {{
              || (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var brand   = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
   var notes   = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
-  var st      = document.getElementById('img-status-'+cid);
+  var st      = document.getElementById('meme-status-'+cid);
+  var note    = document.getElementById('meme-note-'+cid);
   var btn     = document.getElementById('meme-gen-btn-'+cid);
   if(!botText){{ alert('Enter bottom text first.'); return; }}
-  if(btn){{ btn.textContent='Sending to Kie.ai...'; btn.disabled=true; }}
-  if(st) st.textContent='Meme card generating (~60s)...';
+  if(btn){{ btn.innerHTML='Sending...'; btn.disabled=true; }}
+  if(st) st.textContent='';
   fetch('/pipeline-queue/story/'+cid+'/generate-meme',{{method:'POST',
     headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'headline='+encodeURIComponent(botText)
@@ -3052,12 +3057,19 @@ function genMemeFromPanel(cid) {{
       +'&brand_slug='+encodeURIComponent(brand)
       +'&notes='+encodeURIComponent(notes)
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
-    if(btn){{ btn.textContent='&#127867; Generate meme card'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
-    if(st) st.textContent='Meme generating...';
+    if(note) note.style.display='block';
+    var secs=60;
+    var countdown=setInterval(function(){{
+      if(st) st.textContent=secs>0?('~'+secs+'s...'):'';
+      secs-=5;
+      if(secs<0) clearInterval(countdown);
+    }},5000);
+    if(st) st.textContent='~60s...';
     _startImagePoll(cid);
   }}).catch(function(e){{
-    if(btn){{ btn.textContent='&#127867; Generate meme card'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(st) st.textContent='Error: '+e.message;
   }});
 }}
@@ -3382,7 +3394,7 @@ function suggestMemeText(cid) {{
   fetch('/pipeline-queue/story/'+cid+'/suggest-meme-text',{{method:'POST',
     headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:body
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
-    if(btn){{ btn.textContent='&#10024; AI Suggest'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#10024; AI Suggest'; btn.disabled=false; }}
     if(d.error){{ alert('Suggest failed: '+d.error); return; }}
     var topEl   = document.getElementById('meme-top-'+cid);
     var botEl   = document.getElementById('meme-bot-'+cid);
@@ -3399,7 +3411,7 @@ function suggestMemeText(cid) {{
       alts.style.display = 'block';
     }}
   }}).catch(function(e){{
-    if(btn){{ btn.textContent='&#10024; AI Suggest'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#10024; AI Suggest'; btn.disabled=false; }}
     alert('Error: '+e.message);
   }});
 }}
@@ -3423,11 +3435,12 @@ function genMemeFromPanel(cid) {{
              || (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var brand   = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
   var notes   = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
-  var st      = document.getElementById('img-status-'+cid);
+  var st      = document.getElementById('meme-status-'+cid);
+  var note    = document.getElementById('meme-note-'+cid);
   var btn     = document.getElementById('meme-gen-btn-'+cid);
   if(!botText){{ alert('Enter bottom text first.'); return; }}
-  if(btn){{ btn.textContent='Sending to Kie.ai...'; btn.disabled=true; }}
-  if(st) st.textContent='Meme card generating (~60s)...';
+  if(btn){{ btn.innerHTML='Sending...'; btn.disabled=true; }}
+  if(st) st.textContent='';
   fetch('/pipeline-queue/story/'+cid+'/generate-meme',{{method:'POST',
     headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'headline='+encodeURIComponent(botText)
@@ -3436,12 +3449,19 @@ function genMemeFromPanel(cid) {{
       +'&brand_slug='+encodeURIComponent(brand)
       +'&notes='+encodeURIComponent(notes)
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
-    if(btn){{ btn.textContent='&#127867; Generate meme card'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
-    if(st) st.textContent='Meme generating...';
+    if(note) note.style.display='block';
+    var secs=60;
+    var countdown=setInterval(function(){{
+      if(st) st.textContent=secs>0?('~'+secs+'s...'):'';
+      secs-=5;
+      if(secs<0) clearInterval(countdown);
+    }},5000);
+    if(st) st.textContent='~60s...';
     _startImagePoll(cid);
   }}).catch(function(e){{
-    if(btn){{ btn.textContent='&#127867; Generate meme card'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(st) st.textContent='Error: '+e.message;
   }});
 }}
@@ -3928,7 +3948,7 @@ function suggestMemeText(cid) {{
   fetch('/pipeline-queue/story/'+cid+'/suggest-meme-text',{{method:'POST',
     headers:{{'Content-Type':'application/x-www-form-urlencoded'}},body:body
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
-    if(btn){{ btn.textContent='&#10024; AI Suggest'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#10024; AI Suggest'; btn.disabled=false; }}
     if(d.error){{ alert('Suggest failed: '+d.error); return; }}
     var topEl   = document.getElementById('meme-top-'+cid);
     var botEl   = document.getElementById('meme-bot-'+cid);
@@ -3945,7 +3965,7 @@ function suggestMemeText(cid) {{
       alts.style.display = 'block';
     }}
   }}).catch(function(e){{
-    if(btn){{ btn.textContent='&#10024; AI Suggest'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#10024; AI Suggest'; btn.disabled=false; }}
     alert('Error: '+e.message);
   }});
 }}
@@ -3969,11 +3989,12 @@ function genMemeFromPanel(cid) {{
              || (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var brand   = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
   var notes   = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
-  var st      = document.getElementById('img-status-'+cid);
+  var st      = document.getElementById('meme-status-'+cid);
+  var note    = document.getElementById('meme-note-'+cid);
   var btn     = document.getElementById('meme-gen-btn-'+cid);
   if(!botText){{ alert('Enter bottom text first.'); return; }}
-  if(btn){{ btn.textContent='Sending to Kie.ai...'; btn.disabled=true; }}
-  if(st) st.textContent='Meme card generating (~60s)...';
+  if(btn){{ btn.innerHTML='Sending...'; btn.disabled=true; }}
+  if(st) st.textContent='';
   fetch('/pipeline-queue/story/'+cid+'/generate-meme',{{method:'POST',
     headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
     body:'headline='+encodeURIComponent(botText)
@@ -3982,12 +4003,19 @@ function genMemeFromPanel(cid) {{
       +'&brand_slug='+encodeURIComponent(brand)
       +'&notes='+encodeURIComponent(notes)
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
-    if(btn){{ btn.textContent='&#127867; Generate meme card'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
-    if(st) st.textContent='Meme generating...';
+    if(note) note.style.display='block';
+    var secs=60;
+    var countdown=setInterval(function(){{
+      if(st) st.textContent=secs>0?('~'+secs+'s...'):'';
+      secs-=5;
+      if(secs<0) clearInterval(countdown);
+    }},5000);
+    if(st) st.textContent='~60s...';
     _startImagePoll(cid);
   }}).catch(function(e){{
-    if(btn){{ btn.textContent='&#127867; Generate meme card'; btn.disabled=false; }}
+    if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(st) st.textContent='Error: '+e.message;
   }});
 }}
