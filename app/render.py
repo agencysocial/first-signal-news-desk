@@ -2750,6 +2750,8 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
         <div id="meme-alt-bot-{cid}" style="font-family:Impact,'Arial Narrow',sans-serif;font-size:12px;color:#c084fc;cursor:pointer" onclick="useMemeAlt('{cid}')"></div>
       </div>
       <div id="meme-angle-used-{cid}" style="display:none;font-size:10px;color:#7a5090;margin-bottom:8px"></div>
+      <textarea id="meme-notes-{cid}" placeholder="Optional notes — e.g. &quot;dramatic lighting&quot;, &quot;wide shot&quot;, &quot;night time&quot;" rows="2"
+        style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #3a2055;color:#c0c8d8;font-size:11px;border-radius:4px;padding:6px;font-family:inherit;resize:vertical;margin-bottom:8px"></textarea>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button type="button" onclick="suggestMemeText('{cid}')" id="meme-suggest-btn-{cid}"
           style="font-size:11px;padding:5px 14px;background:#1a0030;border:1px solid #7a00aa;color:#d084fc;border-radius:4px;cursor:pointer">
@@ -2938,6 +2940,20 @@ function _startImagePoll(cid) {{
           if (st) st.textContent='';
           if (wrap) wrap.innerHTML='<img src="'+d.url+'?t='+Date.now()+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
             +'<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
+          // Refresh history panel so the previous image appears as a thumbnail
+          if (d.history && d.history.length) {{
+            fetch('/pipeline-queue/story/'+cid+'/image-history-html')
+              .then(function(r){{ return r.text(); }})
+              .then(function(html){{
+                var hel = document.getElementById('img-history-'+cid);
+                if(hel) hel.innerHTML = html;
+              }}).catch(function(){{}});
+          }}
+          // Hide meme countdown note if visible
+          var mn = document.getElementById('meme-note-'+cid);
+          var ms = document.getElementById('meme-status-'+cid);
+          if(mn) mn.style.display='none';
+          if(ms) ms.textContent='';
         }} else if (d.status==='generating'||d.status==='') {{
           _imgPollTimer2[cid]=setTimeout(poll,5000);
         }} else {{ clearInterval(ct); if(st) st.textContent=d.status||''; }}
@@ -3042,7 +3058,7 @@ function genMemeFromPanel(cid) {{
   var scene   = (document.getElementById('meme-scene-'+cid)||{{}}).value
              || (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var brand   = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
-  var notes   = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var notes   = (document.getElementById('meme-notes-'+cid)||{{}}).value||'';
   var st      = document.getElementById('meme-status-'+cid);
   var note    = document.getElementById('meme-note-'+cid);
   var btn     = document.getElementById('meme-gen-btn-'+cid);
@@ -3434,7 +3450,7 @@ function genMemeFromPanel(cid) {{
   var scene   = (document.getElementById('meme-scene-'+cid)||{{}}).value
              || (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var brand   = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
-  var notes   = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var notes   = (document.getElementById('meme-notes-'+cid)||{{}}).value||'';
   var st      = document.getElementById('meme-status-'+cid);
   var note    = document.getElementById('meme-note-'+cid);
   var btn     = document.getElementById('meme-gen-btn-'+cid);
@@ -3988,7 +4004,7 @@ function genMemeFromPanel(cid) {{
   var scene   = (document.getElementById('meme-scene-'+cid)||{{}}).value
              || (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var brand   = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
-  var notes   = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var notes   = (document.getElementById('meme-notes-'+cid)||{{}}).value||'';
   var st      = document.getElementById('meme-status-'+cid);
   var note    = document.getElementById('meme-note-'+cid);
   var btn     = document.getElementById('meme-gen-btn-'+cid);

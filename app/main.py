@@ -4085,6 +4085,21 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         return JSONResponse({"error": f"Server error: {exc}"}, status_code=500)
 
 
+@app.get("/pipeline-queue/story/{cid}/image-history-html")
+def pipeline_queue_story_image_history_html(cid: str, brand_slug: str = "first_signal", user: dict = Depends(require_user)):
+    """Return rendered HTML for the image history panel (used to refresh after meme/regen)."""
+    if not cid.isdigit():
+        return HTMLResponse("")
+    cluster_id = int(cid)
+    item = _queue_item_for(cluster_id)
+    if not item:
+        return HTMLResponse("")
+    fsn_brand = (item.get("brand_images") or {}).get(brand_slug) or {}
+    history = fsn_brand.get("image_history") or item.get("image_history") or []
+    from app.render import _render_img_history
+    return HTMLResponse(_render_img_history(history, cid))
+
+
 @app.get("/pipeline-queue/story/{cid}/image-status")
 def pipeline_queue_story_image_status(cid: str, brand_slug: str = "first_signal", user: dict = Depends(require_user)):
     """Lightweight poll endpoint for workspace image generation status (brand-aware)."""
