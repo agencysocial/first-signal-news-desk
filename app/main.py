@@ -4769,19 +4769,23 @@ async def pipeline_queue_generate_meme(
                     try: fsn = json.loads(c.fsn_state)
                     except Exception: pass
                 brand_images = fsn.get("brand_images") or {}
-                slot = dict(brand_images.get(brand_slug) or {})
-                # Store meme as a separate key so it doesn't replace the main card
-                meme_key = f"{brand_slug}__meme"
-                brand_images[meme_key] = {
+                old_kie = (brand_images.get(brand_slug) or {}).get("kie_result_url") or ""
+                history = list((brand_images.get(brand_slug) or {}).get("image_history") or [])
+                if old_kie and old_kie not in history:
+                    history.append(old_kie)
+                # Store into the regular brand slot so _startImagePoll picks it up
+                brand_images[brand_slug] = {
                     "generated_image_url": served_url,
                     "kie_result_url": kie_url,
                     "supabase_image_url": supabase_url or "",
                     "image_gen_status": "done",
-                    "image_history": slot.get("image_history") or [],
+                    "image_history": history,
                     "template": "meme",
                 }
                 fsn["brand_images"] = brand_images
                 fsn["meme_kie_url"] = kie_url
+                fsn["generated_image_url"] = served_url
+                fsn["kie_result_url"] = kie_url
                 fsn["image_gen_status"] = "done"
                 if c:
                     c.fsn_state = json.dumps(fsn, ensure_ascii=False)
