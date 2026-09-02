@@ -191,7 +191,7 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
         # No logo image yet — stamp "THE AMERICAN" as text watermark at top-left
         from PIL import ImageDraw as _ImageDraw, ImageFont as _ImageFont
         draw = _ImageDraw.Draw(card)
-        font_size = max(28, w // 22)
+        font_size = max(20, w // 30)
         try:
             font = _ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
         except Exception:
