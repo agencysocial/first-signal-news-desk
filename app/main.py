@@ -4737,7 +4737,35 @@ async def pipeline_queue_generate_meme(
         scene = (item.get("draft") or {}).get("scene") or "US Capitol exterior, dramatic sky"
 
     prompt = _build_meme_prompt(headline, scene, top_text=top_text, notes=notes)
-    _update_cluster_fsn(cluster_id, image_gen_status="generating")
+
+    # Reset the brand slot in DB so the poll waits (top-level alone is not enough —
+    # image-status reads brand_images[brand_slug] first and ignores the top-level field
+    # when a previous slot exists there).
+    session = SessionLocal()
+    try:
+        c = session.get(StoryCluster, cluster_id)
+        fsn: dict = {}
+        if c and c.fsn_state:
+            try:
+                fsn = json.loads(c.fsn_state)
+            except Exception:
+                pass
+        brand_images = fsn.get("brand_images") or {}
+        brand_images[brand_slug] = {
+            **(brand_images.get(brand_slug) or {}),
+            "image_gen_status": "generating",
+            "generated_image_url": "",
+            "kie_result_url": "",
+        }
+        fsn["brand_images"] = brand_images
+        fsn["image_gen_status"] = "generating"
+        if c:
+            c.fsn_state = json.dumps(fsn, ensure_ascii=False)
+            session.commit()
+    except Exception:
+        session.rollback()
+    finally:
+        session.close()
 
     def _run_meme():
         _generate_one_image.__wrapped__ if hasattr(_generate_one_image, "__wrapped__") else None
