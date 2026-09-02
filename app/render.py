@@ -3160,7 +3160,7 @@ function submitToHeyGen(cid) {{
   var st = document.getElementById('vid-heygen-status-'+cid);
   var script = [1,2,3,4,5].map(function(i){{
     return (document.getElementById('vid-script-'+i+'-'+cid)||{{}}).value||'';
-  }}).filter(Boolean).join('\n\n');
+  }}).filter(Boolean).join('\\n\\n');
   if(!script) {{ alert('Generate the script first.'); return; }}
   if(st) st.textContent='HeyGen API not yet connected — API key coming tomorrow.';
 }}
