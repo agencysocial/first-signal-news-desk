@@ -3162,7 +3162,22 @@ function submitToHeyGen(cid) {{
     return (document.getElementById('vid-script-'+i+'-'+cid)||{{}}).value||'';
   }}).filter(Boolean).join('\\n\\n');
   if(!script) {{ alert('Generate the script first.'); return; }}
+  var reelsDesc    = (document.getElementById('vid-reels-'+cid)||{{}}).value||'';
+  var firstComment = (document.getElementById('vid-first-comment-'+cid)||{{}}).value||'';
+  var poll         = (document.getElementById('vid-poll-'+cid)||{{}}).value||'';
+  var avatar       = (document.getElementById('vid-avatar-'+cid)||{{}}).value||'';
+  var title        = (document.getElementById('vid-title-'+cid)||{{}}).value||'';
+  // HeyGen payload (ready to POST when API key is wired)
+  var payload = {{
+    script: script,
+    reels_description: reelsDesc,
+    first_comment: firstComment,
+    poll: poll,
+    avatar_id: avatar,
+    title: title
+  }};
   if(st) st.textContent='HeyGen API not yet connected — API key coming tomorrow.';
+  console.log('HeyGen payload ready:', payload);
 }}
 function suggestMemeText(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
