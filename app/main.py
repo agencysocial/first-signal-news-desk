@@ -188,7 +188,20 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
     if brand_slug == "cathy_talk":
         logo_path = static_dir / ("cathy_talk_logo.png" if is_light_bg else "cathy_talk_logo_white.png")
     elif brand_slug == "the_american":
-        # No logo yet — skip stamping entirely, return image as-is
+        # No logo image yet — stamp "THE AMERICAN" as text watermark at top-left
+        from PIL import ImageDraw as _ImageDraw, ImageFont as _ImageFont
+        draw = _ImageDraw.Draw(card)
+        font_size = max(28, w // 22)
+        try:
+            font = _ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
+        except Exception:
+            font = _ImageFont.load_default()
+        text = "THE AMERICAN"
+        # Drop shadow for legibility on any background
+        shadow_offset = max(1, font_size // 18)
+        draw.text((MARGIN + shadow_offset, MARGIN + shadow_offset), text, font=font, fill=(0, 0, 0, 160))
+        # White text
+        draw.text((MARGIN, MARGIN), text, font=font, fill=(255, 255, 255, 210))
         out = _PILImage.new("RGB", card.size, (0, 0, 0))
         out.paste(card, mask=card.split()[3])
         card.close()
