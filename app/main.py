@@ -4844,3 +4844,74 @@ async def pipeline_queue_generate_meme(
 
     background_tasks.add_task(_run_meme)
     return JSONResponse({"ok": True, "msg": "Meme card generating"})
+
+
+# ── Video Package Generation ─────────────────────────────────────────────────
+
+@app.post("/pipeline-queue/story/{cid}/generate-video-package")
+async def pipeline_queue_generate_video_package(
+    cid: str, request: Request, user: dict = Depends(require_user),
+):
+    """Generate a full video package (script, reels description, first comment, poll) via AI."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    form = await request.form()
+    headline   = str(form.get("headline", "")).strip()
+    scene      = str(form.get("scene", "")).strip()
+    brand_slug = str(form.get("brand_slug", "first_signal")).strip()
+
+    if not headline:
+        item = _queue_item_for(int(cid))
+        if item:
+            headline = (item.get("draft") or {}).get("headline") or item.get("text", "")
+
+    key = _get_anthropic_key()
+    if not key:
+        return JSONResponse({"error": "ANTHROPIC_API_KEY not configured"}, status_code=500)
+
+    system_prompt = (
+        "You are a conservative America First social media video producer. "
+        "You write punchy, direct, engaging scripts for AI avatar videos (60-90 seconds total). "
+        "Voice: clear, authoritative, passionate. No em-dashes. No filler words. "
+        "Every line should feel like it was spoken by a confident host who has done their homework."
+    )
+    user_prompt = f"""Write a complete video package for this story/headline:
+
+HEADLINE: {headline}
+SCENE CONTEXT: {scene or "US political news"}
+
+Return ONLY valid JSON with these exact keys:
+{{
+  "title": "short punchy video title (8 words max)",
+  "script_1": "Hook section — 2-3 sentences, 5-10 seconds of speech. Open with the most shocking or compelling fact.",
+  "script_2": "Context section — 3-4 sentences, 10-15 seconds. Who, what, when, where.",
+  "script_3": "The Real Story section — 4-6 sentences, 15-20 seconds. The angle mainstream media ignores.",
+  "script_4": "Impact section — 2-3 sentences, 10-15 seconds. Why this matters to everyday Americans.",
+  "script_5": "Call to Action section — 1-2 sentences, 5-8 seconds. Drive comment or share.",
+  "reels_desc": "2-3 line Reels caption. Punchy. No hashtags.",
+  "first_comment": "5-15 word first comment that invites replies.",
+  "poll": "Short yes/no poll question under 15 words."
+}}"""
+
+    try:
+        import anthropic as _anthropic
+        client = _anthropic.Anthropic(api_key=key)
+        msg = client.messages.create(
+            model="claude-sonnet-4-5",
+            max_tokens=1500,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        raw = msg.content[0].text.strip()
+        # Strip markdown code fences if present
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        data = json.loads(raw.strip())
+        return JSONResponse(data)
+    except json.JSONDecodeError as exc:
+        return JSONResponse({"error": f"AI returned invalid JSON: {exc}"}, status_code=500)
+    except Exception as exc:
+        logger.error("generate-video-package %s: %s", cid, exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)

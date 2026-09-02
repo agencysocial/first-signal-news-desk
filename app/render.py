@@ -2663,7 +2663,22 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
       </div>
     </div>
 
-    <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
+    <!-- Tab bar -->
+    <div style="display:flex;gap:0;margin-bottom:0;border-bottom:2px solid #1a1f2b">
+      <button type="button" id="tab-btn-imgcard-{cid}" onclick="wsTab('{cid}','imgcard')"
+        style="padding:8px 16px;font-size:12px;font-weight:600;background:transparent;border:none;border-bottom:2px solid #2563eb;color:#60a5fa;cursor:pointer;margin-bottom:-2px">
+        &#128247; Image Card</button>
+      <button type="button" id="tab-btn-meme-{cid}" onclick="wsTab('{cid}','meme')"
+        style="padding:8px 16px;font-size:12px;font-weight:600;background:transparent;border:none;border-bottom:2px solid transparent;color:#8b93a3;cursor:pointer;margin-bottom:-2px">
+        &#127867; Meme Card</button>
+      <button type="button" id="tab-btn-video-{cid}" onclick="wsTab('{cid}','video')"
+        style="padding:8px 16px;font-size:12px;font-weight:600;background:transparent;border:none;border-bottom:2px solid transparent;color:#8b93a3;cursor:pointer;margin-bottom:-2px">
+        &#127916; Video Package</button>
+    </div>
+
+    <!-- TAB: Image Card -->
+    <div id="tab-imgcard-{cid}" style="display:block">
+    <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:0 0 6px 6px;padding:14px;margin-bottom:16px">
       <div style="color:#c7cbd4;font-size:13px;font-weight:600;margin-bottom:10px">Draft</div>
       <div style="margin-bottom:10px">
         <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Headline (yellow image text)</label>
@@ -2718,8 +2733,11 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
       </div>
     </div>
 
-    <!-- Meme Card -->
-    <div style="background:#0d111a;border:1px solid #3a1055;border-radius:6px;padding:14px;margin-bottom:16px">
+    </div><!-- /tab-imgcard -->
+
+    <!-- TAB: Meme Card -->
+    <div id="tab-meme-{cid}" style="display:none">
+    <div style="background:#0d111a;border:1px solid #3a1055;border-radius:0 0 6px 6px;padding:14px;margin-bottom:16px">
       <div style="color:#c084fc;font-size:13px;font-weight:600;margin-bottom:10px">&#127867; Meme Card</div>
       <div style="display:grid;gap:8px;margin-bottom:8px">
         <div>
@@ -2765,8 +2783,105 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
         Generating (~60s) &mdash; image will appear in the <strong style="color:#9b7ab8">Image panel</strong> on the right when ready.
       </div>
     </div>
-
     {tobi_block}
+    </div><!-- /tab-meme -->
+
+    <!-- TAB: Video Package -->
+    <div id="tab-video-{cid}" style="display:none">
+    <div style="background:#0d111a;border:1px solid #1a2a1a;border-radius:0 0 6px 6px;padding:14px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div style="color:#4ade80;font-size:13px;font-weight:600">&#127916; Video Package</div>
+        <div style="display:flex;gap:6px">
+          <button type="button" onclick="genVideoPackage('{cid}')" id="vid-gen-btn-{cid}"
+            style="font-size:11px;padding:5px 14px;background:#0a1a0a;border:1px solid #16a34a;color:#4ade80;border-radius:4px;cursor:pointer;font-weight:600">
+            &#10024; Generate</button>
+          <button type="button" onclick="submitToHeyGen('{cid}')" id="vid-heygen-btn-{cid}"
+            style="font-size:11px;padding:5px 14px;background:#0a0a1a;border:1px solid #6366f1;color:#a5b4fc;border-radius:4px;cursor:pointer;font-weight:600"
+            title="HeyGen API — connect tomorrow">
+            &#127909; Send to HeyGen</button>
+        </div>
+      </div>
+      <span id="vid-gen-status-{cid}" style="font-size:11px;color:#4ade80;display:block;margin-bottom:10px"></span>
+
+      <!-- Avatar Choice -->
+      <div style="margin-bottom:12px">
+        <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Avatar</label>
+        <select id="vid-avatar-{cid}" style="width:100%;padding:8px;background:#060910;border:1px solid #2a3555;color:#c0c8d8;border-radius:4px;font-size:13px">
+          <option value="">— Select avatar —</option>
+          <option value="avatar_1">Avatar 1 (placeholder)</option>
+          <option value="avatar_2">Avatar 2 (placeholder)</option>
+        </select>
+        <div style="font-size:10px;color:#3a4055;margin-top:3px">Avatars will populate from HeyGen once API is connected.</div>
+      </div>
+
+      <!-- Video Title -->
+      <div style="margin-bottom:12px">
+        <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Video Title</label>
+        <input type="text" id="vid-title-{cid}" placeholder="Short punchy title for the video"
+          style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#e6e8ec;font-size:13px;border-radius:4px;padding:8px">
+      </div>
+
+      <!-- Script — 5 sections -->
+      <div style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px">Script</label>
+          <span style="font-size:10px;color:#3a4055">5 sections · speak each one to camera</span>
+        </div>
+        <div style="display:grid;gap:6px">
+          <div>
+            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">&#9312; Hook (5-10 sec)</div>
+            <textarea id="vid-script-1-{cid}" rows="2" placeholder="Open with the hook — make them stop scrolling."
+              style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">&#9313; Context (10-15 sec)</div>
+            <textarea id="vid-script-2-{cid}" rows="2" placeholder="What happened, who is involved, when."
+              style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">&#9314; The Real Story (15-20 sec)</div>
+            <textarea id="vid-script-3-{cid}" rows="3" placeholder="The deeper angle — what the mainstream won't say."
+              style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">&#9315; Impact / What It Means (10-15 sec)</div>
+            <textarea id="vid-script-4-{cid}" rows="2" placeholder="Why this matters to the viewer — make it personal."
+              style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+          </div>
+          <div>
+            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">&#9316; Call to Action (5-8 sec)</div>
+            <textarea id="vid-script-5-{cid}" rows="2" placeholder="Drive the comment, share, or follow."
+              style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reels Description -->
+      <div style="margin-bottom:12px">
+        <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Reels / Short Description</label>
+        <textarea id="vid-reels-{cid}" rows="3" placeholder="Caption for the Reel — 2-3 punchy lines, no hashtags."
+          style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+      </div>
+
+      <!-- First Comment -->
+      <div style="margin-bottom:12px">
+        <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">First Comment (5-15 words)</label>
+        <input type="text" id="vid-first-comment-{cid}" placeholder="e.g. Drop your thoughts below — this is just the beginning."
+          style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px">
+      </div>
+
+      <!-- Poll Question -->
+      <div style="margin-bottom:4px">
+        <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Short Poll Question</label>
+        <input type="text" id="vid-poll-{cid}" placeholder="e.g. Should Congress investigate this? Yes or No?"
+          style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px">
+      </div>
+
+      <!-- HeyGen status -->
+      <div id="vid-heygen-status-{cid}" style="font-size:11px;color:#a5b4fc;margin-top:10px"></div>
+    </div>
+    </div><!-- /tab-video -->
+
   </div>
 
   <!-- RIGHT -->
@@ -3003,6 +3118,52 @@ function regenImage(cid) {{
 (function() {{
   if ({str(img_status in ("generating", "generating_variants")).lower()}) {{ _startImagePoll('{cid}'); }}
 }})();
+function wsTab(cid, tab) {{
+  var tabs = ['imgcard','meme','video'];
+  tabs.forEach(function(t) {{
+    var panel = document.getElementById('tab-'+t+'-'+cid);
+    var btn   = document.getElementById('tab-btn-'+t+'-'+cid);
+    if (!panel || !btn) return;
+    var active = (t === tab);
+    panel.style.display = active ? 'block' : 'none';
+    btn.style.borderBottomColor = active ? '#2563eb' : 'transparent';
+    btn.style.color = active ? '#60a5fa' : '#8b93a3';
+  }});
+}}
+function genVideoPackage(cid) {{
+  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
+  var btn   = document.getElementById('vid-gen-btn-'+cid);
+  var st    = document.getElementById('vid-gen-status-'+cid);
+  if(btn) {{ btn.innerHTML='Generating...'; btn.disabled=true; }}
+  if(st)  st.textContent='Writing video package...';
+  fetch('/pipeline-queue/story/'+cid+'/generate-video-package',{{method:'POST',
+    headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:'headline='+encodeURIComponent(hl)+'&scene='+encodeURIComponent(scene)+'&brand_slug='+encodeURIComponent(brand)
+  }}).then(function(r){{ return r.json(); }}).then(function(d){{
+    if(btn) {{ btn.innerHTML='&#10024; Generate'; btn.disabled=false; }}
+    if(d.error) {{ if(st) st.textContent='Error: '+d.error; return; }}
+    if(st) st.textContent='Done!'; setTimeout(function(){{ if(st) st.textContent=''; }},3000);
+    var fields = {{'title':'vid-title','script_1':'vid-script-1','script_2':'vid-script-2',
+      'script_3':'vid-script-3','script_4':'vid-script-4','script_5':'vid-script-5',
+      'reels_desc':'vid-reels','first_comment':'vid-first-comment','poll':'vid-poll'}};
+    Object.keys(fields).forEach(function(k){{
+      if(d[k]) {{ var el=document.getElementById(fields[k]+'-'+cid); if(el) el.value=d[k]; }}
+    }});
+  }}).catch(function(e){{
+    if(btn) {{ btn.innerHTML='&#10024; Generate'; btn.disabled=false; }}
+    if(st)  st.textContent='Error: '+e.message;
+  }});
+}}
+function submitToHeyGen(cid) {{
+  var st = document.getElementById('vid-heygen-status-'+cid);
+  var script = [1,2,3,4,5].map(function(i){{
+    return (document.getElementById('vid-script-'+i+'-'+cid)||{{}}).value||'';
+  }}).filter(Boolean).join('\n\n');
+  if(!script) {{ alert('Generate the script first.'); return; }}
+  if(st) st.textContent='HeyGen API not yet connected — API key coming tomorrow.';
+}}
 function suggestMemeText(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
   var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
