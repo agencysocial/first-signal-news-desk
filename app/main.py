@@ -4243,7 +4243,10 @@ def _serve_image_for_brand(cid: str, brand_slug: str):
         c = session.get(StoryCluster, int(cid))
         if not c or not c.fsn_state:
             return Response(status_code=404)
-        fsn = json.loads(c.fsn_state)
+        try:
+            fsn = json.loads(c.fsn_state)
+        except Exception:
+            return Response(status_code=404)
     finally:
         session.close()
 

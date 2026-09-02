@@ -2796,8 +2796,8 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
             style="font-size:11px;padding:5px 14px;background:#0a1a0a;border:1px solid #16a34a;color:#4ade80;border-radius:4px;cursor:pointer;font-weight:600">
             &#10024; Generate</button>
           <button type="button" onclick="submitToHeyGen('{cid}')" id="vid-heygen-btn-{cid}"
-            style="font-size:11px;padding:5px 14px;background:#0a0a1a;border:1px solid #6366f1;color:#a5b4fc;border-radius:4px;cursor:pointer;font-weight:600"
-            title="HeyGen API — connect tomorrow">
+            style="font-size:11px;padding:5px 14px;background:#0a0a1a;border:1px solid #3a3a5a;color:#555580;border-radius:4px;cursor:not-allowed;font-weight:600;opacity:0.5"
+            title="HeyGen API not yet connected — coming soon" disabled>
             &#127909; Send to HeyGen</button>
         </div>
       </div>
