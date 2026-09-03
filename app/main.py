@@ -198,25 +198,32 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
             font = _ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
         except Exception:
             font = _ImageFont.load_default()
+        # Position badge inset from card edges (matching sample)
+        bx, by = MARGIN, MARGIN
         # Pentagon: rectangle with angled bottom-right notch (pennant shape)
         cut = badge_h // 4
-        pentagon = [(0, 0), (badge_w, 0), (badge_w, badge_h - cut), (badge_w - cut, badge_h), (0, badge_h)]
+        pentagon = [
+            (bx, by), (bx + badge_w, by),
+            (bx + badge_w, by + badge_h - cut),
+            (bx + badge_w - cut, by + badge_h),
+            (bx, by + badge_h)
+        ]
         draw.polygon(pentagon, fill=(7, 29, 56, 250))  # #071D38 navy
         # Heritage red accent line beneath text (above bottom edge)
         accent_h = max(3, badge_h // 18)
-        accent_y = badge_h - cut - accent_h - 4
-        draw.rectangle([(0, accent_y), (badge_w - cut, accent_y + accent_h)], fill=(181, 33, 37, 250))  # #B52125
+        accent_y = by + badge_h - cut - accent_h - 4
+        draw.rectangle([(bx, accent_y), (bx + badge_w - cut, accent_y + accent_h)], fill=(181, 33, 37, 250))  # #B52125
         # Center "THE" and "AMERICAN" text inside the badge
-        text_area_h = accent_y  # usable height above the red rule
+        text_area_h = accent_y - by
         total_text_h = font_size * 2 + 4
-        text_y = max(8, (text_area_h - total_text_h) // 2)
+        text_y = by + max(8, (text_area_h - total_text_h) // 2)
         for i, word in enumerate(["THE", "AMERICAN"]):
             try:
                 bbox = font.getbbox(word)
                 tw = bbox[2] - bbox[0]
             except Exception:
                 tw = len(word) * font_size * 0.6
-            tx = max(6, (badge_w - cut // 2 - tw) // 2)
+            tx = bx + max(6, (badge_w - cut // 2 - int(tw)) // 2)
             draw.text((tx, text_y + i * (font_size + 4)), word, font=font, fill=(248, 241, 226, 245))  # #F8F1E2
         out = _PILImage.new("RGB", card.size, (0, 0, 0))
         out.paste(card, mask=card.split()[3])
