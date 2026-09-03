@@ -188,28 +188,36 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
     if brand_slug == "cathy_talk":
         logo_path = static_dir / ("cathy_talk_logo.png" if is_light_bg else "cathy_talk_logo_white.png")
     elif brand_slug == "the_american":
-        # Stamp navy pennant badge "THE / AMERICAN" at top-left
+        # Stamp navy pennant badge "THE / AMERICAN" at top-left — ~19% canvas width
         from PIL import ImageDraw as _ImageDraw, ImageFont as _ImageFont
         draw = _ImageDraw.Draw(card)
-        # Badge dimensions
-        badge_w = max(110, w // 9)
-        badge_h = max(72, h // 11)
-        font_size = max(14, badge_w // 8)
+        badge_w = max(170, int(w * 0.19))
+        badge_h = max(100, int(h * 0.13))
+        font_size = max(18, badge_w // 7)
         try:
             font = _ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
         except Exception:
             font = _ImageFont.load_default()
-        # Navy pennant polygon: rectangle with angled bottom-right cut
-        cut = badge_h // 3
+        # Pentagon: rectangle with angled bottom-right notch (pennant shape)
+        cut = badge_h // 4
         pentagon = [(0, 0), (badge_w, 0), (badge_w, badge_h - cut), (badge_w - cut, badge_h), (0, badge_h)]
-        draw.polygon(pentagon, fill=(7, 29, 56, 245))  # deep navy #071D38
-        # Heritage red accent line at bottom of badge
-        accent_y = badge_h - 4
-        draw.rectangle([(0, accent_y), (badge_w - cut, badge_h)], fill=(181, 33, 37, 245))  # #B52125
-        # White text: "THE" then "AMERICAN"
-        pad_x, pad_y = 10, 8
-        draw.text((pad_x, pad_y), "THE", font=font, fill=(255, 255, 255, 240))
-        draw.text((pad_x, pad_y + font_size + 3), "AMERICAN", font=font, fill=(255, 255, 255, 240))
+        draw.polygon(pentagon, fill=(7, 29, 56, 250))  # #071D38 navy
+        # Heritage red accent line beneath text (above bottom edge)
+        accent_h = max(3, badge_h // 18)
+        accent_y = badge_h - cut - accent_h - 4
+        draw.rectangle([(0, accent_y), (badge_w - cut, accent_y + accent_h)], fill=(181, 33, 37, 250))  # #B52125
+        # Center "THE" and "AMERICAN" text inside the badge
+        text_area_h = accent_y  # usable height above the red rule
+        total_text_h = font_size * 2 + 4
+        text_y = max(8, (text_area_h - total_text_h) // 2)
+        for i, word in enumerate(["THE", "AMERICAN"]):
+            try:
+                bbox = font.getbbox(word)
+                tw = bbox[2] - bbox[0]
+            except Exception:
+                tw = len(word) * font_size * 0.6
+            tx = max(6, (badge_w - cut // 2 - tw) // 2)
+            draw.text((tx, text_y + i * (font_size + 4)), word, font=font, fill=(248, 241, 226, 245))  # #F8F1E2
         out = _PILImage.new("RGB", card.size, (0, 0, 0))
         out.paste(card, mask=card.split()[3])
         card.close()
@@ -794,8 +802,8 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"  Stars and rules are DEEP NAVY only, NOT red. Ribbon is large enough to pop clearly.\n\n"
             f"  MAIN HEADLINE (centered, below category row with clear vertical spacing):\n"
             f"  \"{headline}\" in OSWALD BOLD 700, ALL CAPS, deep navy (#071D38). "
-            f"  CENTER-ALIGNED. Very large and dominant — approximately 60-70pt. "
-            f"  Line-height ~0.95. Letter-spacing slightly tight (-0.5%). "
+            f"  CENTER-ALIGNED. EXTREMELY LARGE — approximately 75-90pt, the single most dominant element on the card. "
+            f"  Line-height ~0.92. Letter-spacing slightly tight (-0.5%). "
             f"  Wraps over 3-4 lines based on natural phrase breaks. "
             f"  No subtitle, no secondary copy, no URL, no CTA below the headline.\n\n"
             f"CRITICAL RULES: "
