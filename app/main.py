@@ -188,20 +188,28 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
     if brand_slug == "cathy_talk":
         logo_path = static_dir / ("cathy_talk_logo.png" if is_light_bg else "cathy_talk_logo_white.png")
     elif brand_slug == "the_american":
-        # No logo image yet — stamp "THE AMERICAN" as text watermark at top-left
+        # Stamp navy pennant badge "THE / AMERICAN" at top-left
         from PIL import ImageDraw as _ImageDraw, ImageFont as _ImageFont
         draw = _ImageDraw.Draw(card)
-        font_size = max(20, w // 30)
+        # Badge dimensions
+        badge_w = max(110, w // 9)
+        badge_h = max(72, h // 11)
+        font_size = max(14, badge_w // 8)
         try:
             font = _ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
         except Exception:
             font = _ImageFont.load_default()
-        text = "THE AMERICAN"
-        # Drop shadow for legibility on any background
-        shadow_offset = max(1, font_size // 18)
-        draw.text((MARGIN + shadow_offset, MARGIN + shadow_offset), text, font=font, fill=(0, 0, 0, 160))
-        # White text
-        draw.text((MARGIN, MARGIN), text, font=font, fill=(255, 255, 255, 210))
+        # Navy pennant polygon: rectangle with angled bottom-right cut
+        cut = badge_h // 3
+        pentagon = [(0, 0), (badge_w, 0), (badge_w, badge_h - cut), (badge_w - cut, badge_h), (0, badge_h)]
+        draw.polygon(pentagon, fill=(11, 31, 58, 245))  # deep navy
+        # Crimson accent line at bottom of badge
+        accent_y = badge_h - 4
+        draw.rectangle([(0, accent_y), (badge_w - cut, badge_h)], fill=(178, 34, 52, 245))
+        # White text: "THE" then "AMERICAN"
+        pad_x, pad_y = 10, 8
+        draw.text((pad_x, pad_y), "THE", font=font, fill=(255, 255, 255, 240))
+        draw.text((pad_x, pad_y + font_size + 3), "AMERICAN", font=font, fill=(255, 255, 255, 240))
         out = _PILImage.new("RGB", card.size, (0, 0, 0))
         out.paste(card, mask=card.split()[3])
         card.close()
@@ -567,22 +575,25 @@ _CATHYTALK_LOGO_WHITE_URL = "/static/cathy_talk_logo_white.png"  # all-white —
 
 # The American — American history, icons, presidents, inventors, nostalgia
 _THEAMERICAN_BRAND_COLORS = json.dumps({
-    "color_footer":     "#011a3b",   # Navy
-    "color_headline":   "#C9A84C",   # Antique Gold
-    "color_tag_bg":     "#B22234",   # Heritage Red
+    "color_footer":     "#E8D5A3",   # Aged parchment
+    "color_headline":   "#0B1F3A",   # Deep navy (headline text on parchment)
+    "color_tag_bg":     "#8B1820",   # Deep crimson pill
     "color_tag_text":   "#FFFFFF",
-    "color_text":       "#F5ECD7",   # Parchment
-    "color_rule":       "#C9A84C",   # Gold divider rule above footer
+    "color_text":       "#0B1F3A",   # Navy body text
+    "color_rule":       "#0B1F3A",   # Navy star rules
+    "color_badge":      "#0B1F3A",   # Navy pennant badge
+    "color_badge_accent": "#B22234", # Crimson badge accent line
 })
 _THEAMERICAN_IMAGE_SETTINGS = json.dumps({
     "aspect_ratio":       "4:5",
     "resolution":         "1K",
     "output_format":      "png",
     "watermark_text":     "The American",
-    "watermark_position": "top_left",
-    "headline_font":      "Oswald Bold",
-    "tag_font":           "Oswald Bold condensed",
-    "footer_style":       "solid navy footer, solid antique gold rule divider, no footer watermark text",
+    "watermark_position": "top_left_pennant",
+    "headline_font":      "Impact / Oswald ExtraBold condensed",
+    "tag_font":           "Oswald Bold",
+    "footer_style":       "torn-paper-edge parchment footer, centered star-rule tag row, massive navy headline",
+    "photo_style":        "sepia or black-and-white historical documentary",
 })
 _THEAMERICAN_VOICE = (
     "You are The American — a celebration of American history, icons, presidents, inventors, "
@@ -717,6 +728,8 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             "#011A3B": "deep navy blue",
             "#C9A84C": "antique gold",
             "#B22234": "heritage red",
+            "#8B1820": "deep crimson",
+            "#E8D5A3": "aged parchment cream",
             "#F5ECD7": "warm parchment cream",
         }
         return mapping.get(h.upper() if h else "", f"the color {h}")
@@ -751,28 +764,33 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"{aspect} vertical portrait format, photorealistic, sharp, magazine-quality."
         )
 
-    # The American — navy footer, solid antique gold rule, white Oswald Bold headline
+    # The American — torn-paper parchment style
     if brand_slug == "the_american":
         return (
-            f"A {aspect} vertical portrait American history and heritage share card with TWO ZONES — strictly no overlap.\n\n"
-            f"ZONE 1 — UPPER 63% (photo area): {scene}.{notes_clause}{season_clause} "
-            f"Dramatic, cinematic, high-contrast photography — think Life Magazine covers, historic documentary photography. "
-            f"Deep shadows, strong directional light, bold composition. Scroll-stopping imagery that commands attention. {_ANTI_SLOP}\n\n"
-            f"ZONE 2 — LOWER 37% (footer panel): A SOLID FLAT DEEP NAVY BLUE rectangle spanning the full "
-            f"width at the bottom of the card. Completely opaque, ZERO transparency, ZERO gradient, "
-            f"ZERO bleed from the photo above. "
-            f"At the very top edge of this navy panel: a SOLID ANTIQUE GOLD horizontal line, 3px tall, spanning the full width edge to edge — NOT a gradient, solid color all the way across. "
-            f"Below this gold line, leave 10-12px of empty navy space before any text begins. "
-            f"Inside the navy panel, left-aligned with consistent left padding:\n"
-            f"  - FIRST LINE (after the 10-12px gap below the gold rule): a solid HERITAGE RED rounded rectangle pill "
-            f"containing the text \"{tag}\" in bold white uppercase letters. Font size ~18-20pt.\n"
-            f"  - DIRECTLY BELOW THE PILL: the headline \"{headline}\" in BOLD UPPERCASE Oswald or condensed sans-serif. "
-            f"Font size: 48-58pt — large, dominant, fills the panel width. "
-            f"Color: SOLID BRIGHT WHITE — clean, sharp, maximum legibility against the navy. NOT cream, NOT yellow, pure white.\n\n"
-            f"CRITICAL RULES: No watermark or page name text in the footer. "
-            f"Flat 2D text only — no drop shadows, no outer glows. "
-            f"No logos, no URLs, no social handles in the image. "
-            f"{aspect} vertical portrait format, photorealistic, sharp, magazine-quality."
+            f"A {aspect} vertical portrait American history and heritage share card. TWO ZONES, no overlap or bleed.\n\n"
+            f"ZONE 1 — UPPER 57% (photo area): {scene}.{notes_clause}{season_clause} "
+            f"Dramatic, high-contrast SEPIA-TONED or BLACK-AND-WHITE historical photography — "
+            f"Life Magazine / AP wire-service editorial style from the 1940s-1960s. "
+            f"Deep shadows, strong directional light, bold composition. {_ANTI_SLOP}\n\n"
+            f"TRANSITION — TORN PAPER EDGE: The photo area ends at the bottom with a DRAMATIC HAND-TORN PAPER EDGE. "
+            f"Rough, irregular jagged peaks and valleys like a newspaper page torn by hand — NOT a smooth wave, NOT a straight line. "
+            f"A thin dark navy shadow line (2-3px) traces the very top of the torn edge. "
+            f"Below the tear the parchment color begins immediately.\n\n"
+            f"ZONE 2 — LOWER 43% (footer panel): AGED PARCHMENT / OLD NEWSPAPER texture — "
+            f"warm cream color, subtle horizontal paper grain lines, looks like 1930s newsprint. "
+            f"Completely opaque. Inside the parchment panel:\n"
+            f"  - TAG ROW (just below the torn edge): CENTERED. "
+            f"A solid dark navy horizontal rule line extends from the left edge, ending with a small dark navy star ★. "
+            f"Center: a solid DEEP CRIMSON rounded rectangle pill with the text \"{tag}\" in BOLD WHITE UPPERCASE, "
+            f"wide letter-spacing, font ~13pt. "
+            f"Then a small dark navy star ★, then a solid dark navy horizontal rule to the right edge. "
+            f"The stars and rules are DARK NAVY — NOT red.\n"
+            f"  - HEADLINE: \"{headline}\" in BOLD UPPERCASE ultra-condensed sans-serif (Impact or Oswald ExtraBold style). "
+            f"Font size: VERY LARGE — 60-70pt, dominant, fills nearly the full panel width. "
+            f"Color: DEEP DARK NAVY BLUE. Left-aligned, 18px left padding. Wraps over 3-4 lines.\n\n"
+            f"CRITICAL RULES: No watermark text, no social handles, no URLs in the image. "
+            f"Flat 2D text only — no drop shadows, no glows. "
+            f"{aspect} vertical portrait, sharp, photorealistic photo zone."
         )
 
     # Default layout (First Signal News and future brands)
