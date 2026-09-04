@@ -264,6 +264,35 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
     return out_path
 
 
+def _stamp_attribution(image_path: Path, text: str) -> Path:
+    """Stamp small white attribution text in the top-right corner. No-op if text is blank."""
+    if not text or not text.strip():
+        return image_path
+    from PIL import Image as _PILImage2, ImageDraw as _ImageDraw2, ImageFont as _ImageFont2
+    img = _PILImage2.open(image_path).convert("RGB")
+    draw = _ImageDraw2.Draw(img)
+    w, h = img.size
+    font_size = max(16, w // 55)
+    try:
+        font = _ImageFont2.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+    except Exception:
+        font = _ImageFont2.load_default()
+    pad = max(10, w // 80)
+    try:
+        bbox = font.getbbox(text)
+        tw = bbox[2] - bbox[0]
+    except Exception:
+        tw = len(text) * font_size * 0.55
+    tx = w - int(tw) - pad
+    ty = pad
+    # subtle shadow for legibility on any background
+    draw.text((tx + 1, ty + 1), text, font=font, fill=(0, 0, 0, 120))
+    draw.text((tx, ty), text, font=font, fill=(255, 255, 255, 200))
+    img.save(str(image_path), "JPEG", quality=88, optimize=True)
+    img.close()
+    return image_path
+
+
 def _kie_submit(prompt: str, key: str, retries: int = 3) -> str:
     body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": "4:5", "resolution": "1K"}}
     last_exc: Exception = RuntimeError("Kie submit: no attempts made")
@@ -2405,7 +2434,7 @@ def pipeline_queue_batch_status(user: dict = Depends(require_user)):
     })
 
 
-def _generate_one_image(cid: str, key: str, item: dict, notes: str = "") -> None:
+def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribution: str = "") -> None:
     """Generate image for a single cluster+brand, stamp logo, and update DB. Runs in a thread."""
     draft = item.get("draft") or {}
     headline = draft.get("headline") or item.get("text") or ""
@@ -2432,6 +2461,7 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "") -> None
         del r
         stamped_path = _stamp_logo(_raw, tmp_file_id, brand_slug=brand_slug_for_gen)
         del _raw
+        _stamp_attribution(stamped_path, attribution)
 
         # Upload stamped image to Supabase Storage for permanent hosting (survives redeploys)
         supabase_url = _supabase_storage_upload(stamped_path, cid, brand_slug_for_gen)
@@ -4180,8 +4210,9 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         headline   = str(form.get("headline", "")).strip()
         tag        = str(form.get("tag", "")).strip()
         scene      = str(form.get("scene", "")).strip()
-        notes      = str(form.get("notes", "")).strip()
-        brand_slug = str(form.get("brand_slug", "")).strip() or None
+        notes       = str(form.get("notes", "")).strip()
+        attribution = str(form.get("attribution", "")).strip()
+        brand_slug  = str(form.get("brand_slug", "")).strip() or None
 
         items, item = _resolve_queue_item(cluster_id)
         if not item:
@@ -4236,7 +4267,7 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         if not key:
             return JSONResponse({"error": "KIE_AI_API_KEY not set on server"}, status_code=400)
 
-        background_tasks.add_task(_generate_one_image, str(cluster_id), key, item, notes)
+        background_tasks.add_task(_generate_one_image, str(cluster_id), key, item, notes, attribution)
         return JSONResponse({"ok": True})
     except Exception as exc:
         logger.error("regenerate-image %s: %s", cid, exc)
@@ -4299,9 +4330,11 @@ async def pipeline_queue_story_set_image(cid: str, request: Request, user: dict 
         r = httpx.get(kie_url, timeout=60, follow_redirects=True)
         r.raise_for_status()
         item = _queue_item_for(cluster_id)
-        brand_slug = str(form.get("brand_slug", "")).strip() or (item or {}).get("brand_slug") or "first_signal"
+        brand_slug  = str(form.get("brand_slug", "")).strip() or (item or {}).get("brand_slug") or "first_signal"
+        attribution = str(form.get("attribution", "")).strip()
         tmp_file_id = f"{cid}__{brand_slug}"
         stamped_path = _stamp_logo(r.content, tmp_file_id, brand_slug=brand_slug)
+        _stamp_attribution(stamped_path, attribution)
         supabase_url = _supabase_storage_upload(stamped_path, cid, brand_slug)
         # Swap history inside brand_images[brand_slug]
         brand_images = dict((item or {}).get("brand_images") or {})
@@ -4570,7 +4603,7 @@ def api_brands(user: dict = Depends(require_user)):
 
 # ── 3 Image Variants ───────────────────────────────────────────────────────────
 
-def _generate_variant(cid: str, key: str, prompt: str, brand_slug: str, variant_idx: int) -> dict:
+def _generate_variant(cid: str, key: str, prompt: str, brand_slug: str, variant_idx: int, attribution: str = "") -> dict:
     """Generate one image variant for a cluster. Returns dict with kie_url or error."""
     try:
         task_id = _kie_submit(prompt, key)
@@ -4582,6 +4615,7 @@ def _generate_variant(cid: str, key: str, prompt: str, brand_slug: str, variant_
         del r
         stamped_path = _stamp_logo(_raw, tmp_id, brand_slug=brand_slug)
         del _raw
+        _stamp_attribution(stamped_path, attribution)
         supabase_url = _supabase_storage_upload(stamped_path, f"{cid}_v{variant_idx}", brand_slug)
         served_url = f"/pipeline-queue/image/{cid}/{brand_slug}?v={variant_idx}&t={int(time.time())}"
         return {"ok": True, "kie_url": kie_url, "supabase_url": supabase_url or "", "served_url": served_url, "variant": variant_idx}
@@ -4589,14 +4623,14 @@ def _generate_variant(cid: str, key: str, prompt: str, brand_slug: str, variant_
         return {"ok": False, "error": str(exc), "variant": variant_idx}
 
 
-def _generate_variants_background(cid: str, key: str, prompts: list[str], brand_slug: str) -> None:
+def _generate_variants_background(cid: str, key: str, prompts: list[str], brand_slug: str, attribution: str = "") -> None:
     """Generate 3 image variants in parallel. Stores results in fsn_state.brand_images[slug].variants."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     _update_cluster_fsn(cid, image_gen_status="generating_variants")
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         futures = {
-            pool.submit(_generate_variant, cid, key, prompt, brand_slug, idx): idx
+            pool.submit(_generate_variant, cid, key, prompt, brand_slug, idx, attribution): idx
             for idx, prompt in enumerate(prompts)
         }
         variants = []
@@ -4654,6 +4688,7 @@ async def pipeline_queue_story_generate_variants(
     scene      = str(form.get("scene", "")).strip()
     brand_slug = str(form.get("brand_slug", "first_signal")).strip()
     notes      = str(form.get("notes", "")).strip()
+    attribution = str(form.get("attribution", "")).strip()
     template   = str(form.get("template", "standard")).strip()
 
     key = _get_kie_key()
@@ -4682,7 +4717,7 @@ async def pipeline_queue_story_generate_variants(
         prompts.append(p)
 
     _update_cluster_fsn(cluster_id, image_gen_status="generating_variants")
-    background_tasks.add_task(_generate_variants_background, str(cluster_id), key, prompts, brand_slug)
+    background_tasks.add_task(_generate_variants_background, str(cluster_id), key, prompts, brand_slug, attribution)
     return JSONResponse({"ok": True, "msg": "3 variants generating — check back in ~2 min"})
 
 
@@ -4894,10 +4929,11 @@ async def pipeline_queue_generate_meme(
         return JSONResponse({"error": "invalid id"}, status_code=400)
     cluster_id = int(cid)
     form = await request.form()
-    headline   = str(form.get("headline", "")).strip()
-    top_text   = str(form.get("top_text", "")).strip()
-    scene      = str(form.get("scene", "")).strip()
-    brand_slug = str(form.get("brand_slug", "first_signal")).strip()
+    headline    = str(form.get("headline", "")).strip()
+    top_text    = str(form.get("top_text", "")).strip()
+    scene       = str(form.get("scene", "")).strip()
+    brand_slug  = str(form.get("brand_slug", "first_signal")).strip()
+    attribution = str(form.get("attribution", "")).strip()
     notes      = str(form.get("notes", "")).strip()
 
     key = _get_kie_key()
@@ -4962,6 +4998,7 @@ async def pipeline_queue_generate_meme(
             tmp_id = f"{cluster_id}__{brand_slug}__meme"
             stamped_path = _stamp_logo(_raw, tmp_id, brand_slug=brand_slug)
             del _raw
+            _stamp_attribution(stamped_path, attribution)
             supabase_url = _supabase_storage_upload(stamped_path, f"{cluster_id}_meme", brand_slug)
             served_url = f"/pipeline-queue/image/{cluster_id}/{brand_slug}"
             # Store meme result inside brand_images alongside regular image

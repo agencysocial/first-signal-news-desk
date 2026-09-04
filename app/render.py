@@ -2899,7 +2899,9 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
         </div>
       </div>
       <textarea id="img-notes-{cid}" placeholder="Optional notes — e.g. &quot;show a courtroom&quot;, &quot;darker mood&quot;, &quot;wide shot of Capitol&quot;" rows="2"
-        style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:6px;font-family:inherit;resize:vertical;margin-bottom:8px"></textarea>
+        style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:6px;font-family:inherit;resize:vertical;margin-bottom:6px"></textarea>
+      <input id="img-attribution-{cid}" type="text" placeholder="Attribution (top-right, small white text) — e.g. Image Created by AI"
+        style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:5px 6px;font-family:inherit;margin-bottom:8px">
 
       <div id="img-wrap-{cid}">{img_html}</div>
       <div id="img-status-{cid}" style="font-size:11px;color:#8b93a3;margin-top:4px">{"Generating... refresh in ~60s" if img_status in ("generating","generating_variants") else ""}</div>
@@ -3077,10 +3079,11 @@ function _startImagePoll(cid) {{
   _imgPollTimer2[cid]=setTimeout(poll,5000);
 }}
 function regenImage(cid) {{
-  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
-  var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
-  var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
-  var notes = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var hl          = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var tag         = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
+  var scene       = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var notes       = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var attribution = (document.getElementById('img-attribution-'+cid)||{{}}).value||'';
   var st    = document.getElementById('img-status-'+cid);
   var wrap  = document.getElementById('img-wrap-'+cid);
   function _showErr(msg) {{
@@ -3092,7 +3095,7 @@ function regenImage(cid) {{
   if (wrap) wrap.innerHTML='<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
   var brand=(document.getElementById('draft-brand-'+cid)||{{}}).value||(window._wsBrandDefault||'first_signal');
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)+'&attribution='+encodeURIComponent(attribution)
   }}).then(function(r){{
     if(!r.ok) return r.text().then(function(t){{ throw new Error('HTTP '+r.status+': '+t.slice(0,200)); }});
     return r.json();
@@ -3235,6 +3238,7 @@ function genMemeFromPanel(cid) {{
              || (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var brand   = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
   var notes   = (document.getElementById('meme-notes-'+cid)||{{}}).value||'';
+  var attribution = (document.getElementById('img-attribution-'+cid)||{{}}).value||'';
   var st      = document.getElementById('meme-status-'+cid);
   var note    = document.getElementById('meme-note-'+cid);
   var btn     = document.getElementById('meme-gen-btn-'+cid);
@@ -3248,6 +3252,7 @@ function genMemeFromPanel(cid) {{
       +'&scene='+encodeURIComponent(scene)
       +'&brand_slug='+encodeURIComponent(brand)
       +'&notes='+encodeURIComponent(notes)
+      +'&attribution='+encodeURIComponent(attribution)
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
     if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
@@ -3436,10 +3441,11 @@ function _startImagePoll(cid) {{
   _imgPollTimer[cid] = setTimeout(poll, 5000);
 }}
 function regenImage(cid) {{
-  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
-  var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
-  var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
-  var notes = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var hl          = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var tag         = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
+  var scene       = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var notes       = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var attribution = (document.getElementById('img-attribution-'+cid)||{{}}).value||'';
   var st    = document.getElementById('img-status-'+cid);
   var wrap  = document.getElementById('img-wrap-'+cid);
   function _showErr(msg) {{
@@ -3451,7 +3457,7 @@ function regenImage(cid) {{
   if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
   var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||(window._wsBrandDefault||'first_signal');
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)+'&attribution='+encodeURIComponent(attribution)
   }}).then(function(r){{
     if(!r.ok) return r.text().then(function(t){{ throw new Error('Server error '+r.status+': '+t.slice(0,200)); }});
     return r.json();
@@ -3510,6 +3516,7 @@ function genVariants(cid) {{
   var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
   var notes = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var attribution = (document.getElementById('img-attribution-'+cid)||{{}}).value||'';
   var st    = document.getElementById('img-status-'+cid);
   if(st) st.textContent = 'Generating 3 variants (~2 min)...';
   var wrap = document.getElementById('variants-wrap-'+cid);
@@ -3519,6 +3526,7 @@ function genVariants(cid) {{
     body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)
       +'&scene='+encodeURIComponent(scene)+'&brand_slug='+encodeURIComponent(brand)
       +'&notes='+encodeURIComponent(notes)
+      +'&attribution='+encodeURIComponent(attribution)
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
     if(st) st.textContent = d.msg||'Variants generating...';
@@ -3627,6 +3635,7 @@ function genMemeFromPanel(cid) {{
              || (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var brand   = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
   var notes   = (document.getElementById('meme-notes-'+cid)||{{}}).value||'';
+  var attribution = (document.getElementById('img-attribution-'+cid)||{{}}).value||'';
   var st      = document.getElementById('meme-status-'+cid);
   var note    = document.getElementById('meme-note-'+cid);
   var btn     = document.getElementById('meme-gen-btn-'+cid);
@@ -3640,6 +3649,7 @@ function genMemeFromPanel(cid) {{
       +'&scene='+encodeURIComponent(scene)
       +'&brand_slug='+encodeURIComponent(brand)
       +'&notes='+encodeURIComponent(notes)
+      +'&attribution='+encodeURIComponent(attribution)
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
     if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
@@ -3968,10 +3978,11 @@ function _startImagePoll(cid) {{
   _imgPollTimer[cid] = setTimeout(poll, 5000);
 }}
 function regenImage(cid) {{
-  var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
-  var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
-  var scene = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
-  var notes = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var hl          = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
+  var tag         = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';
+  var scene       = (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
+  var notes       = (document.getElementById('img-notes-'+cid)||{{}}).value||'';
+  var attribution = (document.getElementById('img-attribution-'+cid)||{{}}).value||'';
   var st    = document.getElementById('img-status-'+cid);
   var wrap  = document.getElementById('img-wrap-'+cid);
   function _showErr(msg) {{
@@ -3983,7 +3994,7 @@ function regenImage(cid) {{
   if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
   var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'{escape(brand_slug)}';
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)+'&attribution='+encodeURIComponent(attribution)
   }}).then(function(r){{
     if(!r.ok) return r.text().then(function(t){{ throw new Error('Server error '+r.status+': '+t.slice(0,200)); }});
     return r.json();
@@ -4181,6 +4192,7 @@ function genMemeFromPanel(cid) {{
              || (document.getElementById('draft-scene-'+cid)||{{}}).value||'';
   var brand   = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
   var notes   = (document.getElementById('meme-notes-'+cid)||{{}}).value||'';
+  var attribution = (document.getElementById('img-attribution-'+cid)||{{}}).value||'';
   var st      = document.getElementById('meme-status-'+cid);
   var note    = document.getElementById('meme-note-'+cid);
   var btn     = document.getElementById('meme-gen-btn-'+cid);
@@ -4194,6 +4206,7 @@ function genMemeFromPanel(cid) {{
       +'&scene='+encodeURIComponent(scene)
       +'&brand_slug='+encodeURIComponent(brand)
       +'&notes='+encodeURIComponent(notes)
+      +'&attribution='+encodeURIComponent(attribution)
   }}).then(function(r){{ return r.json(); }}).then(function(d){{
     if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
