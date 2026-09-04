@@ -2896,6 +2896,11 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
           <button type="button" onclick="genVariants('{cid}')"
             style="font-size:11px;padding:4px 12px;background:#0a1a00;border:1px solid #1a7a00;color:#4ade80;cursor:pointer;border-radius:4px"
             title="Generate 3 variations with different atmospheres">&#9678; 3 Variants</button>
+          <button type="button" onclick="document.getElementById('img-upload-{cid}').click()"
+            style="font-size:11px;padding:4px 12px;background:#0a0f1a;border:1px solid #334;color:#93c5fd;cursor:pointer;border-radius:4px"
+            title="Upload your own image (stock photo, etc.) — brand stamp will be applied">&#8679; Upload</button>
+          <input id="img-upload-{cid}" type="file" accept="image/*" style="display:none"
+            onchange="uploadImage('{cid}', this)">
         </div>
       </div>
       <textarea id="img-notes-{cid}" placeholder="Optional notes — e.g. &quot;show a courtroom&quot;, &quot;darker mood&quot;, &quot;wide shot of Capitol&quot;" rows="2"
@@ -3510,6 +3515,31 @@ document.addEventListener('click', function(e) {{
   var tbtn = e.target.closest('.use-tobi-btn');
   if (tbtn) {{ useTOBIopt(tbtn.getAttribute('data-cid'), parseInt(tbtn.getAttribute('data-idx'))); return; }}
 }});
+function uploadImage(cid, input) {{
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var st = document.getElementById('img-status-'+cid);
+  var wrap = document.getElementById('img-wrap-'+cid);
+  if (st) st.textContent = 'Uploading...';
+  var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
+  var attribution = (document.getElementById('img-attribution-'+cid)||{{}}).value||'';
+  var fd = new FormData();
+  fd.append('file', file);
+  fd.append('brand_slug', brand);
+  fd.append('attribution', attribution);
+  fetch('/pipeline-queue/story/'+cid+'/upload-image', {{method:'POST', body:fd}})
+    .then(function(r){{ return r.json(); }})
+    .then(function(d){{
+      input.value = '';
+      if (d.error) {{ if(st) st.textContent = 'Error: '+d.error; return; }}
+      if (st) st.textContent = 'Uploaded.';
+      if (wrap && d.url) {{
+        wrap.innerHTML = '<img src="'+d.url+'?t='+Date.now()+'" style="width:100%;border-radius:4px">';
+      }}
+      setTimeout(function(){{ if(st) st.textContent=''; }}, 3000);
+    }})
+    .catch(function(e){{ input.value=''; if(st) st.textContent='Error: '+e.message; }});
+}}
 function genVariants(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
   var tag   = (document.getElementById('draft-tag-'+cid)||{{}}).value||'';

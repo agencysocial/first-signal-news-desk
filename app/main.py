@@ -4360,6 +4360,50 @@ async def pipeline_queue_story_set_image(cid: str, request: Request, user: dict 
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+@app.post("/pipeline-queue/story/{cid}/upload-image")
+async def pipeline_queue_story_upload_image(cid: str, request: Request, user: dict = Depends(require_user)):
+    """Accept an uploaded image file, apply brand stamp, store to Supabase, set as current image."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None or not hasattr(upload, "read"):
+        return JSONResponse({"error": "no file"}, status_code=400)
+    content_type = getattr(upload, "content_type", "") or ""
+    if not content_type.startswith("image/"):
+        return JSONResponse({"error": "file must be an image"}, status_code=400)
+    try:
+        image_bytes = await upload.read()
+        item = _queue_item_for(cluster_id)
+        brand_slug  = str(form.get("brand_slug", "")).strip() or (item or {}).get("brand_slug") or "first_signal"
+        attribution = str(form.get("attribution", "")).strip()
+        tmp_file_id = f"{cid}__{brand_slug}"
+        stamped_path = _stamp_logo(image_bytes, tmp_file_id, brand_slug=brand_slug)
+        _stamp_attribution(stamped_path, attribution)
+        supabase_url = _supabase_storage_upload(stamped_path, cid, brand_slug)
+        # Store as current image, push previous to history
+        brand_images = dict((item or {}).get("brand_images") or {})
+        existing = dict(brand_images.get(brand_slug) or {})
+        history = list(existing.get("image_history") or [])
+        old_kie = existing.get("kie_result_url") or ""
+        if old_kie and old_kie not in history:
+            history.append(old_kie)
+        served_url = f"/pipeline-queue/image/{cid}/{brand_slug}"
+        existing.update({
+            "generated_image_url": served_url,
+            "kie_result_url": "",          # no Kie URL — user-uploaded
+            "supabase_image_url": supabase_url or existing.get("supabase_image_url") or "",
+            "image_gen_status": "done",
+            "image_history": history,
+        })
+        brand_images[brand_slug] = existing
+        _update_cluster_fsn(cluster_id, brand_images=brand_images)
+        return JSONResponse({"ok": True, "url": served_url})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
 @app.post("/pipeline-queue/story/{cid}/complete")
 def pipeline_queue_story_complete(cid: str, user: dict = Depends(require_user)):
     """Mark a story as completed (posted). Moves it to Recent History on the queue page."""
