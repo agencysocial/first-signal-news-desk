@@ -1084,6 +1084,44 @@ def render_pipeline_queue_page(
                         f'<button type="button" onclick="copyEl(\'vfc-{cid}\')" style="font-size:9px;padding:1px 6px;margin-top:4px">Copy</button></div>'
                     )
 
+                # Scene image blocks (9:16 vertical backgrounds for video production)
+                scene_imgs = item.get("scene_images") or {}
+                inner_v += '<div style="border-top:1px solid #2a2060;margin-top:12px;padding-top:12px">'
+                inner_v += '<div style="color:#a78bfa;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">&#127909; Scene Images (9:16 vertical)</div>'
+                for sn in range(1, 6):
+                    slot = scene_imgs.get(str(sn)) or {}
+                    slot_status = slot.get("status") or ""
+                    slot_url = slot.get("url") or ""
+                    slot_prompt = escape(slot.get("prompt") or "")
+                    is_generating = slot_status == "generating"
+                    img_html = ""
+                    if slot_url:
+                        img_html = f'<img src="{slot_url}" style="width:60px;height:107px;object-fit:cover;border-radius:3px;border:1px solid #2a2060">'
+                    elif is_generating:
+                        img_html = '<div style="width:60px;height:107px;background:#0d111a;border:1px solid #2a2060;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#a78bfa">Generating...</div>'
+                    else:
+                        img_html = '<div style="width:60px;height:107px;background:#0a0a1a;border:1px dashed #2a2060;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#2a2060">&#127909;</div>'
+                    status_txt = ""
+                    if slot_status and slot_status not in ("generating", "done", ""):
+                        status_txt = f'<div id="si-status-{cid}-{sn}" style="color:#f87171;font-size:9px;margin-top:2px">{escape(slot_status)}</div>'
+                    else:
+                        status_txt = f'<div id="si-status-{cid}-{sn}" style="color:#8b93a3;font-size:9px;margin-top:2px">{"Generating..." if is_generating else ""}</div>'
+                    inner_v += (
+                        f'<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px;padding:8px;background:#0a0a1a;border-radius:4px;border:1px solid #1a1a30">'
+                        f'<div id="si-img-{cid}-{sn}">{img_html}</div>'
+                        f'<div style="flex:1">'
+                        f'<div style="color:#a78bfa;font-size:10px;font-weight:700;margin-bottom:4px">Scene {sn}</div>'
+                        f'<input id="si-prompt-{cid}-{sn}" type="text" value="{slot_prompt}" placeholder="Scene {sn} image prompt..." '
+                        f'style="width:100%;font-size:10px;padding:3px 6px;background:#0d111a;border:1px solid #2a3555;color:#c0c8d8;border-radius:3px;box-sizing:border-box">'
+                        f'{status_txt}'
+                        f'<button id="si-btn-{cid}-{sn}" type="button" onclick="genSceneImage({cid},{sn})" '
+                        f'style="margin-top:4px;font-size:9px;padding:2px 8px;background:#0a0a1a;border:1px solid #2a2060;color:#a78bfa;cursor:pointer;border-radius:3px">'
+                        f'{"&#8635; Regen" if slot_url else "&#9654; Generate"}</button>'
+                        f'</div>'
+                        f'</div>'
+                    )
+                inner_v += '</div>'
+
                 video_panel_html = (
                     f'<div id="vidpanel-wrap-{cid}" style="display:none;margin-top:8px;padding:10px;'
                     f'background:#060910;border:1px solid #2a2060;border-radius:4px">'
@@ -1290,6 +1328,56 @@ function toggleStory(cid) {
 function togglePanel(id) {
   var el = document.getElementById(id);
   if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function genSceneImage(cid, sn) {
+  var promptEl = document.getElementById('si-prompt-' + cid + '-' + sn);
+  var statusEl = document.getElementById('si-status-' + cid + '-' + sn);
+  var imgEl    = document.getElementById('si-img-' + cid + '-' + sn);
+  var btn      = document.getElementById('si-btn-' + cid + '-' + sn);
+  var prompt   = promptEl ? promptEl.value.trim() : '';
+  if (!prompt) { if (statusEl) statusEl.textContent = 'Enter a prompt first.'; return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating...'; }
+  if (statusEl) statusEl.textContent = 'Submitting to Kie...';
+  if (imgEl) imgEl.innerHTML = '<div style="width:60px;height:107px;background:#0d111a;border:1px solid #2a2060;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#a78bfa">Generating...</div>';
+  var fd = new FormData();
+  fd.append('scene_num', sn);
+  fd.append('prompt', prompt);
+  fetch('/pipeline-queue/story/' + cid + '/generate-scene-image', {method:'POST', body:fd})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (d.error) {
+        if (statusEl) statusEl.textContent = 'Error: ' + d.error;
+        if (btn) { btn.disabled = false; btn.textContent = '▶ Generate'; }
+        return;
+      }
+      if (statusEl) statusEl.textContent = 'Generating (may take ~60s)...';
+      _pollSceneImage(cid, sn, btn);
+    })
+    .catch(function(e){
+      if (statusEl) statusEl.textContent = 'Request failed.';
+      if (btn) { btn.disabled = false; btn.textContent = '▶ Generate'; }
+    });
+}
+
+function _pollSceneImage(cid, sn, btn) {
+  var statusEl = document.getElementById('si-status-' + cid + '-' + sn);
+  var imgEl    = document.getElementById('si-img-' + cid + '-' + sn);
+  fetch('/pipeline-queue/story/' + cid + '/scene-image-status?scene=' + sn)
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (d.url) {
+        if (imgEl) imgEl.innerHTML = '<img src="' + d.url + '" style="width:60px;height:107px;object-fit:cover;border-radius:3px;border:1px solid #2a2060">';
+        if (statusEl) statusEl.textContent = '';
+        if (btn) { btn.disabled = false; btn.textContent = '↻ Regen'; }
+      } else if (d.status && d.status.indexOf('error') === 0) {
+        if (statusEl) statusEl.textContent = d.status;
+        if (btn) { btn.disabled = false; btn.textContent = '▶ Generate'; }
+      } else {
+        setTimeout(function(){ _pollSceneImage(cid, sn, btn); }, 5000);
+      }
+    })
+    .catch(function(){ setTimeout(function(){ _pollSceneImage(cid, sn, btn); }, 8000); });
 }
 
 function copyEl(id) {
@@ -2413,6 +2501,39 @@ function toggleHist(id) {
 
 # ── Story Workspace Page ───────────────────────────────────────────────────────
 
+def _render_scene_image_block(cid: str, scene_num: int, item: dict) -> str:
+    """Render the image-scene input + generate button + preview for one video scene slot."""
+    sn = str(scene_num)
+    slot = ((item or {}).get("scene_images") or {}).get(sn) or {}
+    saved_prompt = slot.get("prompt") or ""
+    img_url = slot.get("url") or ""
+    status  = slot.get("status") or ""
+    img_html = ""
+    if img_url and status == "done":
+        img_html = (
+            f'<img src="{img_url}?t=0" id="si-img-{cid}-{sn}" '
+            f'style="width:100%;max-width:160px;border-radius:4px;display:block;margin-top:4px">'
+        )
+    elif status == "generating":
+        img_html = f'<div id="si-img-{cid}-{sn}" style="width:100%;max-width:160px;height:90px;background:#0d111a;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#5a6380;font-size:11px;margin-top:4px">Generating...</div>'
+    else:
+        img_html = f'<div id="si-img-{cid}-{sn}" style="display:none"></div>'
+    return (
+        f'<div style="margin-top:6px;padding:6px 8px;background:#070b14;border:1px solid #1a2a3a;border-radius:4px">'
+        f'<div style="display:flex;gap:6px;align-items:center">'
+        f'<input id="si-prompt-{cid}-{sn}" type="text" value="{escape(saved_prompt)}" '
+        f'placeholder="Image scene — e.g. US Capitol at dusk, dramatic sky" '
+        f'style="flex:1;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:11px;border-radius:4px;padding:5px 7px">'
+        f'<button type="button" id="si-btn-{cid}-{sn}" onclick="genSceneImage(\'{cid}\',\'{sn}\')" '
+        f'style="font-size:10px;padding:4px 10px;background:#0a1a2a;border:1px solid #1a4a6a;color:#60a5fa;border-radius:4px;cursor:pointer;white-space:nowrap">'
+        f'&#9654; Generate</button>'
+        f'</div>'
+        f'<div id="si-status-{cid}-{sn}" style="font-size:10px;color:#5a6380;margin-top:3px">{"Generating..." if status == "generating" else ""}</div>'
+        f'{img_html}'
+        f'</div>'
+    )
+
+
 def _render_img_history(history: list, cid: str) -> str:
     if not history:
         return ""
@@ -2832,26 +2953,31 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
             <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">Scene-1</div>
             <textarea id="vid-script-1-{cid}" rows="2" placeholder="Open with the hook — make them stop scrolling."
               style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+            {_render_scene_image_block(cid, 1, item)}
           </div>
           <div>
             <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">Scene-2</div>
             <textarea id="vid-script-2-{cid}" rows="2" placeholder="What happened, who is involved, when."
               style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+            {_render_scene_image_block(cid, 2, item)}
           </div>
           <div>
             <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">Scene-3</div>
             <textarea id="vid-script-3-{cid}" rows="3" placeholder="The deeper angle — what the mainstream won't say."
               style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+            {_render_scene_image_block(cid, 3, item)}
           </div>
           <div>
             <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">Scene-4</div>
             <textarea id="vid-script-4-{cid}" rows="2" placeholder="Why this matters to the viewer — make it personal."
               style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+            {_render_scene_image_block(cid, 4, item)}
           </div>
           <div>
             <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">Scene-5</div>
             <textarea id="vid-script-5-{cid}" rows="2" placeholder="Drive the comment, share, or follow."
               style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+            {_render_scene_image_block(cid, 5, item)}
           </div>
         </div>
       </div>

@@ -293,8 +293,8 @@ def _stamp_attribution(image_path: Path, text: str) -> Path:
     return image_path
 
 
-def _kie_submit(prompt: str, key: str, retries: int = 3) -> str:
-    body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": "4:5", "resolution": "1K"}}
+def _kie_submit(prompt: str, key: str, retries: int = 3, aspect_ratio: str = "4:5") -> str:
+    body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": aspect_ratio, "resolution": "1K"}}
     last_exc: Exception = RuntimeError("Kie submit: no attempts made")
     for attempt in range(retries):
         try:
@@ -316,11 +316,11 @@ def _kie_submit(prompt: str, key: str, retries: int = 3) -> str:
     raise last_exc
 
 
-def _kie_poll(task_id: str, key: str, prompt: str = "", retries: int = 2) -> str:
+def _kie_poll(task_id: str, key: str, prompt: str = "", retries: int = 2, aspect_ratio: str = "4:5") -> str:
     """Poll until done. On 'fail', re-submit and retry up to `retries` times."""
     for attempt in range(retries + 1):
         deadline = time.time() + _KIE_POLL_TIMEOUT
-        current_task = task_id if attempt == 0 else _kie_submit(prompt, key, retries=2)
+        current_task = task_id if attempt == 0 else _kie_submit(prompt, key, retries=2, aspect_ratio=aspect_ratio)
         while time.time() < deadline:
             r = httpx.get(f"{_KIE_RECORD}?taskId={current_task}",
                           headers={"Authorization": f"Bearer {key}"}, timeout=30)
@@ -442,6 +442,7 @@ def _load_fsn_queue() -> list[dict]:
                 "image_history":       fsn.get("image_history", []),
                 "brand_images":        fsn.get("brand_images", {}),
                 "brand_drafts":        fsn.get("brand_drafts", {}),
+                "scene_images":        fsn.get("scene_images", {}),
                 "momentum_score":      round(float(c.momentum_score or 0), 1),
                 "_source": "newsdesk_handoff",
             }
@@ -455,7 +456,7 @@ _FSN_STATE_KEYS = {"queue_status", "post_type", "draft", "approved_at",
                    "generated_image_url", "image_gen_status", "image_history", "tobi_text", "output_file",
                    "video_titles", "reels_description", "script_short", "script_medium",
                    "script_long", "poll_question", "video_first_comment", "brand_slug", "brand_images",
-                   "brand_drafts", "article_text", "article_url", "meme_kie_url"}
+                   "brand_drafts", "article_text", "article_url", "meme_kie_url", "scene_images"}
 
 
 def _save_fsn_queue(items: list[dict]) -> None:
@@ -4426,6 +4427,131 @@ async def pipeline_queue_story_upload_image(cid: str, request: Request, user: di
         return JSONResponse({"ok": True, "url": served_url})
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ── Scene Image Generation (video backgrounds, 9:16) ─────────────────────────
+
+@app.post("/pipeline-queue/story/{cid}/generate-scene-image")
+async def pipeline_queue_generate_scene_image(
+    cid: str, request: Request, background_tasks: BackgroundTasks,
+    user: dict = Depends(require_user),
+):
+    """Generate a 9:16 vertical background image for one video scene slot."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    scene_num = str(form.get("scene_num", "")).strip()
+    prompt    = str(form.get("prompt", "")).strip()
+    if scene_num not in {"1", "2", "3", "4", "5"}:
+        return JSONResponse({"error": "scene_num must be 1-5"}, status_code=400)
+    if not prompt:
+        return JSONResponse({"error": "prompt required"}, status_code=400)
+
+    key = _get_kie_key()
+    if not key:
+        return JSONResponse({"error": "KIE_AI_API_KEY not set"}, status_code=400)
+
+    # Mark slot as generating
+    _update_scene_image_slot(cluster_id, scene_num, {"status": "generating", "url": "", "prompt": prompt})
+
+    def _run():
+        try:
+            full_prompt = (
+                f"A 9:16 vertical cinematic video background for social media. "
+                f"No text, no overlays, no watermarks, no logos. "
+                f"Clean background suitable for on-screen text to be placed over it. "
+                f"{prompt}. "
+                f"Photorealistic, dramatic lighting, sharp, high contrast."
+            )
+            task_id = _kie_submit(full_prompt, key, aspect_ratio="9:16")
+            kie_url = _kie_poll(task_id, key, prompt=full_prompt, aspect_ratio="9:16")
+            r = httpx.get(kie_url, timeout=60, follow_redirects=True)
+            r.raise_for_status()
+            # Save to tmp and upload to Supabase
+            tmp_dir = Path("/tmp/fsn_images")
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            tmp_path = tmp_dir / f"{cluster_id}_scene{scene_num}.jpg"
+            tmp_path.write_bytes(r.content)
+            supabase_url = _supabase_storage_upload(tmp_path, f"{cluster_id}_scene{scene_num}", "scenes")
+            served_url = f"/pipeline-queue/scene-image/{cluster_id}/{scene_num}"
+            _update_scene_image_slot(cluster_id, scene_num, {
+                "status": "done",
+                "url": served_url,
+                "kie_url": kie_url,
+                "supabase_url": supabase_url or "",
+                "prompt": prompt,
+            })
+        except Exception as exc:
+            logger.error("scene image gen cluster %s scene %s: %s", cluster_id, scene_num, exc)
+            _update_scene_image_slot(cluster_id, scene_num, {"status": f"error: {exc}", "url": ""})
+
+    background_tasks.add_task(_run)
+    return JSONResponse({"ok": True, "msg": f"Scene {scene_num} image generating (~60s)"})
+
+
+def _update_scene_image_slot(cluster_id: int, scene_num: str, data: dict) -> None:
+    """Patch one slot inside fsn_state.scene_images[scene_num]."""
+    session = SessionLocal()
+    try:
+        c = session.get(StoryCluster, int(cluster_id))
+        if c:
+            fsn: dict = {}
+            try: fsn = json.loads(c.fsn_state or "{}")
+            except Exception: pass
+            si = dict(fsn.get("scene_images") or {})
+            si[scene_num] = {**(si.get(scene_num) or {}), **data}
+            fsn["scene_images"] = si
+            c.fsn_state = json.dumps(fsn, ensure_ascii=False)
+            session.commit()
+    except Exception as exc:
+        session.rollback()
+        logger.error("_update_scene_image_slot %s/%s: %s", cluster_id, scene_num, exc)
+    finally:
+        session.close()
+
+
+@app.get("/pipeline-queue/story/{cid}/scene-image-status")
+def pipeline_queue_scene_image_status(cid: str, scene: str = "1", user: dict = Depends(require_user)):
+    """Poll endpoint for scene image generation status."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    item = _queue_item_for(int(cid))
+    if not item:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    slot = (item.get("scene_images") or {}).get(scene) or {}
+    return JSONResponse({"status": slot.get("status") or "", "url": slot.get("url") or ""})
+
+
+@app.get("/pipeline-queue/scene-image/{cid}/{scene_num}")
+def pipeline_queue_serve_scene_image(cid: str, scene_num: str, user: dict = Depends(require_user)):
+    """Serve a generated scene background image."""
+    if not cid.isdigit():
+        return Response(status_code=404)
+    item = _queue_item_for(int(cid))
+    if not item:
+        return Response(status_code=404)
+    slot = (item.get("scene_images") or {}).get(scene_num) or {}
+    supabase_url = slot.get("supabase_url") or ""
+    kie_url      = slot.get("kie_url") or ""
+    tmp_path = Path("/tmp/fsn_images") / f"{cid}_scene{scene_num}.jpg"
+    # Serve from tmp if available (fastest on same dyno)
+    if tmp_path.exists():
+        return Response(content=tmp_path.read_bytes(), media_type="image/jpeg")
+    # Supabase fallback
+    if supabase_url:
+        try:
+            r = httpx.get(supabase_url, timeout=20, follow_redirects=True)
+            if r.status_code == 200:
+                return Response(content=r.content, media_type="image/jpeg")
+        except Exception:
+            pass
+    # Kie CDN fallback
+    if kie_url:
+        r = httpx.get(kie_url, timeout=60, follow_redirects=True)
+        r.raise_for_status()
+        return Response(content=r.content, media_type="image/jpeg")
+    return Response(status_code=404)
 
 
 @app.post("/pipeline-queue/story/{cid}/complete")
