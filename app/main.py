@@ -4375,6 +4375,30 @@ async def pipeline_queue_story_upload_image(cid: str, request: Request, user: di
         return JSONResponse({"error": "file must be an image"}, status_code=400)
     try:
         image_bytes = await upload.read()
+        # Normalize to 4:5 portrait (1024×1280) via center-crop then resize
+        from PIL import Image as _PILImg
+        import io as _io
+        _src = _PILImg.open(_io.BytesIO(image_bytes)).convert("RGB")
+        src_w, src_h = _src.size
+        target_w, target_h = 1024, 1280          # 4:5, 1K
+        target_ratio = target_w / target_h        # 0.8
+        src_ratio = src_w / src_h
+        if src_ratio > target_ratio:
+            # wider than 4:5 — crop sides
+            new_w = int(src_h * target_ratio)
+            left = (src_w - new_w) // 2
+            _src = _src.crop((left, 0, left + new_w, src_h))
+        else:
+            # taller than 4:5 — crop top/bottom
+            new_h = int(src_w / target_ratio)
+            top = (src_h - new_h) // 2
+            _src = _src.crop((0, top, src_w, top + new_h))
+        _src = _src.resize((target_w, target_h), _PILImg.LANCZOS)
+        _buf = _io.BytesIO()
+        _src.save(_buf, "JPEG", quality=92)
+        _src.close()
+        image_bytes = _buf.getvalue()
+
         item = _queue_item_for(cluster_id)
         brand_slug  = str(form.get("brand_slug", "")).strip() or (item or {}).get("brand_slug") or "first_signal"
         attribution = str(form.get("attribution", "")).strip()
