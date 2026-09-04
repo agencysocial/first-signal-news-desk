@@ -1476,9 +1476,18 @@ async def _not_authenticated_handler(request: Request, exc: NotAuthenticated):
     return RedirectResponse(f"/login?next={exc.next_path}", status_code=303)
 
 
+_FAVICON_B64 = (
+    "AAABAAEAICAAAAAAIADBAAAAFgAAAIlQTkcNChoKAAAADUlIRFIAAAAgAAAAIAgGAAAAc3p69AAAAIhJREFU"
+    "eJztldEOgCAIRb3+/z/fntp6IUlAWONsbdkudmaJYzRNkwwe9/yYdxOgodZVAIo8vUVgqKXHPDAIuIjM"
+    "hB9ZLF5NgIiVwOYukF5AqwBesozqCdzI31cqrCJhAie6XfnDaCh2gkvb1XRCCLmwT5AOhOdhS645jLgY"
+    "hwscZVYUwGLc/IsLzCQbFNFJtvUAAAAASUVORK5CYII="
+)
+
 @app.get("/favicon.ico")
 def favicon():
-    return Response(status_code=204)
+    import base64
+    ico_bytes = base64.b64decode(_FAVICON_B64)
+    return Response(content=ico_bytes, media_type="image/x-icon")
 
 
 @app.get("/login", response_class=HTMLResponse)
