@@ -2562,6 +2562,11 @@ def _render_scene_image_block(cid: str, scene_num: int, item: dict) -> str:
         f'<button type="button" id="si-btn-{cid}-{sn}" onclick="genSceneImage(\'{cid}\',\'{sn}\')" '
         f'style="font-size:10px;padding:4px 10px;background:#0a1a2a;border:1px solid #1a4a6a;color:#60a5fa;border-radius:4px;cursor:pointer;white-space:nowrap">'
         f'&#9654; Generate</button>'
+        f'<button type="button" onclick="document.getElementById(\'su-{cid}-{sn}\').click()" '
+        f'style="font-size:10px;padding:4px 10px;background:#0a0a1a;border:1px solid #2a3555;color:#93c5fd;border-radius:4px;cursor:pointer;white-space:nowrap">'
+        f'&#8593; Upload</button>'
+        f'<input id="su-{cid}-{sn}" type="file" accept="image/*" style="display:none" '
+        f'onchange="uploadSceneImage(\'{cid}\',\'{sn}\',this)">'
         f'</div>'
         f'<div id="si-status-{cid}-{sn}" style="font-size:10px;color:#5a6380;margin-top:3px">{"Generating..." if status == "generating" else ""}</div>'
         f'{img_html}'
@@ -2789,7 +2794,7 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
 
 {brand_packages_section}
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+<div id="ws-grid-{cid}" style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
 
   <!-- LEFT -->
   <div>
@@ -3014,6 +3019,12 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
               style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
             {_render_scene_image_block(cid, 5, item)}
           </div>
+          <div>
+            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">Scene-6 <span style="color:#3a4a5a;font-size:9px">(optional — longer scripts)</span></div>
+            <textarea id="vid-script-6-{cid}" rows="2" placeholder="Extra scene for longer scripts."
+              style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
+            {_render_scene_image_block(cid, 6, item)}
+          </div>
         </div>
       </div>
 
@@ -3046,7 +3057,7 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
   </div>
 
   <!-- RIGHT -->
-  <div>
+  <div id="ws-right-{cid}">
     <div style="background:#0d111a;border:1px solid #1a1f2b;border-radius:6px;padding:14px;margin-bottom:16px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
         <span style="color:#c7cbd4;font-size:13px;font-weight:600">Image</span>
@@ -3298,6 +3309,11 @@ function wsTab(cid, tab) {{
     btn.style.borderBottomColor = active ? '#2563eb' : 'transparent';
     btn.style.color = active ? '#60a5fa' : '#8b93a3';
   }});
+  var right = document.getElementById('ws-right-'+cid);
+  var grid  = document.getElementById('ws-grid-'+cid);
+  var isVideo = (tab === 'video');
+  if (right) right.style.display = isVideo ? 'none' : 'block';
+  if (grid)  grid.style.gridTemplateColumns = isVideo ? '1fr' : '1fr 1fr';
 }}
 function genVideoPackage(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
