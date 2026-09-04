@@ -1114,9 +1114,15 @@ def render_pipeline_queue_page(
                         f'<input id="si-prompt-{cid}-{sn}" type="text" value="{slot_prompt}" placeholder="Scene {sn} image prompt..." '
                         f'style="width:100%;font-size:10px;padding:3px 6px;background:#0d111a;border:1px solid #2a3555;color:#c0c8d8;border-radius:3px;box-sizing:border-box">'
                         f'{status_txt}'
+                        f'<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">'
                         f'<button id="si-btn-{cid}-{sn}" type="button" onclick="genSceneImage({cid},{sn})" '
-                        f'style="margin-top:4px;font-size:9px;padding:2px 8px;background:#0a0a1a;border:1px solid #2a2060;color:#a78bfa;cursor:pointer;border-radius:3px">'
+                        f'style="font-size:9px;padding:2px 8px;background:#0a0a1a;border:1px solid #2a2060;color:#a78bfa;cursor:pointer;border-radius:3px">'
                         f'{"&#8635; Regen" if slot_url else "&#9654; Generate"}</button>'
+                        f'<button type="button" onclick="document.getElementById(\'su-{cid}-{sn}\').click()" '
+                        f'style="font-size:9px;padding:2px 8px;background:#0a0a1a;border:1px solid #2a3555;color:#60a5fa;cursor:pointer;border-radius:3px">&#8593; Upload</button>'
+                        f'<input id="su-{cid}-{sn}" type="file" accept="image/*" style="display:none" '
+                        f'onchange="uploadSceneImage({cid},{sn},this)">'
+                        f'</div>'
                         f'</div>'
                         f'</div>'
                     )
@@ -1357,6 +1363,35 @@ function genSceneImage(cid, sn) {
     .catch(function(e){
       if (statusEl) statusEl.textContent = 'Request failed.';
       if (btn) { btn.disabled = false; btn.textContent = '▶ Generate'; }
+    });
+}
+
+function uploadSceneImage(cid, sn, input) {
+  if (!input.files || !input.files[0]) return;
+  var statusEl = document.getElementById('si-status-' + cid + '-' + sn);
+  var imgEl    = document.getElementById('si-img-' + cid + '-' + sn);
+  var btn      = document.getElementById('si-btn-' + cid + '-' + sn);
+  if (statusEl) statusEl.textContent = 'Uploading...';
+  if (imgEl) imgEl.innerHTML = '<div style="width:60px;height:107px;background:#0d111a;border:1px solid #2a3555;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;color:#60a5fa">Uploading...</div>';
+  var fd = new FormData();
+  fd.append('file', input.files[0]);
+  fd.append('scene_num', sn);
+  fetch('/pipeline-queue/story/' + cid + '/upload-scene-image', {method:'POST', body:fd})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      input.value = '';
+      if (d.error) {
+        if (statusEl) statusEl.textContent = 'Error: ' + d.error;
+        if (imgEl) imgEl.innerHTML = '<div style="width:60px;height:107px;background:#0a0a1a;border:1px dashed #2a2060;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:18px;color:#2a2060">&#127909;</div>';
+        return;
+      }
+      if (imgEl) imgEl.innerHTML = '<img src="' + d.url + '" style="width:60px;height:107px;object-fit:cover;border-radius:3px;border:1px solid #2a3555">';
+      if (statusEl) statusEl.textContent = '';
+      if (btn) { btn.textContent = '↻ Regen'; }
+    })
+    .catch(function(e){
+      input.value = '';
+      if (statusEl) statusEl.textContent = 'Upload failed.';
     });
 }
 

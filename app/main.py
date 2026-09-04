@@ -4429,6 +4429,76 @@ async def pipeline_queue_story_upload_image(cid: str, request: Request, user: di
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+# ── Scene Image Upload (user-supplied, no Kie) ───────────────────────────────
+
+@app.post("/pipeline-queue/story/{cid}/upload-scene-image")
+async def pipeline_queue_upload_scene_image(cid: str, request: Request, user: dict = Depends(require_user)):
+    """Accept an uploaded image for a video scene slot; center-crop to 9:16, store to Supabase."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    upload = form.get("file")
+    scene_num = str(form.get("scene_num", "")).strip()
+    if scene_num not in {"1", "2", "3", "4", "5"}:
+        return JSONResponse({"error": "scene_num must be 1-5"}, status_code=400)
+    if upload is None or not hasattr(upload, "read"):
+        return JSONResponse({"error": "no file"}, status_code=400)
+    content_type = getattr(upload, "content_type", "") or ""
+    if not content_type.startswith("image/"):
+        return JSONResponse({"error": "file must be an image"}, status_code=400)
+    try:
+        image_bytes = await upload.read()
+        from PIL import Image as _PILImg
+        import io as _io
+        _src = _PILImg.open(_io.BytesIO(image_bytes)).convert("RGB")
+        src_w, src_h = _src.size
+        target_w, target_h = 608, 1080          # 9:16
+        target_ratio = target_w / target_h
+        src_ratio = src_w / src_h
+        if src_ratio > target_ratio:
+            new_w = int(src_h * target_ratio)
+            left = (src_w - new_w) // 2
+            _src = _src.crop((left, 0, left + new_w, src_h))
+        else:
+            new_h = int(src_w / target_ratio)
+            top = (src_h - new_h) // 2
+            _src = _src.crop((0, top, src_w, top + new_h))
+        _src = _src.resize((target_w, target_h), _PILImg.LANCZOS)
+        _buf = _io.BytesIO()
+        _src.save(_buf, "JPEG", quality=92)
+        _src.close()
+        image_bytes = _buf.getvalue()
+
+        tmp_path = f"/tmp/fsn_images/{cluster_id}_scene{scene_num}_upload.jpg"
+        os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
+        with open(tmp_path, "wb") as f:
+            f.write(image_bytes)
+
+        supabase_url = ""
+        sb = _get_supabase()
+        if sb:
+            try:
+                dest = f"scenes/{cluster_id}_scene{scene_num}_{int(time.time())}.jpg"
+                with open(tmp_path, "rb") as f:
+                    sb.storage.from_("fsn-images").upload(dest, f.read(), {"content-type": "image/jpeg", "upsert": "true"})
+                pub = sb.storage.from_("fsn-images").get_public_url(dest)
+                supabase_url = pub if isinstance(pub, str) else (pub.get("publicUrl") or "")
+            except Exception as sup_exc:
+                logger.warning("Supabase scene upload failed: %s", sup_exc)
+
+        served_url = supabase_url or f"/pipeline-queue/scene-image/{cluster_id}/{scene_num}"
+        _update_scene_image_slot(cluster_id, scene_num, {
+            "status": "done",
+            "url": served_url,
+            "prompt": "",
+            "supabase_url": supabase_url,
+        })
+        return JSONResponse({"ok": True, "url": served_url})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
 # ── Scene Image Generation (video backgrounds, 9:16) ─────────────────────────
 
 @app.post("/pipeline-queue/story/{cid}/generate-scene-image")
