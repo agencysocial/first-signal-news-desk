@@ -3262,6 +3262,9 @@ function genMemeFromPanel(cid) {{
     if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
     if(note) note.style.display='block';
+    // Clear the image panel so the old image doesn't fool the poll into stopping immediately
+    var wrap = document.getElementById('img-wrap-'+cid);
+    if(wrap) wrap.innerHTML='<div style="width:100%;height:180px;background:#0d111a;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#5a6380;font-size:12px">Generating meme...</div>';
     var secs=60;
     var countdown=setInterval(function(){{
       if(st) st.textContent=secs>0?('~'+secs+'s...'):'';
@@ -3684,6 +3687,9 @@ function genMemeFromPanel(cid) {{
     if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
     if(note) note.style.display='block';
+    // Clear the image panel so the old image doesn't fool the poll into stopping immediately
+    var wrap = document.getElementById('img-wrap-'+cid);
+    if(wrap) wrap.innerHTML='<div style="width:100%;height:180px;background:#0d111a;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#5a6380;font-size:12px">Generating meme...</div>';
     var secs=60;
     var countdown=setInterval(function(){{
       if(st) st.textContent=secs>0?('~'+secs+'s...'):'';
@@ -4241,6 +4247,9 @@ function genMemeFromPanel(cid) {{
     if(btn){{ btn.innerHTML='&#127867; Generate Meme Card'; btn.disabled=false; }}
     if(d.error){{ if(st) st.textContent='Error: '+d.error; return; }}
     if(note) note.style.display='block';
+    // Clear the image panel so the old image doesn't fool the poll into stopping immediately
+    var wrap = document.getElementById('img-wrap-'+cid);
+    if(wrap) wrap.innerHTML='<div style="width:100%;height:180px;background:#0d111a;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#5a6380;font-size:12px">Generating meme...</div>';
     var secs=60;
     var countdown=setInterval(function(){{
       if(st) st.textContent=secs>0?('~'+secs+'s...'):'';

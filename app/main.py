@@ -5105,8 +5105,26 @@ async def pipeline_queue_generate_meme(
             finally:
                 session.close()
         except Exception as exc:
-            _update_cluster_fsn(cluster_id, image_gen_status=f"error: {exc}")
+            err_msg = f"error: {exc}"
             logger.error("meme gen cluster %s: %s", cluster_id, exc)
+            # Update both top-level and brand_images slot so the poll stops cleanly
+            session2 = SessionLocal()
+            try:
+                c2 = session2.get(StoryCluster, cluster_id)
+                if c2:
+                    fsn2: dict = {}
+                    try: fsn2 = json.loads(c2.fsn_state or "{}")
+                    except Exception: pass
+                    bi2 = fsn2.get("brand_images") or {}
+                    bi2[brand_slug] = {**(bi2.get(brand_slug) or {}), "image_gen_status": err_msg, "generated_image_url": ""}
+                    fsn2["brand_images"] = bi2
+                    fsn2["image_gen_status"] = err_msg
+                    c2.fsn_state = json.dumps(fsn2, ensure_ascii=False)
+                    session2.commit()
+            except Exception:
+                session2.rollback()
+            finally:
+                session2.close()
 
     background_tasks.add_task(_run_meme)
     return JSONResponse({"ok": True, "msg": "Meme card generating"})
