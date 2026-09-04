@@ -2829,27 +2829,27 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
         </div>
         <div style="display:grid;gap:6px">
           <div>
-            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">&#9312; Hook (5-10 sec)</div>
+            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">Scene-1</div>
             <textarea id="vid-script-1-{cid}" rows="2" placeholder="Open with the hook — make them stop scrolling."
               style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
           </div>
           <div>
-            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">&#9313; Context (10-15 sec)</div>
+            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">Scene-2</div>
             <textarea id="vid-script-2-{cid}" rows="2" placeholder="What happened, who is involved, when."
               style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
           </div>
           <div>
-            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">&#9314; The Real Story (15-20 sec)</div>
+            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">Scene-3</div>
             <textarea id="vid-script-3-{cid}" rows="3" placeholder="The deeper angle — what the mainstream won't say."
               style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
           </div>
           <div>
-            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">&#9315; Impact / What It Means (10-15 sec)</div>
+            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">Scene-4</div>
             <textarea id="vid-script-4-{cid}" rows="2" placeholder="Why this matters to the viewer — make it personal."
               style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
           </div>
           <div>
-            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">&#9316; Call to Action (5-8 sec)</div>
+            <div style="font-size:10px;color:#60a5fa;margin-bottom:2px">Scene-5</div>
             <textarea id="vid-script-5-{cid}" rows="2" placeholder="Drive the comment, share, or follow."
               style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #1a2a4a;color:#c0c8d8;font-size:12px;border-radius:4px;padding:7px;font-family:inherit;resize:vertical"></textarea>
           </div>
