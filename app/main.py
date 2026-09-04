@@ -188,19 +188,17 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
     if brand_slug == "cathy_talk":
         logo_path = static_dir / ("cathy_talk_logo.png" if is_light_bg else "cathy_talk_logo_white.png")
     elif brand_slug == "the_american":
-        # Stamp navy pennant badge "THE / AMERICAN" at top-left — ~19% canvas width
+        # Stamp navy pennant badge "THE / AMERICAN" at top-left
         from PIL import ImageDraw as _ImageDraw, ImageFont as _ImageFont
         draw = _ImageDraw.Draw(card)
-        badge_w = max(170, int(w * 0.19))
-        badge_h = max(100, int(h * 0.13))
+        badge_w = max(160, int(w * 0.19))
+        badge_h = max(82, int(h * 0.105))   # shorter — less blue below text
         font_size = max(18, badge_w // 7)
         try:
             font = _ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
         except Exception:
             font = _ImageFont.load_default()
-        # Position badge inset from card edges (matching sample)
         bx, by = MARGIN, MARGIN
-        # Pentagon: rectangle with angled bottom-right notch (pennant shape)
         cut = badge_h // 4
         pentagon = [
             (bx, by), (bx + badge_w, by),
@@ -208,15 +206,21 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
             (bx + badge_w - cut, by + badge_h),
             (bx, by + badge_h)
         ]
-        draw.polygon(pentagon, fill=(7, 29, 56, 250))  # #071D38 navy
-        # Heritage red accent line beneath text (above bottom edge)
-        accent_h = max(3, badge_h // 18)
-        accent_y = by + badge_h - cut - accent_h - 4
-        draw.rectangle([(bx, accent_y), (bx + badge_w - cut, accent_y + accent_h)], fill=(181, 33, 37, 250))  # #B52125
-        # Center "THE" and "AMERICAN" text inside the badge
-        text_area_h = accent_y - by
-        total_text_h = font_size * 2 + 4
-        text_y = by + max(8, (text_area_h - total_text_h) // 2)
+        draw.polygon(pentagon, fill=(7, 29, 56, 250))  # #071D38
+        # Measure "AMERICAN" to align red rule exactly under it
+        try:
+            am_bbox = font.getbbox("AMERICAN")
+            am_w = am_bbox[2] - am_bbox[0]
+        except Exception:
+            am_w = len("AMERICAN") * font_size * 0.6
+        # Center both words, get AMERICAN x to anchor the rule
+        am_x = bx + max(6, (badge_w - cut // 2 - int(am_w)) // 2)
+        # Place text: "THE" then "AMERICAN", vertically centered above rule
+        text_block_h = font_size * 2 + 4
+        rule_gap = 5
+        accent_h = 2   # thin red line
+        total_block = text_block_h + rule_gap + accent_h
+        text_y = by + max(6, (badge_h - cut - total_block) // 2)
         for i, word in enumerate(["THE", "AMERICAN"]):
             try:
                 bbox = font.getbbox(word)
@@ -224,7 +228,10 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
             except Exception:
                 tw = len(word) * font_size * 0.6
             tx = bx + max(6, (badge_w - cut // 2 - int(tw)) // 2)
-            draw.text((tx, text_y + i * (font_size + 4)), word, font=font, fill=(248, 241, 226, 245))  # #F8F1E2
+            draw.text((tx, text_y + i * (font_size + 4)), word, font=font, fill=(248, 241, 226, 245))
+        # Thin red rule aligned to AMERICAN text width
+        rule_y = text_y + text_block_h + rule_gap
+        draw.rectangle([(am_x, rule_y), (am_x + int(am_w), rule_y + accent_h)], fill=(181, 33, 37, 250))
         out = _PILImage.new("RGB", card.size, (0, 0, 0))
         out.paste(card, mask=card.split()[3])
         card.close()
@@ -790,7 +797,7 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"A {aspect} vertical portrait premium American-history editorial card. "
             f"Inspired by mid-century American magazines, vintage newspapers, and historical archives. "
             f"Patriotic, authoritative, warm — NOT a modern political-campaign graphic. TWO ZONES, no overlap or bleed.\n\n"
-            f"ZONE 1 — UPPER 55% (photo area): {scene}.{notes_clause}{season_clause} "
+            f"ZONE 1 — UPPER 62% (photo area): {scene}.{notes_clause}{season_clause} "
             f"BLACK-AND-WHITE historical editorial photography — saturation 0, contrast slightly increased, brightness slightly reduced. "
             f"Rich tonal range, strong composition, Life Magazine / historical archive aesthetic. "
             f"Avoid over-stylized or cinematic looks. {_ANTI_SLOP}\n\n"
@@ -798,20 +805,21 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"Irregular and hand-torn in character but REFINED — not oversized, not scrapbook-like, not excessively jagged. "
             f"A thin deep-navy backing layer shows beneath the torn edge. "
             f"Below the tear, the aged parchment panel begins.\n\n"
-            f"ZONE 2 — LOWER 45% (editorial panel): AGED PARCHMENT background — warm cream (#F2E1BE), "
+            f"ZONE 2 — LOWER 38% (editorial panel): AGED PARCHMENT background — warm cream (#F2E1BE), "
             f"subtle paper grain texture suggesting old newsprint or archival paper. Completely opaque. "
-            f"Generous empty breathing room at the very top (between torn edge and category row) and at the very bottom (below headline). "
+            f"Moderate padding at the top (between torn edge and category row) and a small bottom margin below the headline — "
+            f"do NOT leave excessive empty space. The panel should feel full and editorial, not sparse. "
             f"Inside the panel, all elements are CENTERED horizontally:\n\n"
-            f"  CATEGORY ROW (centered, near top of panel after breathing room):\n"
+            f"  CATEGORY ROW (centered, near top of panel with moderate spacing):\n"
             f"  Deep navy (#071D38) horizontal rule — small deep navy star ★ — "
             f"  HERITAGE RED (#B52125) rounded rectangle ribbon containing \"{tag}\" in BOLD WARM-OFF-WHITE ALL CAPS — "
             f"  small deep navy star ★ — deep navy horizontal rule. "
             f"  Stars and rules are DEEP NAVY only, NOT red. Ribbon is large enough to pop clearly.\n\n"
             f"  MAIN HEADLINE (centered, below category row with clear vertical spacing):\n"
             f"  \"{headline}\" in OSWALD BOLD 700, ALL CAPS, deep navy (#071D38). "
-            f"  CENTER-ALIGNED. EXTREMELY LARGE — approximately 75-90pt, the single most dominant element on the card. "
+            f"  CENTER-ALIGNED. EXTREMELY LARGE — scale the font so it fills most of the panel width, approximately 80-95pt. "
             f"  Line-height ~0.92. Letter-spacing slightly tight (-0.5%). "
-            f"  Wraps over 3-4 lines based on natural phrase breaks. "
+            f"  Wraps over 3-4 lines. Leave only a small bottom margin (20-30px) below the last line — do NOT leave large empty space. "
             f"  No subtitle, no secondary copy, no URL, no CTA below the headline.\n\n"
             f"CRITICAL RULES: "
             f"No alternating red/navy words in the headline — entire headline is deep navy only. "
