@@ -3332,6 +3332,7 @@ function genVideoPackage(cid) {{
     if(st) st.textContent='Done!'; setTimeout(function(){{ if(st) st.textContent=''; }},3000);
     var fields = {{'title':'vid-title','script_1':'vid-script-1','script_2':'vid-script-2',
       'script_3':'vid-script-3','script_4':'vid-script-4','script_5':'vid-script-5',
+      'script_6':'vid-script-6',
       'reels_desc':'vid-reels','first_comment':'vid-first-comment','poll':'vid-poll'}};
     Object.keys(fields).forEach(function(k){{
       if(d[k]) {{ var el=document.getElementById(fields[k]+'-'+cid); if(el) el.value=d[k]; }}

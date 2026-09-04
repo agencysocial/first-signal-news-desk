@@ -4441,7 +4441,7 @@ async def pipeline_queue_upload_scene_image(cid: str, request: Request, user: di
     upload = form.get("file")
     scene_num = str(form.get("scene_num", "")).strip()
     if scene_num not in {"1", "2", "3", "4", "5", "6"}:
-        return JSONResponse({"error": "scene_num must be 1-5"}, status_code=400)
+        return JSONResponse({"error": "scene_num must be 1-6"}, status_code=400)
     if upload is None or not hasattr(upload, "read"):
         return JSONResponse({"error": "no file"}, status_code=400)
     content_type = getattr(upload, "content_type", "") or ""
@@ -4514,7 +4514,7 @@ async def pipeline_queue_generate_scene_image(
     scene_num = str(form.get("scene_num", "")).strip()
     prompt    = str(form.get("prompt", "")).strip()
     if scene_num not in {"1", "2", "3", "4", "5", "6"}:
-        return JSONResponse({"error": "scene_num must be 1-5"}, status_code=400)
+        return JSONResponse({"error": "scene_num must be 1-6"}, status_code=400)
     if not prompt:
         return JSONResponse({"error": "prompt required"}, status_code=400)
 
@@ -5368,6 +5368,7 @@ Return ONLY valid JSON with these exact keys:
   "script_3": "The Real Story section — 4-6 sentences, 15-20 seconds. The angle mainstream media ignores.",
   "script_4": "Impact section — 2-3 sentences, 10-15 seconds. Why this matters to everyday Americans.",
   "script_5": "Call to Action section — 1-2 sentences, 5-8 seconds. Drive comment or share.",
+  "script_6": "(optional) Extended section — only if the story warrants it. Leave blank string if not needed.",
   "reels_desc": "2-3 line Reels caption. Punchy. No hashtags.",
   "first_comment": "5-15 word first comment that invites replies.",
   "poll": "Short yes/no poll question under 15 words."
@@ -5378,7 +5379,7 @@ Return ONLY valid JSON with these exact keys:
         client = _anthropic.Anthropic(api_key=key)
         msg = client.messages.create(
             model="claude-sonnet-4-5",
-            max_tokens=1500,
+            max_tokens=1800,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
