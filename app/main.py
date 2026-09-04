@@ -4440,7 +4440,7 @@ async def pipeline_queue_upload_scene_image(cid: str, request: Request, user: di
     form = await request.form()
     upload = form.get("file")
     scene_num = str(form.get("scene_num", "")).strip()
-    if scene_num not in {"1", "2", "3", "4", "5"}:
+    if scene_num not in {"1", "2", "3", "4", "5", "6"}:
         return JSONResponse({"error": "scene_num must be 1-5"}, status_code=400)
     if upload is None or not hasattr(upload, "read"):
         return JSONResponse({"error": "no file"}, status_code=400)
@@ -4513,7 +4513,7 @@ async def pipeline_queue_generate_scene_image(
     form = await request.form()
     scene_num = str(form.get("scene_num", "")).strip()
     prompt    = str(form.get("prompt", "")).strip()
-    if scene_num not in {"1", "2", "3", "4", "5"}:
+    if scene_num not in {"1", "2", "3", "4", "5", "6"}:
         return JSONResponse({"error": "scene_num must be 1-5"}, status_code=400)
     if not prompt:
         return JSONResponse({"error": "prompt required"}, status_code=400)

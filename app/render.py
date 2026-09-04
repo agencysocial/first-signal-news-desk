@@ -1088,7 +1088,7 @@ def render_pipeline_queue_page(
                 scene_imgs = item.get("scene_images") or {}
                 inner_v += '<div style="border-top:1px solid #2a2060;margin-top:12px;padding-top:12px">'
                 inner_v += '<div style="color:#a78bfa;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">&#127909; Scene Images (9:16 vertical)</div>'
-                for sn in range(1, 6):
+                for sn in range(1, 7):
                     slot = scene_imgs.get(str(sn)) or {}
                     slot_status = slot.get("status") or ""
                     slot_url = slot.get("url") or ""
@@ -3327,7 +3327,7 @@ function genVideoPackage(cid) {{
 }}
 function submitToHeyGen(cid) {{
   var st = document.getElementById('vid-heygen-status-'+cid);
-  var script = [1,2,3,4,5].map(function(i){{
+  var script = [1,2,3,4,5,6].map(function(i){{
     return (document.getElementById('vid-script-'+i+'-'+cid)||{{}}).value||'';
   }}).filter(Boolean).join('\\n\\n');
   if(!script) {{ alert('Generate the script first.'); return; }}
