@@ -51,7 +51,7 @@ _batch_lock = threading.Lock()
 # ── Kie.ai cloud image generation ─────────────────────────────────────────────
 _KIE_CREATE = "https://api.kie.ai/api/v1/jobs/createTask"
 _KIE_RECORD = "https://api.kie.ai/api/v1/jobs/recordInfo"
-_KIE_MODEL  = "flux-2/pro-text-to-image"
+_KIE_MODEL  = "ideogram/v3-text-to-image"
 _KIE_POLL_INTERVAL = 5
 _KIE_POLL_TIMEOUT  = 600  # 10 min
 
@@ -293,11 +293,21 @@ def _stamp_attribution(image_path: Path, text: str) -> Path:
     return image_path
 
 
-_KIE_ASPECT_MAP = {"4:5": "3:4", "5:4": "4:3"}  # map unsupported ratios to closest allowed
+# Ideogram image_size values for our aspect ratios
+_IDEOGRAM_SIZE_MAP = {
+    "1:1": "square_hd", "4:5": "portrait_4_3", "9:16": "portrait_16_9",
+    "3:4": "portrait_4_3", "2:3": "portrait_16_9", "16:9": "landscape_16_9",
+    "4:3": "landscape_4_3",
+}
+
+def _kie_build_input(prompt: str, aspect_ratio: str) -> dict:
+    if _KIE_MODEL.startswith("ideogram/"):
+        return {"prompt": prompt, "image_size": _IDEOGRAM_SIZE_MAP.get(aspect_ratio, "portrait_4_3"),
+                "rendering_speed": "BALANCED", "style": "AUTO"}
+    return {"prompt": prompt, "aspect_ratio": aspect_ratio, "resolution": "1K", "nsfw_checker": False}
 
 def _kie_submit(prompt: str, key: str, retries: int = 3, aspect_ratio: str = "4:5") -> str:
-    mapped_ratio = _KIE_ASPECT_MAP.get(aspect_ratio, aspect_ratio)
-    body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": mapped_ratio, "resolution": "1K", "nsfw_checker": False}}
+    body = {"model": _KIE_MODEL, "input": _kie_build_input(prompt, aspect_ratio)}
     last_exc: Exception = RuntimeError("Kie submit: no attempts made")
     logger.info("Kie submit body: %s", body)
     for attempt in range(retries):
