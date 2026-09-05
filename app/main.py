@@ -56,11 +56,10 @@ _KIE_POLL_INTERVAL = 5
 _KIE_POLL_TIMEOUT  = 600  # 10 min
 
 _ANTI_SLOP = (
-    "Candid Associated Press / Reuters wire-service photograph (NOT a cinematic poster, "
+    "Candid documentary photojournalism style (NOT a cinematic poster, "
     "NOT stylized, NOT stock). Shot on a Canon EOS R5 with a 35-50mm prime lens at f/2.8-f/4, "
-    "ISO 400-1600, raw documentary photojournalism style. Subject expression is ORDINARY and "
-    "unposed. NO dramatic rim-light, NO cinematic grade. The image must look like it was pulled "
-    "from a real newspaper, NOT generated."
+    "ISO 400-1600, raw photojournalism style. Subject expression is ORDINARY and "
+    "unposed. NO dramatic rim-light, NO cinematic grade. Sharp, clean, editorial quality."
 )
 
 
