@@ -51,7 +51,7 @@ _batch_lock = threading.Lock()
 # ── Kie.ai cloud image generation ─────────────────────────────────────────────
 _KIE_CREATE = "https://api.kie.ai/api/v1/jobs/createTask"
 _KIE_RECORD = "https://api.kie.ai/api/v1/jobs/recordInfo"
-_KIE_MODEL  = "ideogram/v3-text-to-image"
+_KIE_MODEL  = "flux-2/flex-text-to-image"
 _KIE_POLL_INTERVAL = 5
 _KIE_POLL_TIMEOUT  = 600  # 10 min
 
@@ -304,7 +304,8 @@ def _kie_build_input(prompt: str, aspect_ratio: str) -> dict:
     if _KIE_MODEL.startswith("ideogram/"):
         return {"prompt": prompt, "image_size": _IDEOGRAM_SIZE_MAP.get(aspect_ratio, "portrait_4_3"),
                 "rendering_speed": "BALANCED", "style": "AUTO"}
-    return {"prompt": prompt, "aspect_ratio": aspect_ratio, "resolution": "1K", "nsfw_checker": False}
+    _flux_ratio_map = {"4:5": "3:4", "5:4": "4:3"}
+    return {"prompt": prompt, "aspect_ratio": _flux_ratio_map.get(aspect_ratio, aspect_ratio), "resolution": "1K", "nsfw_checker": False}
 
 def _kie_submit(prompt: str, key: str, retries: int = 3, aspect_ratio: str = "4:5") -> str:
     body = {"model": _KIE_MODEL, "input": _kie_build_input(prompt, aspect_ratio)}
