@@ -160,6 +160,28 @@ def _build_image_prompt(headline: str, tag: str, scene: str, notes: str = "") ->
     )
 
 
+def _normalize_aspect(image_bytes: bytes, target_w: int = 1122, target_h: int = 1402) -> bytes:
+    """Center-crop then resize image bytes to target_w x target_h (4:5). Returns new bytes."""
+    from PIL import Image as _PILImage
+    import io as _io
+    target_ratio = target_w / target_h
+    img = _PILImage.open(_io.BytesIO(image_bytes)).convert("RGB")
+    w, h = img.size
+    src_ratio = w / h
+    if src_ratio > target_ratio:
+        new_w = int(h * target_ratio)
+        left = (w - new_w) // 2
+        img = img.crop((left, 0, left + new_w, h))
+    elif src_ratio < target_ratio:
+        new_h = int(w / target_ratio)
+        top = (h - new_h) // 2
+        img = img.crop((0, top, w, top + new_h))
+    img = img.resize((target_w, target_h), _PILImage.LANCZOS)
+    buf = _io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") -> Path:
     """Download image bytes, stamp the brand logo at top-left, save to /tmp. Returns path."""
     from PIL import Image as _PILImage, ImageStat as _ImageStat
@@ -2482,7 +2504,7 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribu
         # Capture bytes then release the httpx response before PIL starts work.
         r = httpx.get(kie_url, timeout=60, follow_redirects=True)
         r.raise_for_status()
-        _raw = r.content
+        _raw = _normalize_aspect(r.content)
         del r
         stamped_path = _stamp_logo(_raw, tmp_file_id, brand_slug=brand_slug_for_gen)
         del _raw
@@ -4899,7 +4921,7 @@ def _generate_variant(cid: str, key: str, prompt: str, brand_slug: str, variant_
         tmp_id  = f"{cid}__{brand_slug}__v{variant_idx}"
         r = httpx.get(kie_url, timeout=60, follow_redirects=True)
         r.raise_for_status()
-        _raw = r.content
+        _raw = _normalize_aspect(r.content)
         del r
         stamped_path = _stamp_logo(_raw, tmp_id, brand_slug=brand_slug)
         del _raw
