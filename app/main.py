@@ -293,8 +293,11 @@ def _stamp_attribution(image_path: Path, text: str) -> Path:
     return image_path
 
 
+_KIE_ASPECT_MAP = {"4:5": "3:4", "5:4": "4:3"}  # map unsupported ratios to closest allowed
+
 def _kie_submit(prompt: str, key: str, retries: int = 3, aspect_ratio: str = "4:5") -> str:
-    body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": aspect_ratio, "resolution": "1K", "nsfw_checker": False}}
+    mapped_ratio = _KIE_ASPECT_MAP.get(aspect_ratio, aspect_ratio)
+    body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": mapped_ratio, "resolution": "1K", "nsfw_checker": False}}
     last_exc: Exception = RuntimeError("Kie submit: no attempts made")
     logger.info("Kie submit body: %s", body)
     for attempt in range(retries):
