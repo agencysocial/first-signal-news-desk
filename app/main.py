@@ -51,7 +51,7 @@ _batch_lock = threading.Lock()
 # ── Kie.ai cloud image generation ─────────────────────────────────────────────
 _KIE_CREATE = "https://api.kie.ai/api/v1/jobs/createTask"
 _KIE_RECORD = "https://api.kie.ai/api/v1/jobs/recordInfo"
-_KIE_MODEL  = "gpt-image-2-text-to-image"
+_KIE_MODEL  = "flux-2/pro-text-to-image"
 _KIE_POLL_INTERVAL = 5
 _KIE_POLL_TIMEOUT  = 600  # 10 min
 
@@ -294,7 +294,7 @@ def _stamp_attribution(image_path: Path, text: str) -> Path:
 
 
 def _kie_submit(prompt: str, key: str, retries: int = 3, aspect_ratio: str = "4:5") -> str:
-    body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": aspect_ratio, "resolution": "1K"}}
+    body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": aspect_ratio, "resolution": "1K", "nsfw_checker": False}}
     last_exc: Exception = RuntimeError("Kie submit: no attempts made")
     logger.info("Kie submit body: %s", body)
     for attempt in range(retries):
