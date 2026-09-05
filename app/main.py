@@ -294,7 +294,7 @@ def _stamp_attribution(image_path: Path, text: str) -> Path:
 
 
 def _kie_submit(prompt: str, key: str, retries: int = 3, aspect_ratio: str = "4:5") -> str:
-    body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": aspect_ratio, "resolution": "1K"}}
+    body = {"model": _KIE_MODEL, "input": {"prompt": prompt, "aspect_ratio": aspect_ratio}}
     last_exc: Exception = RuntimeError("Kie submit: no attempts made")
     for attempt in range(retries):
         try:
@@ -342,7 +342,7 @@ def _kie_poll(task_id: str, key: str, prompt: str = "", retries: int = 2, aspect
         else:
             raise TimeoutError(f"Kie task {current_task} timed out after {_KIE_POLL_TIMEOUT}s")
         if attempt == retries:
-            raise RuntimeError(f"Kie task failed after {retries + 1} attempts")
+            raise RuntimeError(f"Kie task failed after {retries + 1} attempts — last failMsg: {fail_msg}")
         time.sleep(10)
     raise RuntimeError("Kie poll: exhausted retries")
 
