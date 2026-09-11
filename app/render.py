@@ -3730,7 +3730,7 @@ function uploadImage(cid, input) {{
       }}
       _setStatus('Image uploaded.', '#4ade80');
       if (wrap && d.url) {{
-        wrap.innerHTML = '<img src="'+d.url+'?t='+Date.now()+'" style="width:100%;border-radius:4px" onerror="this.style.border=\'1px solid #f87171\'">';
+        wrap.innerHTML = '<img src="'+d.url+'?t='+Date.now()+'" style="width:100%;border-radius:4px">';
       }}
       setTimeout(function(){{ _setStatus('', ''); }}, 5000);
     }})
