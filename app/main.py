@@ -4416,14 +4416,16 @@ async def pipeline_queue_story_upload_image(cid: str, request: Request, user: di
     upload = form.get("file")
     if upload is None or not hasattr(upload, "read"):
         return JSONResponse({"error": "no file"}, status_code=400)
-    content_type = getattr(upload, "content_type", "") or ""
-    if not content_type.startswith("image/"):
-        return JSONResponse({"error": "file must be an image"}, status_code=400)
     try:
         image_bytes = await upload.read()
         # Normalize to 4:5 portrait (1024×1280) via center-crop then resize
         from PIL import Image as _PILImg
         import io as _io
+        # Validate it's actually an image via PIL (more reliable than content-type header)
+        try:
+            _PILImg.open(_io.BytesIO(image_bytes)).verify()
+        except Exception:
+            return JSONResponse({"error": "file must be a valid image"}, status_code=400)
         _src = _PILImg.open(_io.BytesIO(image_bytes)).convert("RGB")
         src_w, src_h = _src.size
         target_w, target_h = 1024, 1280          # 4:5, 1K
@@ -4489,11 +4491,14 @@ async def pipeline_queue_upload_scene_image(cid: str, request: Request, user: di
         return JSONResponse({"error": "scene_num must be 1-6"}, status_code=400)
     if upload is None or not hasattr(upload, "read"):
         return JSONResponse({"error": "no file"}, status_code=400)
-    content_type = getattr(upload, "content_type", "") or ""
-    if not content_type.startswith("image/"):
-        return JSONResponse({"error": "file must be an image"}, status_code=400)
     try:
         image_bytes = await upload.read()
+        from PIL import Image as _PILImgSc
+        import io as _ioSc
+        try:
+            _PILImgSc.open(_ioSc.BytesIO(image_bytes)).verify()
+        except Exception:
+            return JSONResponse({"error": "file must be a valid image"}, status_code=400)
         from PIL import Image as _PILImg
         import io as _io
         _src = _PILImg.open(_io.BytesIO(image_bytes)).convert("RGB")
