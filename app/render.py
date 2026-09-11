@@ -3701,7 +3701,14 @@ function uploadImage(cid, input) {{
   if (!file) return;
   var st = document.getElementById('img-status-'+cid);
   var wrap = document.getElementById('img-wrap-'+cid);
-  if (st) st.textContent = 'Uploading...';
+  function _setStatus(msg, color) {{
+    if (!st) return;
+    st.textContent = msg;
+    st.style.color = color || '#8b93a3';
+    st.style.fontWeight = color ? '600' : '';
+  }}
+  _setStatus('Uploading...', '#93c5fd');
+  if (wrap) wrap.innerHTML = '<div style="width:100%;height:180px;background:#0d111a;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#93c5fd;font-size:12px">Uploading...</div>';
   var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'first_signal';
   var attribution = (document.getElementById('img-attribution-'+cid)||{{}}).value||'';
   var fd = new FormData();
@@ -3709,17 +3716,29 @@ function uploadImage(cid, input) {{
   fd.append('brand_slug', brand);
   fd.append('attribution', attribution);
   fetch('/pipeline-queue/story/'+cid+'/upload-image', {{method:'POST', body:fd}})
-    .then(function(r){{ return r.json(); }})
-    .then(function(d){{
-      input.value = '';
-      if (d.error) {{ if(st) st.textContent = 'Error: '+d.error; return; }}
-      if (st) st.textContent = 'Uploaded.';
-      if (wrap && d.url) {{
-        wrap.innerHTML = '<img src="'+d.url+'?t='+Date.now()+'" style="width:100%;border-radius:4px">';
-      }}
-      setTimeout(function(){{ if(st) st.textContent=''; }}, 3000);
+    .then(function(r){{
+      console.log('[uploadImage] HTTP', r.status);
+      return r.json();
     }})
-    .catch(function(e){{ input.value=''; if(st) st.textContent='Error: '+e.message; }});
+    .then(function(d){{
+      console.log('[uploadImage] response', d);
+      input.value = '';
+      if (d.error) {{
+        _setStatus('Upload error: '+d.error, '#f87171');
+        if (wrap) wrap.innerHTML = '<div style="width:100%;height:180px;background:#0d111a;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#f87171;font-size:12px;padding:12px;text-align:center">'+d.error+'</div>';
+        return;
+      }}
+      _setStatus('Image uploaded.', '#4ade80');
+      if (wrap && d.url) {{
+        wrap.innerHTML = '<img src="'+d.url+'?t='+Date.now()+'" style="width:100%;border-radius:4px" onerror="this.style.border=\'1px solid #f87171\'">';
+      }}
+      setTimeout(function(){{ _setStatus('', ''); }}, 5000);
+    }})
+    .catch(function(e){{
+      console.error('[uploadImage] error', e);
+      input.value='';
+      _setStatus('Upload failed: '+e.message, '#f87171');
+    }});
 }}
 function genVariants(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
