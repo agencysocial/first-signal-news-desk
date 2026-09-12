@@ -4408,6 +4408,7 @@ async def pipeline_queue_story_set_image(cid: str, request: Request, user: dict 
 
 def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
                               attribution: str = "", crop_y: float = 0.5,
+                              crop_x: float = 0.5,
                               brand_slug: str = "first_signal") -> bytes:
     """Crop image to 4:5, apply First Signal News card template overlay. Returns JPEG bytes."""
     from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font, ImageStat as _Stat
@@ -4420,29 +4421,50 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
     src_w, src_h = src.size
     src_ratio = src_w / src_h
 
+    cx = max(0.0, min(1.0, crop_x))
+    cy = max(0.0, min(1.0, crop_y))
+
     if src_ratio > TARGET_RATIO:
-        # wider than 4:5 — center-crop sides
+        # wider than 4:5 — crop sides using crop_x
         new_w = int(src_h * TARGET_RATIO)
-        left = (src_w - new_w) // 2
+        max_left = src_w - new_w
+        left = int(max_left * cx)
         src = src.crop((left, 0, left + new_w, src_h))
     else:
-        # taller than 4:5 — crop vertically at crop_y offset
+        # taller than 4:5 — crop top/bottom using crop_y
         new_h = int(src_w / TARGET_RATIO)
         max_top = src_h - new_h
-        top = int(max_top * max(0.0, min(1.0, crop_y)))
+        top = int(max_top * cy)
         src = src.crop((0, top, src_w, top + new_h))
 
     src = src.resize((TARGET_W, TARGET_H), _PIL.LANCZOS)
-    card = src.convert("RGBA")
-    src.close()
 
-    draw = _Draw.Draw(card)
+    # --- Logo stamp at top-left (before footer overlay) ---
+    static_dir = Path(__file__).resolve().parent / "static"
+    try:
+        region = src.crop((0, 0, min(300, TARGET_W // 3), min(120, TARGET_H // 6)))
+        stat = _Stat.Stat(region)
+        region.close()
+        avg_b = 0.299 * stat.mean[0] + 0.587 * stat.mean[1] + 0.114 * stat.mean[2]
+        logo_name = "logo_black_text.png" if avg_b > 140 else "logo_white_text.png"
+        logo_rgba = _PIL.open(static_dir / logo_name).convert("RGBA")
+        LOGO_W = 200
+        logo_rgba = logo_rgba.resize((LOGO_W, int(logo_rgba.height * LOGO_W / logo_rgba.width)), _PIL.LANCZOS)
+        src.paste(logo_rgba.convert("RGB"), (20, 20), logo_rgba.split()[3])
+        logo_rgba.close()
+    except Exception:
+        pass
 
-    # Black footer (bottom 28%)
-    FOOTER_Y = int(TARGET_H * 0.72)
-    draw.rectangle([(0, FOOTER_Y), (TARGET_W, TARGET_H)], fill=(0, 0, 0, 255))
+    # Work in RGB from here — simpler, no RGBA compositing issues
+    out = src
+    src = None
+    draw = _Draw.Draw(out)
 
-    # Fonts — DejaVu Bold available on Linux/Render
+    # --- Black footer (bottom 37%) ---
+    FOOTER_Y = int(TARGET_H * 0.63)
+    draw.rectangle([(0, FOOTER_Y), (TARGET_W, TARGET_H)], fill=(0, 0, 0))
+
+    # --- Fonts ---
     _BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
     _REG  = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
@@ -4452,32 +4474,50 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
         except Exception:
             return _Font.load_default()
 
-    tag_font = _font(_BOLD, 22)
-    wm_font  = _font(_REG,  18)
-    hl_fonts = [_font(_BOLD, 42), _font(_BOLD, 34), _font(_BOLD, 26)]
+    def _text_w(font, text):
+        try:
+            bb = font.getbbox(text)
+            return bb[2] - bb[0]
+        except Exception:
+            try:
+                return font.getsize(text)[0]
+            except Exception:
+                return len(text) * (font.size if hasattr(font, "size") else 12)
 
-    # Red pill (tag)
-    MARGIN, PAD_X, PAD_Y, PILL_R = 20, 14, 7, 5
+    def _line_h(font):
+        try:
+            bb = font.getbbox("Ag")
+            return bb[3] - bb[1]
+        except Exception:
+            try:
+                return font.getsize("Ag")[1]
+            except Exception:
+                return font.size if hasattr(font, "size") else 24
+
+    tag_font = _font(_BOLD, 24)
+
+    # --- Red pill (tag) ---
+    MARGIN   = 24
+    PAD_X, PAD_Y, PILL_R = 16, 8, 6
     tag_upper = (tag or "BREAKING").upper()
-    try:
-        tb = tag_font.getbbox(tag_upper)
-        tw, th = tb[2] - tb[0], tb[3] - tb[1]
-    except Exception:
-        tw, th = len(tag_upper) * 13, 22
-    pill_w, pill_h = tw + PAD_X * 2, th + PAD_Y * 2
-    pill_x, pill_y = MARGIN, FOOTER_Y + 14
+    tw = _text_w(tag_font, tag_upper)
+    th = _line_h(tag_font)
+    pill_w = tw + PAD_X * 2
+    pill_h = th + PAD_Y * 2
+    pill_x = MARGIN
+    pill_y = FOOTER_Y + 20   # breathing room from image edge
     try:
         draw.rounded_rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)],
-                                radius=PILL_R, fill=(208, 32, 32, 255))
+                                radius=PILL_R, fill=(208, 32, 32))
     except AttributeError:
-        draw.rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)], fill=(208, 32, 32, 255))
-    draw.text((pill_x + PAD_X, pill_y + PAD_Y), tag_upper, font=tag_font, fill=(255, 255, 255, 255))
+        draw.rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)], fill=(208, 32, 32))
+    draw.text((pill_x + PAD_X, pill_y + PAD_Y), tag_upper, font=tag_font, fill=(255, 255, 255))
 
-    # Yellow headline — pick largest font that fits vertically
-    HL_YELLOW = (255, 222, 89, 255)
-    HL_X = MARGIN
+    # --- Yellow headline ---
+    HL_YELLOW = (255, 222, 89)
+    HL_X  = MARGIN
     HL_MAX_W = TARGET_W - MARGIN * 2
-    HL_Y = pill_y + pill_h + 12
+    HL_Y  = pill_y + pill_h + 14
     hl_text = (headline or "").upper()
 
     def _wrap(text, font, max_w):
@@ -4485,11 +4525,7 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
         lines, cur = [], ""
         for w in words:
             test = (cur + " " + w).strip()
-            try:
-                tw2 = font.getbbox(test)[2] - font.getbbox(test)[0]
-            except Exception:
-                tw2 = len(test) * 22
-            if tw2 <= max_w:
+            if _text_w(font, test) <= max_w:
                 cur = test
             else:
                 if cur:
@@ -4499,67 +4535,29 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
             lines.append(cur)
         return lines or [""]
 
-    chosen_font, chosen_lines = hl_fonts[-1], _wrap(hl_text, hl_fonts[-1], HL_MAX_W)
-    footer_avail = TARGET_H - HL_Y - 32
-    for fnt in hl_fonts:
+    # Pick largest font that fits in the remaining footer space
+    footer_avail = TARGET_H - HL_Y - 16   # 16px bottom pad
+    chosen_font, chosen_lines = _font(_BOLD, 36), _wrap(hl_text, _font(_BOLD, 36), HL_MAX_W)
+    for size in [68, 58, 48, 40, 34, 28]:
+        fnt = _font(_BOLD, size)
         lines = _wrap(hl_text, fnt, HL_MAX_W)
-        try:
-            lh = fnt.getbbox("Ag")[3] - fnt.getbbox("Ag")[1]
-        except Exception:
-            lh = 32
-        if len(lines) * (lh + 6) <= footer_avail:
+        lh = _line_h(fnt)
+        if len(lines) * (lh + 8) <= footer_avail:
             chosen_font, chosen_lines = fnt, lines
             break
 
-    try:
-        line_h = chosen_font.getbbox("Ag")[3] - chosen_font.getbbox("Ag")[1]
-    except Exception:
-        line_h = 32
+    lh = _line_h(chosen_font)
     for i, line in enumerate(chosen_lines):
-        draw.text((HL_X, HL_Y + i * (line_h + 6)), line, font=chosen_font, fill=HL_YELLOW)
+        draw.text((HL_X, HL_Y + i * (lh + 8)), line, font=chosen_font, fill=HL_YELLOW)
 
-    # Watermark
-    wm = "First Signal News"
-    try:
-        wb = wm_font.getbbox(wm)
-        wm_w = wb[2] - wb[0]
-    except Exception:
-        wm_w = len(wm) * 10
-    draw.text(((TARGET_W - wm_w) // 2, TARGET_H - 26), wm, font=wm_font, fill=(255, 255, 255, 180))
-
-    # Logo stamp (top-left)
-    static_dir = Path(__file__).resolve().parent / "static"
-    try:
-        region = card.crop((0, 0, min(300, TARGET_W // 3), min(120, TARGET_H // 6))).convert("RGB")
-        avg_b = 0.299 * _Stat.Stat(region).mean[0] + 0.587 * _Stat.Stat(region).mean[1] + 0.114 * _Stat.Stat(region).mean[2]
-        region.close()
-        logo_name = "logo_black_text.png" if avg_b > 140 else "logo_white_text.png"
-        logo = _PIL.open(static_dir / logo_name).convert("RGBA")
-        LOGO_W = 200
-        logo = logo.resize((LOGO_W, int(logo.height * LOGO_W / logo.width)), _PIL.LANCZOS)
-        card.paste(logo, (20, 20), logo)
-        logo.close()
-    except Exception:
-        pass
-
-    # Convert to RGB
-    out = _PIL.new("RGB", card.size, (0, 0, 0))
-    out.paste(card, mask=card.split()[3])
-    card.close()
-
-    # Attribution (top-right)
+    # --- Attribution (top-right, on the photo) ---
     if attribution and attribution.strip():
-        draw2 = _Draw.Draw(out)
         attr_font = _font(_REG, max(16, TARGET_W // 55))
         pad = max(10, TARGET_W // 80)
-        try:
-            ab = attr_font.getbbox(attribution)
-            aw = ab[2] - ab[0]
-        except Exception:
-            aw = len(attribution) * 10
+        aw = _text_w(attr_font, attribution)
         ax, ay = TARGET_W - int(aw) - pad, pad
-        draw2.text((ax + 1, ay + 1), attribution, font=attr_font, fill=(0, 0, 0, 120))
-        draw2.text((ax, ay), attribution, font=attr_font, fill=(255, 255, 255, 200))
+        draw.text((ax + 1, ay + 1), attribution, font=attr_font, fill=(0, 0, 0))
+        draw.text((ax, ay), attribution, font=attr_font, fill=(255, 255, 255))
 
     buf = _io.BytesIO()
     out.save(buf, "JPEG", quality=92)
@@ -4642,6 +4640,7 @@ async def pipeline_queue_apply_card_template(cid: str, request: Request, user: d
     form = await request.form()
     raw_url    = str(form.get("raw_url", "")).strip()
     crop_y     = float(form.get("crop_y", 0.5))
+    crop_x     = float(form.get("crop_x", 0.5))
     brand_slug = str(form.get("brand_slug", "first_signal")).strip() or "first_signal"
     attribution = str(form.get("attribution", "")).strip()
     headline   = str(form.get("headline", "")).strip()
@@ -4658,7 +4657,7 @@ async def pipeline_queue_apply_card_template(cid: str, request: Request, user: d
             if r.status_code != 200:
                 return JSONResponse({"error": f"Could not fetch image ({r.status_code})"}, status_code=400)
             raw_image_bytes = r.content
-        result_bytes = _apply_card_template_pil(raw_image_bytes, headline, tag, attribution, crop_y, brand_slug)
+        result_bytes = _apply_card_template_pil(raw_image_bytes, headline, tag, attribution, crop_y, crop_x, brand_slug)
 
         tmp_dir = Path("/tmp/fsn_images")
         tmp_dir.mkdir(parents=True, exist_ok=True)

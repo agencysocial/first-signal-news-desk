@@ -3080,11 +3080,17 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
         <div style="color:#93c5fd;font-size:11px;margin-bottom:6px;font-weight:600">&#8679; Uploaded — adjust crop then apply template</div>
         <div id="crop-container-{cid}" style="width:100%;aspect-ratio:4/5;overflow:hidden;position:relative;border-radius:4px;border:1px solid #2a3555;max-height:260px">
           <img id="crop-preview-{cid}" src="" alt="upload preview"
-            style="width:100%;height:100%;object-fit:cover;object-position:center 0%">
+            style="width:100%;height:100%;object-fit:cover;object-position:50% 0%">
         </div>
         <div style="margin-top:6px">
-          <div style="color:#8b93a3;font-size:10px;margin-bottom:3px">&#8597; Adjust crop position (drag slider)</div>
-          <input type="range" id="crop-slider-{cid}" min="0" max="100" value="0"
+          <div style="color:#8b93a3;font-size:10px;margin-bottom:3px">&#8597; Vertical position</div>
+          <input type="range" id="crop-slider-v-{cid}" min="0" max="100" value="0"
+            style="width:100%;accent-color:#93c5fd"
+            oninput="_updateCropPreview('{cid}')">
+        </div>
+        <div style="margin-top:6px">
+          <div style="color:#8b93a3;font-size:10px;margin-bottom:3px">&#8596; Horizontal position</div>
+          <input type="range" id="crop-slider-h-{cid}" min="0" max="100" value="50"
             style="width:100%;accent-color:#93c5fd"
             oninput="_updateCropPreview('{cid}')">
         </div>
@@ -3730,13 +3736,15 @@ function uploadImage(cid, input) {{
       }}
       // Show crop UI
       window['_rawUpload_' + cid] = d.raw_url;
-      var preview = document.getElementById('crop-preview-' + cid);
-      var cropUi  = document.getElementById('upload-crop-ui-' + cid);
-      var slider  = document.getElementById('crop-slider-' + cid);
-      if (preview) {{ preview.src = d.raw_url; preview.style.objectPosition = 'center 0%'; }}
-      if (slider)  slider.value = 0;
+      var preview  = document.getElementById('crop-preview-' + cid);
+      var cropUi   = document.getElementById('upload-crop-ui-' + cid);
+      var sliderV  = document.getElementById('crop-slider-v-' + cid);
+      var sliderH  = document.getElementById('crop-slider-h-' + cid);
+      if (preview) {{ preview.src = d.raw_url; preview.style.objectPosition = '50% 0%'; }}
+      if (sliderV) sliderV.value = 0;
+      if (sliderH) sliderH.value = 50;
       if (cropUi)  cropUi.style.display = 'block';
-      if (st) {{ st.textContent = 'Adjust crop position then click Apply Template'; st.style.color = '#93c5fd'; }}
+      if (st) {{ st.textContent = 'Adjust crop then click Apply Template'; st.style.color = '#93c5fd'; }}
     }})
     .catch(function(e) {{
       input.value = '';
@@ -3744,10 +3752,13 @@ function uploadImage(cid, input) {{
     }});
 }}
 function _updateCropPreview(cid) {{
-  var slider  = document.getElementById('crop-slider-' + cid);
+  var sliderV = document.getElementById('crop-slider-v-' + cid);
+  var sliderH = document.getElementById('crop-slider-h-' + cid);
   var preview = document.getElementById('crop-preview-' + cid);
-  if (!slider || !preview) return;
-  preview.style.objectPosition = 'center ' + slider.value + '%';
+  if (!preview) return;
+  var vPct = sliderV ? sliderV.value : '0';
+  var hPct = sliderH ? sliderH.value : '50';
+  preview.style.objectPosition = hPct + '% ' + vPct + '%';
 }}
 function applyCardTemplate(cid) {{
   var rawUrl = window['_rawUpload_' + cid];
@@ -3756,14 +3767,17 @@ function applyCardTemplate(cid) {{
   var attribution = (document.getElementById('img-attribution-' + cid) || {{}}).value || '';
   var headline    = (document.getElementById('draft-hl-' + cid) || {{}}).value || '';
   var tag         = (document.getElementById('draft-tag-' + cid) || {{}}).value || 'BREAKING';
-  var slider      = document.getElementById('crop-slider-' + cid);
-  var crop_y      = slider ? (parseInt(slider.value) / 100).toFixed(2) : '0.50';
+  var sliderV     = document.getElementById('crop-slider-v-' + cid);
+  var sliderH     = document.getElementById('crop-slider-h-' + cid);
+  var crop_y      = sliderV ? (parseInt(sliderV.value) / 100).toFixed(2) : '0.00';
+  var crop_x      = sliderH ? (parseInt(sliderH.value) / 100).toFixed(2) : '0.50';
   var st   = document.getElementById('img-status-' + cid);
   var wrap = document.getElementById('img-wrap-' + cid);
   if (st) {{ st.textContent = 'Applying template...'; st.style.color = '#93c5fd'; }}
   var fd = new FormData();
   fd.append('raw_url', rawUrl);
   fd.append('crop_y', crop_y);
+  fd.append('crop_x', crop_x);
   fd.append('brand_slug', brand);
   fd.append('attribution', attribution);
   fd.append('headline', headline);
