@@ -4592,7 +4592,12 @@ async def pipeline_queue_story_upload_image(cid: str, request: Request, user: di
         _src.close()
         raw_bytes = _buf.getvalue()
 
-        # Upload raw image to Supabase at a dedicated path
+        # Always save to /tmp so apply-card-template can read locally
+        tmp_dir = Path("/tmp/fsn_images")
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        (tmp_dir / f"raw_{cid}.jpg").write_bytes(raw_bytes)
+
+        # Also upload to Supabase for a stable public preview URL
         from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
         raw_url = None
         if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
@@ -4610,10 +4615,6 @@ async def pipeline_queue_story_upload_image(cid: str, request: Request, user: di
             if r_up.status_code in (200, 201):
                 raw_url = f"{SUPABASE_URL}/storage/v1/object/public/card-images/{raw_path}"
         if not raw_url:
-            # Fallback: save to /tmp and serve locally
-            tmp_dir = Path("/tmp/fsn_images")
-            tmp_dir.mkdir(parents=True, exist_ok=True)
-            (tmp_dir / f"raw_{cid}.jpg").write_bytes(raw_bytes)
             raw_url = f"/pipeline-queue/story/{cid}/raw-upload-preview"
         return JSONResponse({"ok": True, "raw_url": raw_url})
     except Exception as exc:
@@ -4648,10 +4649,16 @@ async def pipeline_queue_apply_card_template(cid: str, request: Request, user: d
     if not raw_url:
         return JSONResponse({"error": "raw_url required"}, status_code=400)
     try:
-        r = httpx.get(raw_url, timeout=30, follow_redirects=True)
-        if r.status_code != 200:
-            return JSONResponse({"error": f"Could not fetch image ({r.status_code})"}, status_code=400)
-        result_bytes = _apply_card_template_pil(r.content, headline, tag, attribution, crop_y, brand_slug)
+        # Prefer reading from /tmp (always written by upload endpoint, fastest)
+        tmp_raw = Path("/tmp/fsn_images") / f"raw_{cid}.jpg"
+        if tmp_raw.exists():
+            raw_image_bytes = tmp_raw.read_bytes()
+        else:
+            r = httpx.get(raw_url, timeout=30, follow_redirects=True)
+            if r.status_code != 200:
+                return JSONResponse({"error": f"Could not fetch image ({r.status_code})"}, status_code=400)
+            raw_image_bytes = r.content
+        result_bytes = _apply_card_template_pil(raw_image_bytes, headline, tag, attribution, crop_y, brand_slug)
 
         tmp_dir = Path("/tmp/fsn_images")
         tmp_dir.mkdir(parents=True, exist_ok=True)
