@@ -4406,55 +4406,260 @@ async def pipeline_queue_story_set_image(cid: str, request: Request, user: dict 
         return JSONResponse({"error": str(exc)}, status_code=500)
 
 
+def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
+                              attribution: str = "", crop_y: float = 0.5,
+                              brand_slug: str = "first_signal") -> bytes:
+    """Crop image to 4:5, apply First Signal News card template overlay. Returns JPEG bytes."""
+    from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font, ImageStat as _Stat
+    import io as _io
+
+    TARGET_W, TARGET_H = 1024, 1280
+    TARGET_RATIO = TARGET_W / TARGET_H  # 0.8
+
+    src = _PIL.open(_io.BytesIO(image_bytes)).convert("RGB")
+    src_w, src_h = src.size
+    src_ratio = src_w / src_h
+
+    if src_ratio > TARGET_RATIO:
+        # wider than 4:5 — center-crop sides
+        new_w = int(src_h * TARGET_RATIO)
+        left = (src_w - new_w) // 2
+        src = src.crop((left, 0, left + new_w, src_h))
+    else:
+        # taller than 4:5 — crop vertically at crop_y offset
+        new_h = int(src_w / TARGET_RATIO)
+        max_top = src_h - new_h
+        top = int(max_top * max(0.0, min(1.0, crop_y)))
+        src = src.crop((0, top, src_w, top + new_h))
+
+    src = src.resize((TARGET_W, TARGET_H), _PIL.LANCZOS)
+    card = src.convert("RGBA")
+    src.close()
+
+    draw = _Draw.Draw(card)
+
+    # Black footer (bottom 28%)
+    FOOTER_Y = int(TARGET_H * 0.72)
+    draw.rectangle([(0, FOOTER_Y), (TARGET_W, TARGET_H)], fill=(0, 0, 0, 255))
+
+    # Fonts — DejaVu Bold available on Linux/Render
+    _BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    _REG  = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+    def _font(path, size):
+        try:
+            return _Font.truetype(path, size)
+        except Exception:
+            return _Font.load_default()
+
+    tag_font = _font(_BOLD, 22)
+    wm_font  = _font(_REG,  18)
+    hl_fonts = [_font(_BOLD, 42), _font(_BOLD, 34), _font(_BOLD, 26)]
+
+    # Red pill (tag)
+    MARGIN, PAD_X, PAD_Y, PILL_R = 20, 14, 7, 5
+    tag_upper = (tag or "BREAKING").upper()
+    try:
+        tb = tag_font.getbbox(tag_upper)
+        tw, th = tb[2] - tb[0], tb[3] - tb[1]
+    except Exception:
+        tw, th = len(tag_upper) * 13, 22
+    pill_w, pill_h = tw + PAD_X * 2, th + PAD_Y * 2
+    pill_x, pill_y = MARGIN, FOOTER_Y + 14
+    try:
+        draw.rounded_rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)],
+                                radius=PILL_R, fill=(208, 32, 32, 255))
+    except AttributeError:
+        draw.rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)], fill=(208, 32, 32, 255))
+    draw.text((pill_x + PAD_X, pill_y + PAD_Y), tag_upper, font=tag_font, fill=(255, 255, 255, 255))
+
+    # Yellow headline — pick largest font that fits vertically
+    HL_YELLOW = (255, 222, 89, 255)
+    HL_X = MARGIN
+    HL_MAX_W = TARGET_W - MARGIN * 2
+    HL_Y = pill_y + pill_h + 12
+    hl_text = (headline or "").upper()
+
+    def _wrap(text, font, max_w):
+        words = text.split()
+        lines, cur = [], ""
+        for w in words:
+            test = (cur + " " + w).strip()
+            try:
+                tw2 = font.getbbox(test)[2] - font.getbbox(test)[0]
+            except Exception:
+                tw2 = len(test) * 22
+            if tw2 <= max_w:
+                cur = test
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines or [""]
+
+    chosen_font, chosen_lines = hl_fonts[-1], _wrap(hl_text, hl_fonts[-1], HL_MAX_W)
+    footer_avail = TARGET_H - HL_Y - 32
+    for fnt in hl_fonts:
+        lines = _wrap(hl_text, fnt, HL_MAX_W)
+        try:
+            lh = fnt.getbbox("Ag")[3] - fnt.getbbox("Ag")[1]
+        except Exception:
+            lh = 32
+        if len(lines) * (lh + 6) <= footer_avail:
+            chosen_font, chosen_lines = fnt, lines
+            break
+
+    try:
+        line_h = chosen_font.getbbox("Ag")[3] - chosen_font.getbbox("Ag")[1]
+    except Exception:
+        line_h = 32
+    for i, line in enumerate(chosen_lines):
+        draw.text((HL_X, HL_Y + i * (line_h + 6)), line, font=chosen_font, fill=HL_YELLOW)
+
+    # Watermark
+    wm = "First Signal News"
+    try:
+        wb = wm_font.getbbox(wm)
+        wm_w = wb[2] - wb[0]
+    except Exception:
+        wm_w = len(wm) * 10
+    draw.text(((TARGET_W - wm_w) // 2, TARGET_H - 26), wm, font=wm_font, fill=(255, 255, 255, 180))
+
+    # Logo stamp (top-left)
+    static_dir = Path(__file__).resolve().parent / "static"
+    try:
+        region = card.crop((0, 0, min(300, TARGET_W // 3), min(120, TARGET_H // 6))).convert("RGB")
+        avg_b = 0.299 * _Stat.Stat(region).mean[0] + 0.587 * _Stat.Stat(region).mean[1] + 0.114 * _Stat.Stat(region).mean[2]
+        region.close()
+        logo_name = "logo_black_text.png" if avg_b > 140 else "logo_white_text.png"
+        logo = _PIL.open(static_dir / logo_name).convert("RGBA")
+        LOGO_W = 200
+        logo = logo.resize((LOGO_W, int(logo.height * LOGO_W / logo.width)), _PIL.LANCZOS)
+        card.paste(logo, (20, 20), logo)
+        logo.close()
+    except Exception:
+        pass
+
+    # Convert to RGB
+    out = _PIL.new("RGB", card.size, (0, 0, 0))
+    out.paste(card, mask=card.split()[3])
+    card.close()
+
+    # Attribution (top-right)
+    if attribution and attribution.strip():
+        draw2 = _Draw.Draw(out)
+        attr_font = _font(_REG, max(16, TARGET_W // 55))
+        pad = max(10, TARGET_W // 80)
+        try:
+            ab = attr_font.getbbox(attribution)
+            aw = ab[2] - ab[0]
+        except Exception:
+            aw = len(attribution) * 10
+        ax, ay = TARGET_W - int(aw) - pad, pad
+        draw2.text((ax + 1, ay + 1), attribution, font=attr_font, fill=(0, 0, 0, 120))
+        draw2.text((ax, ay), attribution, font=attr_font, fill=(255, 255, 255, 200))
+
+    buf = _io.BytesIO()
+    out.save(buf, "JPEG", quality=92)
+    out.close()
+    return buf.getvalue()
+
+
 @app.post("/pipeline-queue/story/{cid}/upload-image")
 async def pipeline_queue_story_upload_image(cid: str, request: Request, user: dict = Depends(require_user)):
-    """Accept an uploaded image file, apply brand stamp, store to Supabase, set as current image."""
+    """Accept an uploaded image, resize preserving aspect ratio, store raw to Supabase for crop UI."""
     if not cid.isdigit():
         return JSONResponse({"error": "invalid id"}, status_code=400)
-    cluster_id = int(cid)
     form = await request.form()
     upload = form.get("file")
     if upload is None or not hasattr(upload, "read"):
         return JSONResponse({"error": "no file"}, status_code=400)
     try:
         image_bytes = await upload.read()
-        # Normalize to 4:5 portrait (1024×1280) via center-crop then resize
         from PIL import Image as _PILImg
         import io as _io
-        # Validate it's actually an image via PIL (more reliable than content-type header)
         try:
             _PILImg.open(_io.BytesIO(image_bytes)).verify()
         except Exception:
             return JSONResponse({"error": "file must be a valid image"}, status_code=400)
+        # Resize to max 1600px on longest side, preserve aspect ratio (no crop yet)
         _src = _PILImg.open(_io.BytesIO(image_bytes)).convert("RGB")
-        src_w, src_h = _src.size
-        target_w, target_h = 1024, 1280          # 4:5, 1K
-        target_ratio = target_w / target_h        # 0.8
-        src_ratio = src_w / src_h
-        if src_ratio > target_ratio:
-            # wider than 4:5 — crop sides
-            new_w = int(src_h * target_ratio)
-            left = (src_w - new_w) // 2
-            _src = _src.crop((left, 0, left + new_w, src_h))
-        else:
-            # taller than 4:5 — crop top/bottom
-            new_h = int(src_w / target_ratio)
-            top = (src_h - new_h) // 2
-            _src = _src.crop((0, top, src_w, top + new_h))
-        _src = _src.resize((target_w, target_h), _PILImg.LANCZOS)
+        _src.thumbnail((1600, 1600), _PILImg.LANCZOS)
         _buf = _io.BytesIO()
         _src.save(_buf, "JPEG", quality=92)
         _src.close()
-        image_bytes = _buf.getvalue()
+        raw_bytes = _buf.getvalue()
 
+        # Upload raw image to Supabase at a dedicated path
+        from app.config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+        raw_url = None
+        if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
+            raw_path = f"raw-uploads/{cid}.jpg"
+            r_up = httpx.put(
+                f"{SUPABASE_URL}/storage/v1/object/card-images/{raw_path}",
+                content=raw_bytes,
+                headers={
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                    "Content-Type": "image/jpeg",
+                    "x-upsert": "true",
+                },
+                timeout=30,
+            )
+            if r_up.status_code in (200, 201):
+                raw_url = f"{SUPABASE_URL}/storage/v1/object/public/card-images/{raw_path}"
+        if not raw_url:
+            # Fallback: save to /tmp and serve locally
+            tmp_dir = Path("/tmp/fsn_images")
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            (tmp_dir / f"raw_{cid}.jpg").write_bytes(raw_bytes)
+            raw_url = f"/pipeline-queue/story/{cid}/raw-upload-preview"
+        return JSONResponse({"ok": True, "raw_url": raw_url})
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/pipeline-queue/story/{cid}/raw-upload-preview")
+async def pipeline_queue_raw_upload_preview(cid: str, user: dict = Depends(require_user)):
+    """Serve the raw uploaded image from /tmp (fallback when Supabase is unavailable)."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    tmp_path = Path("/tmp/fsn_images") / f"raw_{cid}.jpg"
+    if not tmp_path.exists():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    from fastapi.responses import FileResponse
+    return FileResponse(str(tmp_path), media_type="image/jpeg")
+
+
+@app.post("/pipeline-queue/story/{cid}/apply-card-template")
+async def pipeline_queue_apply_card_template(cid: str, request: Request, user: dict = Depends(require_user)):
+    """Fetch raw uploaded image, apply crop + card template, store as current image."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    cluster_id = int(cid)
+    form = await request.form()
+    raw_url    = str(form.get("raw_url", "")).strip()
+    crop_y     = float(form.get("crop_y", 0.5))
+    brand_slug = str(form.get("brand_slug", "first_signal")).strip() or "first_signal"
+    attribution = str(form.get("attribution", "")).strip()
+    headline   = str(form.get("headline", "")).strip()
+    tag        = str(form.get("tag", "BREAKING")).strip() or "BREAKING"
+    if not raw_url:
+        return JSONResponse({"error": "raw_url required"}, status_code=400)
+    try:
+        r = httpx.get(raw_url, timeout=30, follow_redirects=True)
+        if r.status_code != 200:
+            return JSONResponse({"error": f"Could not fetch image ({r.status_code})"}, status_code=400)
+        result_bytes = _apply_card_template_pil(r.content, headline, tag, attribution, crop_y, brand_slug)
+
+        tmp_dir = Path("/tmp/fsn_images")
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        out_path = tmp_dir / f"{cid}__{brand_slug}.jpg"
+        out_path.write_bytes(result_bytes)
+
+        supabase_url = _supabase_storage_upload(out_path, cid, brand_slug)
         item = _queue_item_for(cluster_id)
-        brand_slug  = str(form.get("brand_slug", "")).strip() or (item or {}).get("brand_slug") or "first_signal"
-        attribution = str(form.get("attribution", "")).strip()
-        tmp_file_id = f"{cid}__{brand_slug}"
-        stamped_path = _stamp_logo(image_bytes, tmp_file_id, brand_slug=brand_slug)
-        _stamp_attribution(stamped_path, attribution)
-        supabase_url = _supabase_storage_upload(stamped_path, cid, brand_slug)
-        # Store as current image, push previous to history
         brand_images = dict((item or {}).get("brand_images") or {})
         existing = dict(brand_images.get(brand_slug) or {})
         history = list(existing.get("image_history") or [])
@@ -4464,7 +4669,7 @@ async def pipeline_queue_story_upload_image(cid: str, request: Request, user: di
         served_url = f"/pipeline-queue/image/{cid}/{brand_slug}"
         existing.update({
             "generated_image_url": served_url,
-            "kie_result_url": "",          # no Kie URL — user-uploaded
+            "kie_result_url": "",
             "supabase_image_url": supabase_url or existing.get("supabase_image_url") or "",
             "image_gen_status": "done",
             "image_history": history,

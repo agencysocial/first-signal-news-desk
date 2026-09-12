@@ -3075,6 +3075,23 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
             onchange="uploadImage('{cid}', this)">
         </div>
       </div>
+      <!-- Upload crop + apply template UI -->
+      <div id="upload-crop-ui-{cid}" style="display:none;margin-bottom:10px;background:#080c14;border:1px solid #2a3555;border-radius:6px;padding:10px">
+        <div style="color:#93c5fd;font-size:11px;margin-bottom:6px;font-weight:600">&#8679; Uploaded — adjust crop then apply template</div>
+        <div id="crop-container-{cid}" style="width:100%;aspect-ratio:4/5;overflow:hidden;position:relative;border-radius:4px;border:1px solid #2a3555;max-height:260px">
+          <img id="crop-preview-{cid}" src="" alt="upload preview"
+            style="width:100%;height:100%;object-fit:cover;object-position:center 0%">
+        </div>
+        <div style="margin-top:6px">
+          <div style="color:#8b93a3;font-size:10px;margin-bottom:3px">&#8597; Adjust crop position (drag slider)</div>
+          <input type="range" id="crop-slider-{cid}" min="0" max="100" value="0"
+            style="width:100%;accent-color:#93c5fd"
+            oninput="_updateCropPreview('{cid}')">
+        </div>
+        <button type="button" onclick="applyCardTemplate('{cid}')"
+          style="margin-top:8px;width:100%;font-size:12px;padding:7px 12px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:4px;font-weight:600">
+          &#9654; Apply Template (headline + tag + branding)</button>
+      </div>
       <textarea id="img-notes-{cid}" placeholder="Optional notes — e.g. &quot;show a courtroom&quot;, &quot;darker mood&quot;, &quot;wide shot of Capitol&quot;" rows="2"
         style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:6px;font-family:inherit;resize:vertical;margin-bottom:6px"></textarea>
       <input id="img-attribution-{cid}" type="text" placeholder="Attribution (top-right, small white text) — e.g. Image Created by AI"
@@ -3700,33 +3717,74 @@ function uploadImage(cid, input) {{
   var file = input.files && input.files[0];
   if (!file) return;
   var st = document.getElementById('img-status-' + cid);
-  var wrap = document.getElementById('img-wrap-' + cid);
   if (st) {{ st.textContent = 'Uploading...'; st.style.color = '#93c5fd'; }}
-  if (wrap) wrap.innerHTML = '<div style="color:#93c5fd;padding:8px;font-size:12px">Uploading image...</div>';
-  var brand = (document.getElementById('draft-brand-' + cid) || {{}}).value || 'first_signal';
-  var attribution = (document.getElementById('img-attribution-' + cid) || {{}}).value || '';
   var fd = new FormData();
   fd.append('file', file);
-  fd.append('brand_slug', brand);
-  fd.append('attribution', attribution);
   fetch('/pipeline-queue/story/' + cid + '/upload-image', {{method: 'POST', body: fd}})
     .then(function(r) {{ return r.json(); }})
     .then(function(d) {{
       input.value = '';
       if (d.error) {{
         if (st) {{ st.textContent = 'Error: ' + d.error; st.style.color = '#f87171'; }}
-        if (wrap) wrap.innerHTML = '<div style="color:#f87171;padding:8px;font-size:12px">' + d.error + '</div>';
         return;
       }}
-      if (st) {{ st.textContent = 'Uploaded!'; st.style.color = '#4ade80'; }}
-      if (wrap && d.url) {{
-        wrap.innerHTML = '<img src="' + d.url + '?t=' + Date.now() + '" style="width:100%;border-radius:4px">';
-      }}
-      setTimeout(function() {{ if (st) {{ st.textContent = ''; st.style.color = ''; }} }}, 4000);
+      // Show crop UI
+      window['_rawUpload_' + cid] = d.raw_url;
+      var preview = document.getElementById('crop-preview-' + cid);
+      var cropUi  = document.getElementById('upload-crop-ui-' + cid);
+      var slider  = document.getElementById('crop-slider-' + cid);
+      if (preview) {{ preview.src = d.raw_url; preview.style.objectPosition = 'center 0%'; }}
+      if (slider)  slider.value = 0;
+      if (cropUi)  cropUi.style.display = 'block';
+      if (st) {{ st.textContent = 'Adjust crop position then click Apply Template'; st.style.color = '#93c5fd'; }}
     }})
     .catch(function(e) {{
       input.value = '';
       if (st) {{ st.textContent = 'Upload failed: ' + e.message; st.style.color = '#f87171'; }}
+    }});
+}}
+function _updateCropPreview(cid) {{
+  var slider  = document.getElementById('crop-slider-' + cid);
+  var preview = document.getElementById('crop-preview-' + cid);
+  if (!slider || !preview) return;
+  preview.style.objectPosition = 'center ' + slider.value + '%';
+}}
+function applyCardTemplate(cid) {{
+  var rawUrl = window['_rawUpload_' + cid];
+  if (!rawUrl) {{ alert('No image uploaded yet.'); return; }}
+  var brand       = (document.getElementById('draft-brand-' + cid) || {{}}).value || 'first_signal';
+  var attribution = (document.getElementById('img-attribution-' + cid) || {{}}).value || '';
+  var headline    = (document.getElementById('draft-hl-' + cid) || {{}}).value || '';
+  var tag         = (document.getElementById('draft-tag-' + cid) || {{}}).value || 'BREAKING';
+  var slider      = document.getElementById('crop-slider-' + cid);
+  var crop_y      = slider ? (parseInt(slider.value) / 100).toFixed(2) : '0.50';
+  var st   = document.getElementById('img-status-' + cid);
+  var wrap = document.getElementById('img-wrap-' + cid);
+  if (st) {{ st.textContent = 'Applying template...'; st.style.color = '#93c5fd'; }}
+  var fd = new FormData();
+  fd.append('raw_url', rawUrl);
+  fd.append('crop_y', crop_y);
+  fd.append('brand_slug', brand);
+  fd.append('attribution', attribution);
+  fd.append('headline', headline);
+  fd.append('tag', tag);
+  fetch('/pipeline-queue/story/' + cid + '/apply-card-template', {{method: 'POST', body: fd}})
+    .then(function(r) {{ return r.json(); }})
+    .then(function(d) {{
+      if (d.error) {{
+        if (st) {{ st.textContent = 'Error: ' + d.error; st.style.color = '#f87171'; }}
+        return;
+      }}
+      if (wrap && d.url) {{
+        wrap.innerHTML = '<img src="' + d.url + '?t=' + Date.now() + '" style="width:100%;border-radius:4px">';
+      }}
+      var cropUi = document.getElementById('upload-crop-ui-' + cid);
+      if (cropUi) cropUi.style.display = 'none';
+      if (st) {{ st.textContent = 'Template applied!'; st.style.color = '#4ade80'; }}
+      setTimeout(function() {{ if (st) {{ st.textContent = ''; st.style.color = ''; }} }}, 4000);
+    }})
+    .catch(function(e) {{
+      if (st) {{ st.textContent = 'Failed: ' + e.message; st.style.color = '#f87171'; }}
     }});
 }}
 function genVariants(cid) {{
