@@ -4657,15 +4657,28 @@ async def pipeline_queue_apply_card_template(cid: str, request: Request, user: d
     if not raw_url:
         return JSONResponse({"error": "raw_url required"}, status_code=400)
     try:
-        # Prefer reading from /tmp (always written by upload endpoint, fastest)
+        # If raw_url is an absolute URL (Supabase), always fetch it — avoids stale /tmp
+        # from a previous upload or angle session overriding the new upload.
+        # Only fall back to /tmp when raw_url is the relative fallback path.
         tmp_raw = Path("/tmp/fsn_images") / f"raw_{cid}.jpg"
-        if tmp_raw.exists():
-            raw_image_bytes = tmp_raw.read_bytes()
-        else:
+        if raw_url.startswith("http"):
             r = httpx.get(raw_url, timeout=30, follow_redirects=True)
             if r.status_code != 200:
-                return JSONResponse({"error": f"Could not fetch image ({r.status_code})"}, status_code=400)
-            raw_image_bytes = r.content
+                # Supabase fetch failed — try /tmp as last resort
+                if tmp_raw.exists():
+                    raw_image_bytes = tmp_raw.read_bytes()
+                else:
+                    return JSONResponse({"error": f"Could not fetch image ({r.status_code})"}, status_code=400)
+            else:
+                raw_image_bytes = r.content
+                # Refresh /tmp with the correct bytes for this session
+                tmp_raw.write_bytes(raw_image_bytes)
+        else:
+            # Relative fallback URL — must use /tmp
+            if tmp_raw.exists():
+                raw_image_bytes = tmp_raw.read_bytes()
+            else:
+                return JSONResponse({"error": "Image not found — please re-upload"}, status_code=400)
         result_bytes = _apply_card_template_pil(raw_image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
 
         tmp_dir = Path("/tmp/fsn_images")
