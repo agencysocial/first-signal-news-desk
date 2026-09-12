@@ -4421,32 +4421,29 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
     src_w, src_h = src.size
     src_ratio = src_w / src_h
 
-    cx = max(0.0, min(1.0, crop_x))
-    cy = max(0.0, min(1.0, crop_y))
+    cx   = max(0.0, min(1.0, crop_x))
+    cy   = max(0.0, min(1.0, crop_y))
     zoom = max(1.0, min(4.0, zoom))
 
-    # Apply zoom: shrink the crop window (zoom in by cropping a smaller region)
-    zoomed_w = int(src_w / zoom)
-    zoomed_h = int(src_h / zoom)
-    # Center the zoom window at (cx, cy) of the original image
-    zx = int((src_w - zoomed_w) * cx)
-    zy = int((src_h - zoomed_h) * cy)
-    src = src.crop((zx, zy, zx + zoomed_w, zy + zoomed_h))
-    src_w, src_h = src.size
-    src_ratio = src_w / src_h
-
-    if src_ratio > TARGET_RATIO:
-        # wider than 4:5 — crop sides using crop_x
-        new_w = int(src_h * TARGET_RATIO)
-        max_left = src_w - new_w
-        left = int(max_left * cx)
-        src = src.crop((left, 0, left + new_w, src_h))
-    else:
-        # taller than 4:5 — crop top/bottom using crop_y
-        new_h = int(src_w / TARGET_RATIO)
-        max_top = src_h - new_h
-        top = int(max_top * cy)
-        src = src.crop((0, top, src_w, top + new_h))
+    # Replicate CSS object-fit:cover + absolute positioning used in the preview.
+    # base_scale makes the image cover TARGET_W × TARGET_H; zoom enlarges further.
+    iw, ih = src_w, src_h
+    base_scale = max(TARGET_W / iw, TARGET_H / ih)
+    scale      = base_scale * zoom
+    disp_w     = iw * scale
+    disp_h     = ih * scale
+    overflow_x = max(0.0, disp_w - TARGET_W)
+    overflow_y = max(0.0, disp_h - TARGET_H)
+    left_disp  = overflow_x * cx
+    top_disp   = overflow_y * cy
+    # Convert display-pixel offsets back to source-image pixels
+    left_src = int(left_disp / scale)
+    top_src  = int(top_disp  / scale)
+    crop_w   = int(TARGET_W  / scale)
+    crop_h   = int(TARGET_H  / scale)
+    left_src = max(0, min(iw - crop_w, left_src))
+    top_src  = max(0, min(ih - crop_h, top_src))
+    src = src.crop((left_src, top_src, left_src + crop_w, top_src + crop_h))
 
     src = src.resize((TARGET_W, TARGET_H), _PIL.LANCZOS)
 
@@ -4505,7 +4502,7 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
             except Exception:
                 return font.size if hasattr(font, "size") else 24
 
-    tag_font = _font(_BOLD, 24)
+    tag_font = _font(_BOLD, 28)
 
     # --- Red pill (tag) ---
     MARGIN   = 24

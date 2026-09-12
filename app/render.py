@@ -3080,7 +3080,7 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
         <div style="color:#93c5fd;font-size:11px;margin-bottom:6px;font-weight:600">&#9709; Drag image to reposition, then apply template</div>
         <div id="crop-container-{cid}" style="width:100%;aspect-ratio:4/5;overflow:hidden;position:relative;border-radius:4px;border:1px solid #2a3555;max-height:300px;touch-action:none">
           <img id="crop-preview-{cid}" src="" alt="upload preview"
-            style="width:100%;height:100%;object-fit:cover;object-position:50% 50%;cursor:grab;user-select:none;-webkit-user-drag:none">
+            style="position:absolute;max-width:none;cursor:grab;user-select:none;-webkit-user-drag:none">
         </div>
         <div style="color:#8b93a3;font-size:10px;margin-top:4px;text-align:center">Drag to reposition &bull; use slider to zoom</div>
         <div style="margin-top:6px;display:flex;align-items:center;gap:8px">
@@ -3734,12 +3734,21 @@ function uploadImage(cid, input) {{
       window['_rawUpload_' + cid] = d.raw_url;
       var preview  = document.getElementById('crop-preview-' + cid);
       var cropUi   = document.getElementById('upload-crop-ui-' + cid);
-      window['_cropPos_' + cid] = {{x: 50, y: 50}};
+      window['_cs_' + cid] = null;
       var zoomSlider = document.getElementById('crop-zoom-' + cid);
       var zoomLabel  = document.getElementById('crop-zoom-label-' + cid);
-      if (zoomSlider) {{ zoomSlider.value = 100; }}
-      if (zoomLabel)  {{ zoomLabel.textContent = '1×'; }}
-      if (preview) {{ preview.src = d.raw_url; preview.style.width = '100%'; preview.style.height = '100%'; preview.style.objectPosition = '50% 50%'; _initCropDrag(cid); }}
+      if (zoomSlider) zoomSlider.value = 100;
+      if (zoomLabel)  zoomLabel.textContent = '1\xd7';
+      if (preview) {{
+        preview.src = d.raw_url;
+        preview.style.position = 'absolute';
+        preview.style.maxWidth = 'none';
+        preview.style.width = '';
+        preview.style.height = '';
+        preview.style.left = '0px';
+        preview.style.top  = '0px';
+        _initCropDrag(cid);
+      }}
       if (cropUi)  cropUi.style.display = 'block';
       if (st) {{ st.textContent = 'Drag image to position, then click Apply Template'; st.style.color = '#93c5fd'; }}
     }})
@@ -3748,55 +3757,86 @@ function uploadImage(cid, input) {{
       if (st) {{ st.textContent = 'Upload failed: ' + e.message; st.style.color = '#f87171'; }}
     }});
 }}
+function _cropApply(cid) {{
+  /* Apply absolute position + size to the preview img from _cs_ state */
+  var img = document.getElementById('crop-preview-' + cid);
+  var s = window['_cs_' + cid]; if (!img || !s) return;
+  img.style.width  = s.dw + 'px';
+  img.style.height = s.dh + 'px';
+  img.style.left   = (-s.ox) + 'px';
+  img.style.top    = (-s.oy) + 'px';
+}}
+function _cropReset(cid) {{
+  /* Recalculate display size and center the image; called on load and zoom change */
+  var img = document.getElementById('crop-preview-' + cid);
+  var con = document.getElementById('crop-container-' + cid);
+  if (!img || !con || !img.naturalWidth) return;
+  var cw = con.offsetWidth, ch = con.offsetHeight || con.getBoundingClientRect().height;
+  if (!cw || !ch) {{ setTimeout(function(){{ _cropReset(cid); }}, 80); return; }}
+  var iw = img.naturalWidth, ih = img.naturalHeight;
+  var zsl = document.getElementById('crop-zoom-' + cid);
+  var zoom = zsl ? parseInt(zsl.value) / 100 : 1.0;
+  var baseScale = Math.max(cw / iw, ch / ih);
+  var scale = baseScale * zoom;
+  var dw = iw * scale, dh = ih * scale;
+  var prevS = window['_cs_' + cid];
+  var ox, oy;
+  if (prevS && prevS.dw > 0) {{
+    /* keep same relative position when zooming */
+    var fracX = prevS.ox / Math.max(1, prevS.dw - prevS.cw);
+    var fracY = prevS.oy / Math.max(1, prevS.dh - prevS.ch);
+    ox = Math.max(0, Math.min(dw - cw, (dw - cw) * fracX));
+    oy = Math.max(0, Math.min(dh - ch, (dh - ch) * fracY));
+  }} else {{
+    ox = (dw - cw) / 2; oy = (dh - ch) / 2;
+  }}
+  ox = Math.max(0, Math.min(dw - cw, ox));
+  oy = Math.max(0, Math.min(dh - ch, oy));
+  window['_cs_' + cid] = {{dw:dw, dh:dh, ox:ox, oy:oy, cw:cw, ch:ch, zoom:zoom, baseScale:baseScale}};
+  _cropApply(cid);
+}}
 function _initCropDrag(cid) {{
   var img = document.getElementById('crop-preview-' + cid);
   var con = document.getElementById('crop-container-' + cid);
   if (!img || img._dragInited) return;
   img._dragInited = true;
-  var dragging = false, startX, startY, startPX, startPY;
-  function getPos() {{ return window['_cropPos_' + cid] || {{x:50,y:50}}; }}
+  /* absolute positioning — no object-fit */
+  img.style.position = 'absolute';
+  img.style.maxWidth  = 'none';
+  img.style.objectFit = 'unset';
+  img.style.cursor = 'grab';
+  img.addEventListener('load', function() {{ _cropReset(cid); }});
+  if (img.complete && img.naturalWidth > 0) _cropReset(cid);
+  var dragging = false, startMX, startMY, startOX, startOY;
   function pt(e) {{ return e.touches ? e.touches[0] : e; }}
   function onStart(e) {{
     dragging = true;
-    var p = pt(e); startX = p.clientX; startY = p.clientY;
-    var pos = getPos(); startPX = pos.x; startPY = pos.y;
-    img.style.cursor = 'grabbing';
-    e.preventDefault();
+    var p = pt(e); startMX = p.clientX; startMY = p.clientY;
+    var s = window['_cs_' + cid] || {{}}; startOX = s.ox||0; startOY = s.oy||0;
+    img.style.cursor = 'grabbing'; e.preventDefault();
   }}
   function onMove(e) {{
     if (!dragging) return;
     var p = pt(e);
-    var cw = con ? con.offsetWidth  : 200;
-    var ch = con ? con.offsetHeight : 260;
-    var dx = p.clientX - startX;
-    var dy = p.clientY - startY;
-    // drag right → image moves right → X% decreases (showing more left side)
-    var nx = Math.max(0, Math.min(100, startPX - (dx / cw) * 100));
-    var ny = Math.max(0, Math.min(100, startPY - (dy / ch) * 100));
-    window['_cropPos_' + cid] = {{x: nx, y: ny}};
-    img.style.objectPosition = nx + '% ' + ny + '%';
-    e.preventDefault();
+    var s = window['_cs_' + cid]; if (!s) return;
+    /* drag right → image follows finger → ox decreases (shows more left) */
+    var nx = Math.max(0, Math.min(s.dw - s.cw, startOX - (p.clientX - startMX)));
+    var ny = Math.max(0, Math.min(s.dh - s.ch, startOY - (p.clientY - startMY)));
+    s.ox = nx; s.oy = ny; _cropApply(cid); e.preventDefault();
   }}
   function onEnd() {{ dragging = false; img.style.cursor = 'grab'; }}
   img.addEventListener('mousedown', onStart);
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onEnd);
-  img.addEventListener('touchstart', onStart, {{passive: false}});
-  document.addEventListener('touchmove', onMove, {{passive: false}});
+  img.addEventListener('touchstart', onStart, {{passive:false}});
+  document.addEventListener('touchmove', onMove, {{passive:false}});
   document.addEventListener('touchend', onEnd);
 }}
 function _updateCropZoom(cid) {{
   var slider = document.getElementById('crop-zoom-' + cid);
   var label  = document.getElementById('crop-zoom-label-' + cid);
-  var img    = document.getElementById('crop-preview-' + cid);
-  if (!slider || !img) return;
-  var pct = parseInt(slider.value);
-  img.style.width  = pct + '%';
-  img.style.height = pct + '%';
-  if (label) label.textContent = (pct / 100).toFixed(1) + '×';
-  // re-apply position after zoom
-  var pos = window['_cropPos_' + cid] || {{x:50, y:50}};
-  img.style.objectPosition = pos.x + '% ' + pos.y + '%';
+  if (label && slider) label.textContent = (parseInt(slider.value)/100).toFixed(1) + '\xd7';
+  _cropReset(cid);
 }}
 function applyCardTemplate(cid) {{
   var rawUrl = window['_rawUpload_' + cid];
@@ -3805,11 +3845,12 @@ function applyCardTemplate(cid) {{
   var attribution = (document.getElementById('img-attribution-' + cid) || {{}}).value || '';
   var headline    = (document.getElementById('draft-hl-' + cid) || {{}}).value || '';
   var tag         = (document.getElementById('draft-tag-' + cid) || {{}}).value || 'BREAKING';
-  var pos    = window['_cropPos_' + cid] || {{x: 50, y: 50}};
-  var zoomSlider = document.getElementById('crop-zoom-' + cid);
-  var zoom   = zoomSlider ? (parseInt(zoomSlider.value) / 100) : 1.0;
-  var crop_x = (pos.x / 100).toFixed(2);
-  var crop_y = (pos.y / 100).toFixed(2);
+  var s = window['_cs_' + cid] || {{}};
+  var ovX = Math.max(1, (s.dw||1) - (s.cw||1));
+  var ovY = Math.max(1, (s.dh||1) - (s.ch||1));
+  var crop_x = Math.max(0, Math.min(1, (s.ox||0) / ovX)).toFixed(3);
+  var crop_y = Math.max(0, Math.min(1, (s.oy||0) / ovY)).toFixed(3);
+  var zoom   = (s.zoom || 1.0).toFixed(3);
   var st   = document.getElementById('img-status-' + cid);
   var wrap = document.getElementById('img-wrap-' + cid);
   if (st) {{ st.textContent = 'Applying template...'; st.style.color = '#93c5fd'; }}
