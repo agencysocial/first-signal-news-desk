@@ -4460,8 +4460,8 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
     src = None
     draw = _Draw.Draw(out)
 
-    # --- Black footer (bottom 37%) ---
-    FOOTER_Y = int(TARGET_H * 0.63)
+    # --- Black footer (bottom 30%) ---
+    FOOTER_Y = int(TARGET_H * 0.70)
     draw.rectangle([(0, FOOTER_Y), (TARGET_W, TARGET_H)], fill=(0, 0, 0))
 
     # --- Fonts ---
@@ -4505,7 +4505,7 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
     pill_w = tw + PAD_X * 2
     pill_h = th + PAD_Y * 2
     pill_x = MARGIN
-    pill_y = FOOTER_Y + 20   # breathing room from image edge
+    pill_y = FOOTER_Y + 30   # breathing room from image edge
     try:
         draw.rounded_rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)],
                                 radius=PILL_R, fill=(208, 32, 32))
