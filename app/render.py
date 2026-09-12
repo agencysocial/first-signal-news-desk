@@ -3077,22 +3077,18 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
       </div>
       <!-- Upload crop + apply template UI -->
       <div id="upload-crop-ui-{cid}" style="display:none;margin-bottom:10px;background:#080c14;border:1px solid #2a3555;border-radius:6px;padding:10px">
-        <div style="color:#93c5fd;font-size:11px;margin-bottom:6px;font-weight:600">&#8679; Uploaded — adjust crop then apply template</div>
-        <div id="crop-container-{cid}" style="width:100%;aspect-ratio:4/5;overflow:hidden;position:relative;border-radius:4px;border:1px solid #2a3555;max-height:260px">
+        <div style="color:#93c5fd;font-size:11px;margin-bottom:6px;font-weight:600">&#9709; Drag image to reposition, then apply template</div>
+        <div id="crop-container-{cid}" style="width:100%;aspect-ratio:4/5;overflow:hidden;position:relative;border-radius:4px;border:1px solid #2a3555;max-height:300px;touch-action:none">
           <img id="crop-preview-{cid}" src="" alt="upload preview"
-            style="width:100%;height:100%;object-fit:cover;object-position:50% 0%">
+            style="width:100%;height:100%;object-fit:cover;object-position:50% 50%;cursor:grab;user-select:none;-webkit-user-drag:none">
         </div>
-        <div style="margin-top:6px">
-          <div style="color:#8b93a3;font-size:10px;margin-bottom:3px">&#8597; Vertical position</div>
-          <input type="range" id="crop-slider-v-{cid}" min="0" max="100" value="0"
-            style="width:100%;accent-color:#93c5fd"
-            oninput="_updateCropPreview('{cid}')">
-        </div>
-        <div style="margin-top:6px">
-          <div style="color:#8b93a3;font-size:10px;margin-bottom:3px">&#8596; Horizontal position</div>
-          <input type="range" id="crop-slider-h-{cid}" min="0" max="100" value="50"
-            style="width:100%;accent-color:#93c5fd"
-            oninput="_updateCropPreview('{cid}')">
+        <div style="color:#8b93a3;font-size:10px;margin-top:4px;text-align:center">Drag to reposition &bull; use slider to zoom</div>
+        <div style="margin-top:6px;display:flex;align-items:center;gap:8px">
+          <span style="color:#8b93a3;font-size:10px;white-space:nowrap">&#128269; Zoom</span>
+          <input type="range" id="crop-zoom-{cid}" min="100" max="300" value="100" step="5"
+            style="flex:1;accent-color:#93c5fd"
+            oninput="_updateCropZoom('{cid}')">
+          <span id="crop-zoom-label-{cid}" style="color:#8b93a3;font-size:10px;width:32px">1×</span>
         </div>
         <button type="button" onclick="applyCardTemplate('{cid}')"
           style="margin-top:8px;width:100%;font-size:12px;padding:7px 12px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:4px;font-weight:600">
@@ -3738,27 +3734,69 @@ function uploadImage(cid, input) {{
       window['_rawUpload_' + cid] = d.raw_url;
       var preview  = document.getElementById('crop-preview-' + cid);
       var cropUi   = document.getElementById('upload-crop-ui-' + cid);
-      var sliderV  = document.getElementById('crop-slider-v-' + cid);
-      var sliderH  = document.getElementById('crop-slider-h-' + cid);
-      if (preview) {{ preview.src = d.raw_url; preview.style.objectPosition = '50% 0%'; }}
-      if (sliderV) sliderV.value = 0;
-      if (sliderH) sliderH.value = 50;
+      window['_cropPos_' + cid] = {{x: 50, y: 50}};
+      var zoomSlider = document.getElementById('crop-zoom-' + cid);
+      var zoomLabel  = document.getElementById('crop-zoom-label-' + cid);
+      if (zoomSlider) {{ zoomSlider.value = 100; }}
+      if (zoomLabel)  {{ zoomLabel.textContent = '1×'; }}
+      if (preview) {{ preview.src = d.raw_url; preview.style.width = '100%'; preview.style.height = '100%'; preview.style.objectPosition = '50% 50%'; _initCropDrag(cid); }}
       if (cropUi)  cropUi.style.display = 'block';
-      if (st) {{ st.textContent = 'Adjust crop then click Apply Template'; st.style.color = '#93c5fd'; }}
+      if (st) {{ st.textContent = 'Drag image to position, then click Apply Template'; st.style.color = '#93c5fd'; }}
     }})
     .catch(function(e) {{
       input.value = '';
       if (st) {{ st.textContent = 'Upload failed: ' + e.message; st.style.color = '#f87171'; }}
     }});
 }}
-function _updateCropPreview(cid) {{
-  var sliderV = document.getElementById('crop-slider-v-' + cid);
-  var sliderH = document.getElementById('crop-slider-h-' + cid);
-  var preview = document.getElementById('crop-preview-' + cid);
-  if (!preview) return;
-  var vPct = sliderV ? sliderV.value : '0';
-  var hPct = sliderH ? sliderH.value : '50';
-  preview.style.objectPosition = hPct + '% ' + vPct + '%';
+function _initCropDrag(cid) {{
+  var img = document.getElementById('crop-preview-' + cid);
+  var con = document.getElementById('crop-container-' + cid);
+  if (!img || img._dragInited) return;
+  img._dragInited = true;
+  var dragging = false, startX, startY, startPX, startPY;
+  function getPos() {{ return window['_cropPos_' + cid] || {{x:50,y:50}}; }}
+  function pt(e) {{ return e.touches ? e.touches[0] : e; }}
+  function onStart(e) {{
+    dragging = true;
+    var p = pt(e); startX = p.clientX; startY = p.clientY;
+    var pos = getPos(); startPX = pos.x; startPY = pos.y;
+    img.style.cursor = 'grabbing';
+    e.preventDefault();
+  }}
+  function onMove(e) {{
+    if (!dragging) return;
+    var p = pt(e);
+    var cw = con ? con.offsetWidth  : 200;
+    var ch = con ? con.offsetHeight : 260;
+    var dx = p.clientX - startX;
+    var dy = p.clientY - startY;
+    // drag right → image moves right → X% decreases (showing more left side)
+    var nx = Math.max(0, Math.min(100, startPX - (dx / cw) * 100));
+    var ny = Math.max(0, Math.min(100, startPY - (dy / ch) * 100));
+    window['_cropPos_' + cid] = {{x: nx, y: ny}};
+    img.style.objectPosition = nx + '% ' + ny + '%';
+    e.preventDefault();
+  }}
+  function onEnd() {{ dragging = false; img.style.cursor = 'grab'; }}
+  img.addEventListener('mousedown', onStart);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onEnd);
+  img.addEventListener('touchstart', onStart, {{passive: false}});
+  document.addEventListener('touchmove', onMove, {{passive: false}});
+  document.addEventListener('touchend', onEnd);
+}}
+function _updateCropZoom(cid) {{
+  var slider = document.getElementById('crop-zoom-' + cid);
+  var label  = document.getElementById('crop-zoom-label-' + cid);
+  var img    = document.getElementById('crop-preview-' + cid);
+  if (!slider || !img) return;
+  var pct = parseInt(slider.value);
+  img.style.width  = pct + '%';
+  img.style.height = pct + '%';
+  if (label) label.textContent = (pct / 100).toFixed(1) + '×';
+  // re-apply position after zoom
+  var pos = window['_cropPos_' + cid] || {{x:50, y:50}};
+  img.style.objectPosition = pos.x + '% ' + pos.y + '%';
 }}
 function applyCardTemplate(cid) {{
   var rawUrl = window['_rawUpload_' + cid];
@@ -3767,10 +3805,11 @@ function applyCardTemplate(cid) {{
   var attribution = (document.getElementById('img-attribution-' + cid) || {{}}).value || '';
   var headline    = (document.getElementById('draft-hl-' + cid) || {{}}).value || '';
   var tag         = (document.getElementById('draft-tag-' + cid) || {{}}).value || 'BREAKING';
-  var sliderV     = document.getElementById('crop-slider-v-' + cid);
-  var sliderH     = document.getElementById('crop-slider-h-' + cid);
-  var crop_y      = sliderV ? (parseInt(sliderV.value) / 100).toFixed(2) : '0.00';
-  var crop_x      = sliderH ? (parseInt(sliderH.value) / 100).toFixed(2) : '0.50';
+  var pos    = window['_cropPos_' + cid] || {{x: 50, y: 50}};
+  var zoomSlider = document.getElementById('crop-zoom-' + cid);
+  var zoom   = zoomSlider ? (parseInt(zoomSlider.value) / 100) : 1.0;
+  var crop_x = (pos.x / 100).toFixed(2);
+  var crop_y = (pos.y / 100).toFixed(2);
   var st   = document.getElementById('img-status-' + cid);
   var wrap = document.getElementById('img-wrap-' + cid);
   if (st) {{ st.textContent = 'Applying template...'; st.style.color = '#93c5fd'; }}
@@ -3778,6 +3817,7 @@ function applyCardTemplate(cid) {{
   fd.append('raw_url', rawUrl);
   fd.append('crop_y', crop_y);
   fd.append('crop_x', crop_x);
+  fd.append('zoom', zoom.toFixed(2));
   fd.append('brand_slug', brand);
   fd.append('attribution', attribution);
   fd.append('headline', headline);

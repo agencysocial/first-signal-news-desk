@@ -4408,7 +4408,7 @@ async def pipeline_queue_story_set_image(cid: str, request: Request, user: dict 
 
 def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
                               attribution: str = "", crop_y: float = 0.5,
-                              crop_x: float = 0.5,
+                              crop_x: float = 0.5, zoom: float = 1.0,
                               brand_slug: str = "first_signal") -> bytes:
     """Crop image to 4:5, apply First Signal News card template overlay. Returns JPEG bytes."""
     from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font, ImageStat as _Stat
@@ -4423,6 +4423,17 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
 
     cx = max(0.0, min(1.0, crop_x))
     cy = max(0.0, min(1.0, crop_y))
+    zoom = max(1.0, min(4.0, zoom))
+
+    # Apply zoom: shrink the crop window (zoom in by cropping a smaller region)
+    zoomed_w = int(src_w / zoom)
+    zoomed_h = int(src_h / zoom)
+    # Center the zoom window at (cx, cy) of the original image
+    zx = int((src_w - zoomed_w) * cx)
+    zy = int((src_h - zoomed_h) * cy)
+    src = src.crop((zx, zy, zx + zoomed_w, zy + zoomed_h))
+    src_w, src_h = src.size
+    src_ratio = src_w / src_h
 
     if src_ratio > TARGET_RATIO:
         # wider than 4:5 — crop sides using crop_x
@@ -4641,6 +4652,7 @@ async def pipeline_queue_apply_card_template(cid: str, request: Request, user: d
     raw_url    = str(form.get("raw_url", "")).strip()
     crop_y     = float(form.get("crop_y", 0.5))
     crop_x     = float(form.get("crop_x", 0.5))
+    zoom       = float(form.get("zoom", 1.0))
     brand_slug = str(form.get("brand_slug", "first_signal")).strip() or "first_signal"
     attribution = str(form.get("attribution", "")).strip()
     headline   = str(form.get("headline", "")).strip()
@@ -4657,7 +4669,7 @@ async def pipeline_queue_apply_card_template(cid: str, request: Request, user: d
             if r.status_code != 200:
                 return JSONResponse({"error": f"Could not fetch image ({r.status_code})"}, status_code=400)
             raw_image_bytes = r.content
-        result_bytes = _apply_card_template_pil(raw_image_bytes, headline, tag, attribution, crop_y, crop_x, brand_slug)
+        result_bytes = _apply_card_template_pil(raw_image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
 
         tmp_dir = Path("/tmp/fsn_images")
         tmp_dir.mkdir(parents=True, exist_ok=True)
