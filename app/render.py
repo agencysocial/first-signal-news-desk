@@ -3779,8 +3779,8 @@ function _showVariants(cid, urls) {{
   grid.innerHTML = urls.map(function(url,i){{
     return '<div style="flex:0 0 auto">'
       +'<img src="'+_esc(url)+'?t='+Date.now()+'" style="width:120px;border-radius:5px;display:block;cursor:pointer;border:2px solid transparent" '
-      +'onclick="useVariant(\''+_esc(cid)+'\',\''+_esc(url)+'\')" '
-      +'onmouseover="this.style.borderColor=\'#4ade80\'" onmouseout="this.style.borderColor=\'transparent\'">'
+      +'onclick="useVariant(\\''+_esc(cid)+'\\',\\''+_esc(url)+'\\')" '
+      +'onmouseover="this.style.borderColor=\\'#4ade80\\'" onmouseout="this.style.borderColor=\\'transparent\\'">'
       +'<div style="color:#5a8a5a;font-size:10px;text-align:center;margin-top:3px">V'+(i+1)+'</div>'
       +'</div>';
   }}).join('');
@@ -3930,9 +3930,9 @@ function extractQuotes(cid) {{
           +'<div style="color:#8b93a3;font-size:11px;margin-bottom:6px">- '+_esc(q.speaker)+'</div>'
           +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
           +'<span style="background:#3a0808;color:#f87171;font-size:10px;padding:2px 8px;border-radius:3px">'+_esc(q.tag||'QUOTE')+'</span>'
-          +'<button type="button" onclick="useQuoteCard(\''+_esc(cid)+'\','+JSON.stringify(q)+')" '
+          +'<button type="button" onclick="useQuoteCard(\\''+_esc(cid)+'\\','+JSON.stringify(q)+')" '
           +'style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">&#9654; Use as Template B</button>'
-          +'<button type="button" onclick="useMemeFromQuote(\''+_esc(cid)+'\','+JSON.stringify(q)+')" '
+          +'<button type="button" onclick="useMemeFromQuote(\\''+_esc(cid)+'\\','+JSON.stringify(q)+')" '
           +'style="font-size:10px;padding:2px 8px;background:#1a0030;border:1px solid #7a00aa;color:#d084fc;cursor:pointer;border-radius:3px">&#127867; Use for Meme</button>'
           +'</div></div>';
       }}).join('');
@@ -4338,8 +4338,8 @@ function _showVariants(cid, urls) {{
   grid.innerHTML = urls.map(function(url,i){{
     return '<div style="flex:0 0 auto">'
       +'<img src="'+_esc(url)+'?t='+Date.now()+'" style="width:120px;border-radius:5px;display:block;cursor:pointer;border:2px solid transparent" '
-      +'onclick="useVariant(\''+_esc(cid)+'\',\''+_esc(url)+'\')" '
-      +'onmouseover="this.style.borderColor=\'#4ade80\'" onmouseout="this.style.borderColor=\'transparent\'">'
+      +'onclick="useVariant(\\''+_esc(cid)+'\\',\\''+_esc(url)+'\\')" '
+      +'onmouseover="this.style.borderColor=\\'#4ade80\\'" onmouseout="this.style.borderColor=\\'transparent\\'">'
       +'<div style="color:#5a8a5a;font-size:10px;text-align:center;margin-top:3px">V'+(i+1)+'</div>'
       +'</div>';
   }}).join('');
@@ -4491,9 +4491,9 @@ function extractQuotes(cid) {{
           +'<div style="color:#8b93a3;font-size:11px;margin-bottom:6px">- '+_esc(q.speaker)+'</div>'
           +'<div style="display:flex;gap:6px;flex-wrap:wrap">'
           +'<span style="background:#3a0808;color:#f87171;font-size:10px;padding:2px 8px;border-radius:3px">'+_esc(q.tag||'QUOTE')+'</span>'
-          +'<button type="button" onclick="useQuoteCard(\''+_esc(cid)+'\','+JSON.stringify(q)+')" '
+          +'<button type="button" onclick="useQuoteCard(\\''+_esc(cid)+'\\','+JSON.stringify(q)+')" '
           +'style="font-size:10px;padding:2px 8px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:3px">&#9654; Use as Template B</button>'
-          +'<button type="button" onclick="useMemeFromQuote(\''+_esc(cid)+'\','+JSON.stringify(q)+')" '
+          +'<button type="button" onclick="useMemeFromQuote(\\''+_esc(cid)+'\\','+JSON.stringify(q)+')" '
           +'style="font-size:10px;padding:2px 8px;background:#1a0030;border:1px solid #7a00aa;color:#d084fc;cursor:pointer;border-radius:3px">&#127867; Use for Meme</button>'
           +'</div></div>';
       }}).join('');
