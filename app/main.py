@@ -2527,7 +2527,7 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribu
             history = list((brand_images.get(brand_slug_for_gen) or {}).get("image_history") or [])
             if old_kie and old_kie not in history:
                 history.append(old_kie)
-            served_url = f"/pipeline-queue/image/{cid}/{brand_slug_for_gen}"
+            served_url = f"/pipeline-queue/image/{cid}/{brand_slug_for_gen}?v={int(time.time())}"
             brand_images[brand_slug_for_gen] = {
                 "generated_image_url": served_url,
                 "kie_result_url": kie_url,
@@ -4969,10 +4969,11 @@ def _serve_image_for_brand(cid: str, brand_slug: str):
     tmp_path = tmp_dir / f"{file_id}.jpg"
     # Legacy path (pre-multi-brand): fall back to bare cid file if brand file missing
     tmp_legacy = tmp_dir / f"{cid}.jpg"
+    _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
     if tmp_path.exists():
-        return Response(content=tmp_path.read_bytes(), media_type="image/jpeg")
+        return Response(content=tmp_path.read_bytes(), media_type="image/jpeg", headers=_NO_CACHE)
     if tmp_legacy.exists() and brand_slug == "first_signal":
-        return Response(content=tmp_legacy.read_bytes(), media_type="image/jpeg")
+        return Response(content=tmp_legacy.read_bytes(), media_type="image/jpeg", headers=_NO_CACHE)
 
     # /tmp was cleared (redeploy) — try Supabase Storage first, then re-stamp from Kie CDN
     session = SessionLocal()
@@ -5000,7 +5001,7 @@ def _serve_image_for_brand(cid: str, brand_slug: str):
             if r.status_code == 200:
                 tmp_dir.mkdir(parents=True, exist_ok=True)
                 tmp_path.write_bytes(r.content)
-                return Response(content=r.content, media_type="image/jpeg")
+                return Response(content=r.content, media_type="image/jpeg", headers=_NO_CACHE)
         except Exception:
             pass  # Fall through to Kie CDN re-stamp
 
@@ -5013,7 +5014,7 @@ def _serve_image_for_brand(cid: str, brand_slug: str):
     stamped = _stamp_logo(r.content, file_id, brand_slug=brand_slug)
     # Re-upload to Supabase so the next request is fast
     _supabase_storage_upload(stamped, cid, brand_slug)
-    return Response(content=stamped.read_bytes(), media_type="image/jpeg")
+    return Response(content=stamped.read_bytes(), media_type="image/jpeg", headers=_NO_CACHE)
 
 
 @app.get("/pipeline-queue/image/{cid}/{brand_slug}")
