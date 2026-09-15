@@ -2852,14 +2852,7 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
           <input type="text" id="draft-tag-{cid}" value="{escape(tag)}" maxlength="40"
             style="width:100%;box-sizing:border-box;color:#f87171;font-size:13px;font-weight:600;padding:8px">
         </div>
-        <div>
-          <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Post Type</label>
-          <select id="draft-type-{cid}" onchange="onTypeChange('{cid}',this)" style="width:100%;padding:8px">
-            <option value="image_card" {type_img}>Image Card</option>
-            <option value="tobi" {type_tobi}>TOBI (Text Post)</option>
-            <option value="video_package" {type_vid}>Video Package</option>
-          </select>
-        </div>
+        <input type="hidden" id="draft-type-{cid}" value="image_card">
       </div>
       <div style="margin-bottom:10px">
         <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Brand Property</label>
