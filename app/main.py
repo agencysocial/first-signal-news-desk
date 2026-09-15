@@ -137,6 +137,7 @@ def _current_season() -> str:
 
 
 def _build_image_prompt(headline: str, tag: str, scene: str, notes: str = "") -> str:
+    tag = (tag or "").replace(",", "").replace(";", "").replace(":", "").strip()
     notes_clause = f" Additional direction: {notes}." if notes else ""
     season = _current_season()
     return (
@@ -492,7 +493,8 @@ _FSN_STATE_KEYS = {"queue_status", "post_type", "draft", "approved_at",
                    "generated_image_url", "image_gen_status", "image_history", "tobi_text", "output_file",
                    "video_titles", "reels_description", "script_short", "script_medium",
                    "script_long", "poll_question", "video_first_comment", "brand_slug", "brand_images",
-                   "brand_drafts", "article_text", "article_url", "meme_kie_url", "scene_images"}
+                   "brand_drafts", "article_text", "article_url", "meme_kie_url", "scene_images",
+                   "heygen_video_id", "heygen_video_status", "heygen_video_url"}
 
 
 def _save_fsn_queue(items: list[dict]) -> None:
@@ -797,6 +799,7 @@ def _brand_to_dict(b) -> dict:
 def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
                                    brand: dict, notes: str = "") -> str:
     """Build a Kie.ai image prompt using brand-specific colors and layout."""
+    tag = (tag or "").replace(",", "").replace(";", "").replace(":", "").strip()
     colors = brand.get("colors") or {}
     footer_color  = colors.get("color_footer", "#000000")
     headline_color = colors.get("color_headline", "#FFDE59")
@@ -4507,7 +4510,7 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
     # --- Red pill (tag) ---
     MARGIN   = 24
     PAD_X, PAD_Y, PILL_R = 16, 8, 6
-    tag_upper = (tag or "BREAKING").upper()
+    tag_upper = (tag or "BREAKING").replace(",", "").replace(";", "").replace(":", "").upper()
     tw = _text_w(tag_font, tag_upper)
     th = _line_h(tag_font)
     pill_w = tw + PAD_X * 2
@@ -5679,4 +5682,197 @@ Return ONLY valid JSON with these exact keys:
         return JSONResponse({"error": f"AI returned invalid JSON: {exc}"}, status_code=500)
     except Exception as exc:
         logger.error("generate-video-package %s: %s", cid, exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ── HeyGen Integration ────────────────────────────────────────────────────────
+
+def _get_heygen_key() -> str:
+    return os.environ.get("HEYGEN_API_KEY", "")
+
+_HEYGEN_BASE = "https://api.heygen.com"
+
+
+@app.get("/pipeline-queue/heygen/avatars")
+async def heygen_list_avatars(user: dict = Depends(require_user)):
+    """Fetch the account's available HeyGen avatars."""
+    key = _get_heygen_key()
+    if not key:
+        return JSONResponse({"error": "HEYGEN_API_KEY not configured"}, status_code=400)
+    try:
+        r = httpx.get(
+            f"{_HEYGEN_BASE}/v2/avatars",
+            headers={"X-Api-Key": key},
+            timeout=20,
+        )
+        r.raise_for_status()
+        data = r.json()
+        avatars = (data.get("data") or {}).get("avatars") or []
+        return JSONResponse({"avatars": [
+            {"id": a.get("avatar_id"), "name": a.get("avatar_name", a.get("avatar_id"))}
+            for a in avatars
+        ]})
+    except Exception as exc:
+        logger.error("heygen/avatars: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/pipeline-queue/heygen/voices")
+async def heygen_list_voices(user: dict = Depends(require_user)):
+    """Fetch available HeyGen voices for the account."""
+    key = _get_heygen_key()
+    if not key:
+        return JSONResponse({"error": "HEYGEN_API_KEY not configured"}, status_code=400)
+    try:
+        r = httpx.get(
+            f"{_HEYGEN_BASE}/v2/voices",
+            headers={"X-Api-Key": key},
+            timeout=20,
+        )
+        r.raise_for_status()
+        data = r.json()
+        voices = (data.get("data") or {}).get("voices") or data.get("voices") or []
+        return JSONResponse({"voices": [
+            {
+                "id": v.get("voice_id"),
+                "name": v.get("display_name") or v.get("name") or v.get("voice_id"),
+            }
+            for v in voices if v.get("voice_id")
+        ]})
+    except Exception as exc:
+        logger.error("heygen/voices: %s", exc)
+        return JSONResponse({"voices": [], "error": str(exc)}, status_code=200)
+
+
+@app.post("/pipeline-queue/story/{cid}/send-to-heygen")
+async def pipeline_queue_send_to_heygen(cid: str, request: Request, user: dict = Depends(require_user)):
+    """Submit a video script to HeyGen and return the video_id for polling."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    key = _get_heygen_key()
+    if not key:
+        return JSONResponse({"error": "HEYGEN_API_KEY not configured"}, status_code=400)
+
+    form = await request.form()
+    avatar_id    = str(form.get("avatar_id", "")).strip()
+    title        = str(form.get("title", "First Signal News")).strip()
+    avatar_style = str(form.get("avatar_style", "normal")).strip() or "normal"
+    voice_id     = str(form.get("voice_id", "")).strip()
+    emotion      = str(form.get("emotion", "")).strip()
+    bg_color     = str(form.get("bg_color", "")).strip()
+    captions     = str(form.get("captions", "0")).strip() == "1"
+    try:
+        speed = float(form.get("speed", "1.0"))
+        speed = max(0.5, min(2.0, speed))
+    except (TypeError, ValueError):
+        speed = 1.0
+    try:
+        pitch = int(form.get("pitch", "0"))
+        pitch = max(-10, min(10, pitch))
+    except (TypeError, ValueError):
+        pitch = 0
+
+    if not avatar_id:
+        return JSONResponse({"error": "avatar_id is required"}, status_code=400)
+
+    # Build one video_inputs entry per script section (1-6)
+    video_inputs = []
+    for i in range(1, 7):
+        section_text = str(form.get(f"script_{i}", "")).strip()
+        if not section_text:
+            continue
+        scene_url = str(form.get(f"scene_image_{i}", "")).strip()
+
+        voice_block: dict = {
+            "type": "text",
+            "input_text": section_text,
+        }
+        if voice_id:
+            voice_block["voice_id"] = voice_id
+        if emotion:
+            voice_block["emotion"] = emotion
+        if speed != 1.0:
+            voice_block["speed"] = speed
+        if pitch != 0:
+            voice_block["pitch"] = pitch
+
+        entry: dict = {
+            "character": {
+                "type": "avatar",
+                "avatar_id": avatar_id,
+                "avatar_style": avatar_style,
+            },
+            "voice": voice_block,
+        }
+        if scene_url:
+            entry["background"] = {"type": "image", "url": scene_url}
+        elif bg_color:
+            entry["background"] = {"type": "color", "value": bg_color}
+        video_inputs.append(entry)
+
+    if not video_inputs:
+        return JSONResponse({"error": "script is required"}, status_code=400)
+
+    payload: dict = {
+        "video_inputs": video_inputs,
+        "dimension": {"width": 1080, "height": 1920},
+        "title": title,
+    }
+    if captions:
+        payload["caption"] = True
+
+    try:
+        r = httpx.post(
+            f"{_HEYGEN_BASE}/v2/video/generate",
+            headers={"X-Api-Key": key, "Content-Type": "application/json"},
+            json=payload,
+            timeout=30,
+        )
+        r.raise_for_status()
+        data = r.json()
+        video_id = (data.get("data") or {}).get("video_id") or data.get("video_id")
+        if not video_id:
+            return JSONResponse({"error": f"HeyGen returned no video_id: {data}"}, status_code=500)
+
+        # Persist video_id in fsn_state
+        _update_cluster_fsn(int(cid), heygen_video_id=video_id, heygen_video_status="processing")
+        return JSONResponse({"ok": True, "video_id": video_id})
+    except httpx.HTTPStatusError as exc:
+        body = exc.response.text[:400]
+        logger.error("send-to-heygen %s: HTTP %s — %s", cid, exc.response.status_code, body)
+        return JSONResponse({"error": f"HeyGen error {exc.response.status_code}: {body}"}, status_code=500)
+    except Exception as exc:
+        logger.error("send-to-heygen %s: %s", cid, exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.get("/pipeline-queue/story/{cid}/heygen-status")
+async def pipeline_queue_heygen_status(cid: str, user: dict = Depends(require_user)):
+    """Poll HeyGen for the video status and return the download URL when ready."""
+    if not cid.isdigit():
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+    key = _get_heygen_key()
+    if not key:
+        return JSONResponse({"error": "HEYGEN_API_KEY not configured"}, status_code=400)
+
+    item = _queue_item_for(int(cid))
+    video_id = (item or {}).get("heygen_video_id") or ""
+    if not video_id:
+        return JSONResponse({"error": "No HeyGen video submitted for this story"}, status_code=404)
+
+    try:
+        r = httpx.get(
+            f"{_HEYGEN_BASE}/v1/video_status.get?video_id={video_id}",
+            headers={"X-Api-Key": key},
+            timeout=20,
+        )
+        r.raise_for_status()
+        data = r.json()
+        status   = (data.get("data") or {}).get("status") or data.get("status", "processing")
+        video_url = (data.get("data") or {}).get("video_url") or ""
+        if video_url:
+            _update_cluster_fsn(int(cid), heygen_video_status="done", heygen_video_url=video_url)
+        return JSONResponse({"status": status, "video_url": video_url, "video_id": video_id})
+    except Exception as exc:
+        logger.error("heygen-status %s: %s", cid, exc)
         return JSONResponse({"error": str(exc)}, status_code=500)

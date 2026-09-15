@@ -2950,23 +2950,92 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
             style="font-size:11px;padding:5px 14px;background:#0a1a0a;border:1px solid #16a34a;color:#4ade80;border-radius:4px;cursor:pointer;font-weight:600">
             &#10024; Generate</button>
           <button type="button" onclick="submitToHeyGen('{cid}')" id="vid-heygen-btn-{cid}"
-            style="font-size:11px;padding:5px 14px;background:#0a0a1a;border:1px solid #3a3a5a;color:#555580;border-radius:4px;cursor:not-allowed;font-weight:600;opacity:0.5"
-            title="HeyGen API not yet connected — coming soon" disabled>
+            style="font-size:11px;padding:5px 14px;background:#0a0a1a;border:1px solid #6366f1;color:#a5b4fc;border-radius:4px;cursor:pointer;font-weight:600">
             &#127909; Send to HeyGen</button>
         </div>
       </div>
       <span id="vid-gen-status-{cid}" style="font-size:11px;color:#4ade80;display:block;margin-bottom:10px"></span>
 
-      <!-- Avatar Choice -->
-      <div style="margin-bottom:12px">
-        <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Avatar</label>
-        <select id="vid-avatar-{cid}" style="width:100%;padding:8px;background:#060910;border:1px solid #2a3555;color:#c0c8d8;border-radius:4px;font-size:13px">
-          <option value="">— Select avatar —</option>
-          <option value="avatar_1">Avatar 1 (placeholder)</option>
-          <option value="avatar_2">Avatar 2 (placeholder)</option>
-        </select>
-        <div style="font-size:10px;color:#3a4055;margin-top:3px">Avatars will populate from HeyGen once API is connected.</div>
-      </div>
+      <!-- ── HeyGen Settings ─────────────────────────────────────────── -->
+      <details open style="margin-bottom:14px">
+        <summary style="color:#6366f1;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;list-style:none;margin-bottom:8px">
+          &#127909; HeyGen Settings
+        </summary>
+
+        <!-- Avatar + Style row -->
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:10px;align-items:end">
+          <div>
+            <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Avatar</label>
+            <select id="vid-avatar-{cid}" style="width:100%;padding:7px;background:#060910;border:1px solid #2a3555;color:#c0c8d8;border-radius:4px;font-size:13px">
+              <option value="">Loading avatars...</option>
+            </select>
+            <div id="vid-avatar-note-{cid}" style="font-size:10px;color:#3a4055;margin-top:3px"></div>
+          </div>
+          <div>
+            <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Style</label>
+            <select id="vid-avatar-style-{cid}" style="padding:7px 10px;background:#060910;border:1px solid #2a3555;color:#c0c8d8;border-radius:4px;font-size:13px">
+              <option value="normal">Normal</option>
+              <option value="circle">Circle</option>
+              <option value="closeUp">Close-up</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Voice + Emotion row -->
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:10px;align-items:end">
+          <div>
+            <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Voice</label>
+            <select id="vid-voice-{cid}" style="width:100%;padding:7px;background:#060910;border:1px solid #2a3555;color:#c0c8d8;border-radius:4px;font-size:13px">
+              <option value="">Default voice</option>
+            </select>
+          </div>
+          <div>
+            <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Emotion</label>
+            <select id="vid-emotion-{cid}" style="padding:7px 10px;background:#060910;border:1px solid #2a3555;color:#c0c8d8;border-radius:4px;font-size:13px">
+              <option value="">Default</option>
+              <option value="Broadcaster">Broadcaster</option>
+              <option value="Friendly">Friendly</option>
+              <option value="Excited">Excited</option>
+              <option value="Serious">Serious</option>
+              <option value="Soothing">Soothing</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Speed + Pitch sliders -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">
+          <div>
+            <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;margin-bottom:4px">
+              Speed <span id="vid-speed-val-{cid}" style="color:#c0c8d8;font-variant-numeric:tabular-nums">1.0</span>
+            </label>
+            <input type="range" id="vid-speed-{cid}" min="0.5" max="2.0" step="0.1" value="1.0"
+              oninput="document.getElementById('vid-speed-val-{cid}').textContent=parseFloat(this.value).toFixed(1)"
+              style="width:100%;accent-color:#6366f1">
+          </div>
+          <div>
+            <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:flex;justify-content:space-between;margin-bottom:4px">
+              Pitch <span id="vid-pitch-val-{cid}" style="color:#c0c8d8;font-variant-numeric:tabular-nums">0</span>
+            </label>
+            <input type="range" id="vid-pitch-{cid}" min="-10" max="10" step="1" value="0"
+              oninput="document.getElementById('vid-pitch-val-{cid}').textContent=this.value"
+              style="width:100%;accent-color:#6366f1">
+          </div>
+        </div>
+
+        <!-- Background color + Captions row -->
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:8px">
+            <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px">BG Fallback Color</label>
+            <input type="color" id="vid-bgcolor-{cid}" value="#1a1a2e"
+              title="Used as background when no scene image is set for a section"
+              style="width:36px;height:28px;padding:2px;border:1px solid #2a3555;border-radius:4px;background:#060910;cursor:pointer">
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px">
+            <input type="checkbox" id="vid-captions-{cid}" style="accent-color:#6366f1;width:14px;height:14px">
+            Auto-captions
+          </label>
+        </div>
+      </details>
 
       <!-- Video Title -->
       <div style="margin-bottom:12px">
@@ -3354,28 +3423,118 @@ function genVideoPackage(cid) {{
     if(st)  st.textContent='Error: '+e.message;
   }});
 }}
+// Load HeyGen avatars and voices into all dropdowns on the page
+(function loadHeyGenAssets(){{
+  fetch('/pipeline-queue/heygen/avatars')
+    .then(function(r){{ return r.json(); }})
+    .then(function(d){{
+      var avatars = d.avatars || [];
+      document.querySelectorAll('[id^="vid-avatar-"]').forEach(function(sel){{
+        if(sel.id.indexOf('vid-avatar-style-')===0) return;
+        var cid = sel.id.replace('vid-avatar-','');
+        var cur = sel.value;
+        sel.innerHTML = '<option value="">— Select avatar —</option>'
+          + avatars.map(function(a){{
+              return '<option value="'+_esc(a.id)+'"'+(a.id===cur?' selected':'')+'>'+_esc(a.name)+'</option>';
+            }}).join('');
+        var note = document.getElementById('vid-avatar-note-'+cid);
+        if(note) note.textContent = avatars.length ? avatars.length+' avatar(s) loaded' : 'No avatars found in account.';
+      }});
+    }})
+    .catch(function(e){{
+      document.querySelectorAll('[id^="vid-avatar-note-"]').forEach(function(n){{
+        n.textContent='Could not load avatars: '+e.message;
+      }});
+    }});
+
+  fetch('/pipeline-queue/heygen/voices')
+    .then(function(r){{ return r.json(); }})
+    .then(function(d){{
+      var voices = d.voices || [];
+      document.querySelectorAll('[id^="vid-voice-"]').forEach(function(sel){{
+        var cur = sel.value;
+        sel.innerHTML = '<option value="">Default voice</option>'
+          + voices.map(function(v){{
+              return '<option value="'+_esc(v.id)+'"'+(v.id===cur?' selected':'')+'>'+_esc(v.name)+'</option>';
+            }}).join('');
+      }});
+    }})
+    .catch(function(){{ /* voices optional — silent fail */ }});
+}})();
+
 function submitToHeyGen(cid) {{
+  var st     = document.getElementById('vid-heygen-status-'+cid);
+  var btn    = document.getElementById('vid-heygen-btn-'+cid);
+  var sections = [1,2,3,4,5,6].map(function(i){{
+    var text = (document.getElementById('vid-script-'+i+'-'+cid)||{{}}).value||'';
+    var imgEl = document.getElementById('si-img-'+cid+'-'+i);
+    var imgUrl = (imgEl && imgEl.src && !imgEl.src.endsWith('#')) ? imgEl.src : '';
+    return {{text: text.trim(), imgUrl: imgUrl}};
+  }}).filter(function(s){{ return s.text; }});
+  if(!sections.length) {{ alert('Generate the script first.'); return; }}
+  var avatar  = (document.getElementById('vid-avatar-'+cid)||{{}}).value||'';
+  if(!avatar) {{ alert('Select an avatar first.'); return; }}
+  var title   = (document.getElementById('vid-title-'+cid)||{{}}).value||'First Signal News';
+  var style   = (document.getElementById('vid-avatar-style-'+cid)||{{}}).value||'normal';
+  var voice   = (document.getElementById('vid-voice-'+cid)||{{}}).value||'';
+  var emotion = (document.getElementById('vid-emotion-'+cid)||{{}}).value||'';
+  var speed   = (document.getElementById('vid-speed-'+cid)||{{}}).value||'1.0';
+  var pitch   = (document.getElementById('vid-pitch-'+cid)||{{}}).value||'0';
+  var bgColor = (document.getElementById('vid-bgcolor-'+cid)||{{}}).value||'#1a1a2e';
+  var captions= (document.getElementById('vid-captions-'+cid)||{{}}).checked ? '1' : '0';
+  if(st)  {{ st.textContent='Submitting to HeyGen...'; st.style.color='#a5b4fc'; }}
+  if(btn) {{ btn.disabled=true; btn.textContent='Sending...'; }}
+  var parts = [
+    'avatar_id='+encodeURIComponent(avatar),
+    'title='+encodeURIComponent(title),
+    'avatar_style='+encodeURIComponent(style),
+    'voice_id='+encodeURIComponent(voice),
+    'emotion='+encodeURIComponent(emotion),
+    'speed='+encodeURIComponent(speed),
+    'pitch='+encodeURIComponent(pitch),
+    'bg_color='+encodeURIComponent(bgColor),
+    'captions='+captions,
+  ];
+  sections.forEach(function(s,idx){{
+    parts.push('script_'+(idx+1)+'='+encodeURIComponent(s.text));
+    if(s.imgUrl) {{ parts.push('scene_image_'+(idx+1)+'='+encodeURIComponent(s.imgUrl)); }}
+  }});
+  fetch('/pipeline-queue/story/'+cid+'/send-to-heygen',{{
+    method:'POST',
+    headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
+    body:parts.join('&')
+  }}).then(function(r){{ return r.json(); }}).then(function(d){{
+    if(btn) {{ btn.disabled=false; btn.textContent='&#127909; Send to HeyGen'; }}
+    if(d.error) {{
+      if(st) {{ st.textContent='Error: '+d.error; st.style.color='#f87171'; }}
+      return;
+    }}
+    if(st) {{ st.innerHTML='&#10003; Submitted! Video ID: <b>'+_esc(d.video_id)+'</b> &mdash; <a href="#" onclick="pollHeyGen(\''+_esc(cid)+'\');return false" style="color:#a5b4fc">Check status</a>'; st.style.color='#4ade80'; }}
+    setTimeout(function(){{ pollHeyGen(cid); }}, 10000);
+  }}).catch(function(e){{
+    if(btn) {{ btn.disabled=false; btn.textContent='&#127909; Send to HeyGen'; }}
+    if(st)  {{ st.textContent='Request failed: '+e.message; st.style.color='#f87171'; }}
+  }});
+}}
+
+function pollHeyGen(cid) {{
   var st = document.getElementById('vid-heygen-status-'+cid);
-  var script = [1,2,3,4,5,6].map(function(i){{
-    return (document.getElementById('vid-script-'+i+'-'+cid)||{{}}).value||'';
-  }}).filter(Boolean).join('\\n\\n');
-  if(!script) {{ alert('Generate the script first.'); return; }}
-  var reelsDesc    = (document.getElementById('vid-reels-'+cid)||{{}}).value||'';
-  var firstComment = (document.getElementById('vid-first-comment-'+cid)||{{}}).value||'';
-  var poll         = (document.getElementById('vid-poll-'+cid)||{{}}).value||'';
-  var avatar       = (document.getElementById('vid-avatar-'+cid)||{{}}).value||'';
-  var title        = (document.getElementById('vid-title-'+cid)||{{}}).value||'';
-  // HeyGen payload (ready to POST when API key is wired)
-  var payload = {{
-    script: script,
-    reels_description: reelsDesc,
-    first_comment: firstComment,
-    poll: poll,
-    avatar_id: avatar,
-    title: title
-  }};
-  if(st) st.textContent='HeyGen API not yet connected — API key coming tomorrow.';
-  console.log('HeyGen payload ready:', payload);
+  fetch('/pipeline-queue/story/'+cid+'/heygen-status')
+    .then(function(r){{ return r.json(); }})
+    .then(function(d){{
+      if(d.error) {{
+        if(st) {{ st.textContent='Status error: '+d.error; st.style.color='#f87171'; }}
+        return;
+      }}
+      if(d.video_url) {{
+        if(st) {{ st.innerHTML='&#127909; Video ready: <a href="'+_esc(d.video_url)+'" target="_blank" style="color:#4ade80;font-weight:600">Download / View</a>'; st.style.color='#4ade80'; }}
+      }} else {{
+        var label = d.status||'processing';
+        if(st) {{ st.innerHTML='Status: <b>'+_esc(label)+'</b> &mdash; <a href="#" onclick="pollHeyGen(\''+_esc(cid)+'\');return false" style="color:#a5b4fc">Refresh</a>'; st.style.color='#a5b4fc'; }}
+      }}
+    }}).catch(function(e){{
+      if(st) {{ st.textContent='Poll error: '+e.message; st.style.color='#f87171'; }}
+    }});
 }}
 function suggestMemeText(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
