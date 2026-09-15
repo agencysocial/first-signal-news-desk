@@ -3078,7 +3078,7 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
       <!-- Upload crop + apply template UI -->
       <div id="upload-crop-ui-{cid}" style="display:none;margin-bottom:10px;background:#080c14;border:1px solid #2a3555;border-radius:6px;padding:10px">
         <div style="color:#93c5fd;font-size:11px;margin-bottom:6px;font-weight:600">&#9709; Drag image to reposition, then apply template</div>
-        <div id="crop-container-{cid}" style="width:100%;aspect-ratio:4/5;overflow:hidden;position:relative;border-radius:4px;border:1px solid #2a3555;max-height:300px;touch-action:none">
+        <div id="crop-container-{cid}" style="width:100%;aspect-ratio:4/5;overflow:hidden;position:relative;border-radius:4px;border:1px solid #2a3555;max-height:300px;min-height:120px;touch-action:none">
           <img id="crop-preview-{cid}" src="" alt="upload preview"
             style="position:absolute;max-width:none;cursor:grab;user-select:none;-webkit-user-drag:none">
         </div>
@@ -3850,7 +3850,7 @@ function applyCardTemplate(cid) {{
   var ovY = Math.max(1, (s.dh||1) - (s.ch||1));
   var crop_x = Math.max(0, Math.min(1, (s.ox||0) / ovX)).toFixed(3);
   var crop_y = Math.max(0, Math.min(1, (s.oy||0) / ovY)).toFixed(3);
-  var zoom   = (s.zoom || 1.0).toFixed(3);
+  var zoom   = s.zoom || 1.0;
   var st   = document.getElementById('img-status-' + cid);
   var wrap = document.getElementById('img-wrap-' + cid);
   if (st) {{ st.textContent = 'Applying template...'; st.style.color = '#93c5fd'; }}
@@ -3858,7 +3858,7 @@ function applyCardTemplate(cid) {{
   fd.append('raw_url', rawUrl);
   fd.append('crop_y', crop_y);
   fd.append('crop_x', crop_x);
-  fd.append('zoom', zoom.toFixed(2));
+  fd.append('zoom', zoom.toFixed(3));
   fd.append('brand_slug', brand);
   fd.append('attribution', attribution);
   fd.append('headline', headline);
