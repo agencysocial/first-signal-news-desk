@@ -4414,6 +4414,11 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         item["generated_image_url"] = ""
         item["image_gen_status"]    = "generating"
         item["kie_result_url"]      = ""
+        # Also update in-memory brand_images so _save_fsn_queue doesn't
+        # overwrite the "generating" DB state with the stale "done" state
+        _bi = dict(item.get("brand_images") or {})
+        _bi[resolved_brand] = {"image_gen_status": "generating", "generated_image_url": "", "kie_result_url": ""}
+        item["brand_images"] = _bi
         _save_fsn_queue(items)
 
         key = _get_kie_key()
