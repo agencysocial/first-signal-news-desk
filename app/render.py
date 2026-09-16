@@ -3143,7 +3143,7 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
       <!-- Upload crop + apply template UI -->
       <div id="upload-crop-ui-{cid}" style="display:none;margin-bottom:10px;background:#080c14;border:1px solid #2a3555;border-radius:6px;padding:10px">
         <div style="color:#93c5fd;font-size:11px;margin-bottom:6px;font-weight:600">&#9709; Drag image to reposition, then apply template</div>
-        <div id="crop-container-{cid}" style="width:100%;aspect-ratio:4/5;overflow:hidden;position:relative;border-radius:4px;border:1px solid #2a3555;max-height:300px;min-height:120px;touch-action:none">
+        <div id="crop-container-{cid}" style="width:240px;max-width:100%;aspect-ratio:4/5;overflow:hidden;position:relative;border-radius:4px;border:1px solid #2a3555;touch-action:none">
           <img id="crop-preview-{cid}" src="" alt="upload preview"
             style="position:absolute;max-width:none;cursor:grab;user-select:none;-webkit-user-drag:none">
         </div>
@@ -3154,6 +3154,9 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
             style="flex:1;accent-color:#93c5fd"
             oninput="_updateCropZoom('{cid}')">
           <span id="crop-zoom-label-{cid}" style="color:#8b93a3;font-size:10px;width:32px">1×</span>
+          <button type="button" onclick="_cropCenter('{cid}')"
+            style="font-size:10px;padding:3px 8px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;cursor:pointer;border-radius:4px;white-space:nowrap">
+            &#8853; Center</button>
         </div>
         <button type="button" onclick="applyCardTemplate('{cid}')"
           style="margin-top:8px;width:100%;font-size:12px;padding:7px 12px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:4px;font-weight:600">
@@ -3998,6 +4001,13 @@ function _updateCropZoom(cid) {{
   var label  = document.getElementById('crop-zoom-label-' + cid);
   if (label && slider) label.textContent = (parseInt(slider.value)/100).toFixed(1) + '\xd7';
   _cropReset(cid);
+}}
+function _cropCenter(cid) {{
+  /* Snap image to centered position without changing zoom */
+  var s = window['_cs_' + cid]; if (!s) return;
+  s.ox = Math.max(0, (s.dw - s.cw) / 2);
+  s.oy = Math.max(0, (s.dh - s.ch) / 2);
+  _cropApply(cid);
 }}
 function applyCardTemplate(cid) {{
   var rawUrl = window['_rawUpload_' + cid];
