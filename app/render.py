@@ -3319,8 +3319,10 @@ function _startImagePoll(cid) {{
         if (d.url) {{
           clearInterval(ct);
           if (st) st.textContent='';
+          if (d.kie_url) window['_kieUrl_'+cid] = d.kie_url;
           if (wrap) wrap.innerHTML='<img src="'+d.url+'?t='+Date.now()+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
-            +'<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
+            +'<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>'
+            +(d.kie_url?'<button type="button" onclick="recropImage(\''+cid+'\')" style="display:inline-block;font-size:11px;padding:4px 12px;margin-left:6px;background:#0a1020;border:1px solid #2a3555;color:#93c5fd;cursor:pointer;border-radius:4px">&#9986; Recrop</button>':'');
           // Refresh history panel so the previous image appears as a thumbnail
           if (d.history && d.history.length) {{
             fetch('/pipeline-queue/story/'+cid+'/image-history-html')
@@ -3787,8 +3789,10 @@ function _startImagePoll(cid) {{
         if (d.url) {{
           clearInterval(countTimer);
           var _freshUrl = d.url + '?t=' + Date.now();
+          if (d.kie_url) window['_kieUrl_'+cid] = d.kie_url;
           if (wrap) wrap.innerHTML = '<img src="'+_freshUrl+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
-            + '<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
+            + '<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>'
+            + (d.kie_url?'<button type="button" onclick="recropImage(\''+cid+'\')" style="display:inline-block;font-size:11px;padding:4px 12px;margin-left:6px;background:#0a1020;border:1px solid #2a3555;color:#93c5fd;cursor:pointer;border-radius:4px">&#9986; Recrop</button>':'');
           if (st) st.textContent = '';
         }} else if (d.status === 'generating' || d.status === 'generating_variants' || d.status === '') {{
           _imgPollTimer[cid] = setTimeout(poll, 5000);
@@ -4052,6 +4056,32 @@ function applyCardTemplate(cid) {{
     .catch(function(e) {{
       if (st) {{ st.textContent = 'Failed: ' + e.message; st.style.color = '#f87171'; }}
     }});
+}}
+function recropImage(cid) {{
+  var kieUrl = window['_kieUrl_'+cid];
+  if (!kieUrl) {{ alert('No raw source image available for recrop.'); return; }}
+  var preview = document.getElementById('crop-preview-'+cid);
+  var cropUi  = document.getElementById('upload-crop-ui-'+cid);
+  var zoomSlider = document.getElementById('crop-zoom-'+cid);
+  var zoomLabel  = document.getElementById('crop-zoom-label-'+cid);
+  var st = document.getElementById('img-status-'+cid);
+  window['_rawUpload_'+cid] = kieUrl;
+  window['_cs_'+cid] = null;
+  if (zoomSlider) zoomSlider.value = 100;
+  if (zoomLabel)  zoomLabel.textContent = '1\xd7';
+  if (preview) {{
+    preview._dragInited = false;
+    preview.src = kieUrl;
+    preview.style.position = 'absolute';
+    preview.style.maxWidth = 'none';
+    preview.style.width = '';
+    preview.style.height = '';
+    preview.style.left = '0px';
+    preview.style.top  = '0px';
+    _initCropDrag(cid);
+  }}
+  if (cropUi) cropUi.style.display = 'block';
+  if (st) {{ st.textContent = 'Drag to reposition, then click Apply Template'; st.style.color = '#93c5fd'; }}
 }}
 function genVariants(cid) {{
   var hl    = (document.getElementById('draft-hl-'+cid)||{{}}).value||'';
@@ -4482,8 +4512,10 @@ function _startImagePoll(cid) {{
         if (d.url) {{
           clearInterval(countTimer);
           var _freshUrl = d.url + '?t=' + Date.now();
+          if (d.kie_url) window['_kieUrl_'+cid] = d.kie_url;
           if (wrap) wrap.innerHTML = '<img src="'+_freshUrl+'" style="max-width:280px;width:100%;border-radius:6px;display:block;margin-bottom:6px">'
-            + '<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>';
+            + '<a href="'+d.url+'" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>'
+            + (d.kie_url?'<button type="button" onclick="recropImage(\''+cid+'\')" style="display:inline-block;font-size:11px;padding:4px 12px;margin-left:6px;background:#0a1020;border:1px solid #2a3555;color:#93c5fd;cursor:pointer;border-radius:4px">&#9986; Recrop</button>':'');
           if (st) st.textContent = '';
           if (d.history && d.history.length) {{
             var histDiv = document.getElementById('img-history-'+cid);

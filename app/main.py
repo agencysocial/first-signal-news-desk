@@ -4462,6 +4462,7 @@ def pipeline_queue_story_image_status(cid: str, brand_slug: str = "first_signal"
         return JSONResponse({
             "status":   fsn_brand_images.get("image_gen_status") or "",
             "url":      fsn_brand_images.get("generated_image_url") or "",
+            "kie_url":  fsn_brand_images.get("kie_result_url") or "",
             "history":  fsn_brand_images.get("image_history") or [],
             "variants": fsn_brand_images.get("variants") or [],
         })
@@ -4469,6 +4470,7 @@ def pipeline_queue_story_image_status(cid: str, brand_slug: str = "first_signal"
     return JSONResponse({
         "status":   item.get("image_gen_status") or "",
         "url":      item.get("generated_image_url") or "",
+        "kie_url":  item.get("kie_result_url") or "",
         "history":  item.get("image_history") or [],
         "variants": [],
     })
