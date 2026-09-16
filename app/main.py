@@ -977,41 +977,30 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"{aspect} vertical portrait, sharp and photorealistic in the photo zone."
         )
 
-    # Daily Side Hustle — navy footer, torn paper edge, green oval paint blob, two-tier headline
+    # Daily Side Hustle — DSH brand template: torn paper edge, green oval paint blob, navy footer
     if brand_slug == "daily_side_hustle":
         return (
-            f"Create a {aspect} vertical portrait social media card. Photorealistic photo-quality image. "
+            f"A {aspect} vertical portrait social media card. Photorealistic photo-quality image. "
             f"No visible text anywhere except the branded card layer described below.\n\n"
             f"PHOTO LAYER — upper 58% of the card: "
             f"{scene}.{notes_clause}{season_clause} "
-            f"Sharp, vivid, photorealistic, natural daylight or golden hour. "
-            f"No text, no watermarks, no overlays in the photo itself. {_ANTI_SLOP}\n\n"
+            f"Sharp, vivid, photorealistic, natural daylight or golden hour. No text or logos in the photo. {_ANTI_SLOP}\n\n"
             f"TORN PAPER EDGE — at the boundary between photo and footer (about 58% down): "
-            f"A realistic white torn-paper ripped edge, like a piece of white paper was torn by hand. "
-            f"The tear is jagged and irregular with small white paper fibers. "
-            f"The white torn paper strip sits ON TOP of the photo at the bottom and bleeds slightly into the navy footer below. "
-            f"This is a real tactile paper texture effect — uneven, rough, organic.\n\n"
+            f"A realistic white torn-paper ripped edge, like a piece of white paper torn by hand — "
+            f"jagged and irregular with small white paper fibers. The white torn strip bleeds slightly "
+            f"into the navy footer below. Uneven, rough, organic texture.\n\n"
             f"GREEN OVAL PAINT BLOB — centered at the torn paper edge, straddling the boundary: "
-            f"A wide oval brushstroke shape in vivid medium green. It looks like a thick horizontal paint smear "
-            f"made with a wide brush — organic edges, slightly irregular, with brush texture and small drips or streaks at the ends. "
-            f"The oval spans about 70% of the card width and is taller in the center than the edges. "
-            f"Inside this green paint blob, centered, in DARK NAVY BLUE bold italic uppercase sans-serif lettering: \"{tag}\".\n\n"
+            f"A wide oval brushstroke shape in vivid medium green. Thick horizontal paint smear, "
+            f"organic edges, brush texture with small streaks at the ends. Spans about 70% of card width. "
+            f"Inside the blob, centered, in DARK NAVY BLUE bold italic uppercase sans-serif: \"{tag}\".\n\n"
             f"NAVY FOOTER — lower 42% of the card: "
-            f"Solid flat very dark navy blue background panel. No texture, no gradient. Contains:\n"
-            f"LINE 1 — white uppercase text in a bold condensed display font (Bebas Neue style), "
-            f"smaller size (~40pt), CENTERED horizontally with equal margins on both sides, no text cut off: \"{headline}\"\n"
-            f"LINE 2 — bright golden yellow uppercase text in bold condensed display font, "
-            f"LARGER than line 1 (~58pt), CENTERED horizontally, fully visible, no characters cut off: \"{accent or headline}\"\n\n"
-            f"GREEN BRUSH UNDERLINE — near the very bottom of the card: "
-            f"A short horizontal green brushstroke underline, centered, about 40% card width. Rough brush texture, organic.\n\n"
-            f"LOGO — top-left corner, small: "
-            f"A small rectangular badge with a white fill and dark navy border, rounded corners. "
-            f"Inside it stacked vertically: \"DAILY\" in small dark navy bold uppercase letters, "
-            f"\"SIDE\" in larger bold green uppercase letters, \"HUSTLE\" in small dark navy bold uppercase letters.\n\n"
-            f"CRITICAL RULES: No drop shadows on text. No outer glow. Flat 2D text rendering inside the footer. "
-            f"Every character of every text line must be FULLY VISIBLE inside the card — do not clip or crop any letter. "
-            f"Auto-scale font smaller if needed to fit. "
-            f"{aspect} vertical portrait format, sharp, 1K resolution."
+            f"Solid flat very dark navy blue panel, no texture, no gradient. Contains:\n"
+            f"  The headline \"{headline}\" in BOLD UPPERCASE condensed display font (Bebas Neue style), "
+            f"large (~52pt), CENTERED horizontally with equal margins. BRIGHT WHITE text. "
+            f"Every character fully visible inside the card — never cut off.\n\n"
+            f"CRITICAL RULES: Flat 2D text — no drop shadows, no outer glows. "
+            f"No logos, no watermarks baked in — logo is overlaid separately. "
+            f"{aspect} vertical portrait format, photorealistic, sharp."
         )
 
     # Default layout (First Signal News and future brands)
@@ -2603,7 +2592,6 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribu
     draft = item.get("draft") or {}
     headline = draft.get("headline") or item.get("text") or ""
     tag      = draft.get("tag") or "BREAKING NEWS"
-    accent   = draft.get("accent") or draft.get("income") or ""
     scene    = draft.get("scene") or draft.get("image_scene") or item.get("suggested_scene") or "United States Capitol building exterior, wide establishing shot"
     effective_notes = notes or draft.get("image_notes") or ""
     brand_slug_for_gen = item.get("brand_slug") or "first_signal"
@@ -2612,7 +2600,7 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribu
     try:
         brand = _get_brand(brand_slug_for_gen)
         if brand and brand.get("voice_instructions"):
-            prompt = _build_image_prompt_for_brand(headline, tag, scene, brand, effective_notes, accent=accent)
+            prompt = _build_image_prompt_for_brand(headline, tag, scene, brand, effective_notes)
         else:
             prompt = _build_image_prompt(headline, tag, scene, effective_notes)
         task_id = _kie_submit(prompt, key)
