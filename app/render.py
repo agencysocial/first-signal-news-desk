@@ -2567,6 +2567,9 @@ def _render_scene_image_block(cid: str, scene_num: int, item: dict) -> str:
         f'&#8593; Upload</button>'
         f'<input id="su-{cid}-{sn}" type="file" accept="image/*" style="display:none" '
         f'onchange="uploadSceneImage(\'{cid}\',\'{sn}\',this)">'
+        f'<input type="color" id="si-color-{cid}-{sn}" value="#1a1a2e" '
+        f'title="Fallback BG color for this scene (used when no image is set)" '
+        f'style="width:28px;height:28px;padding:2px;border:1px solid #2a3555;border-radius:4px;background:#060910;cursor:pointer;flex-shrink:0">'
         f'</div>'
         f'<div id="si-status-{cid}-{sn}" style="font-size:10px;color:#5a6380;margin-top:3px">{"Generating..." if status == "generating" else ""}</div>'
         f'{img_html}'
@@ -3468,8 +3471,10 @@ function submitToHeyGen(cid) {{
   var sections = [1,2,3,4,5,6].map(function(i){{
     var text = (document.getElementById('vid-script-'+i+'-'+cid)||{{}}).value||'';
     var imgEl = document.getElementById('si-img-'+cid+'-'+i);
-    var imgUrl = (imgEl && imgEl.src && !imgEl.src.endsWith('#')) ? imgEl.src : '';
-    return {{text: text.trim(), imgUrl: imgUrl}};
+    var imgUrl = (imgEl && imgEl.src && imgEl.style.display!=='none' && !imgEl.src.endsWith('#')) ? imgEl.src : '';
+    var colorEl = document.getElementById('si-color-'+cid+'-'+i);
+    var sceneColor = colorEl ? colorEl.value : '';
+    return {{text: text.trim(), imgUrl: imgUrl, sceneColor: sceneColor}};
   }}).filter(function(s){{ return s.text; }});
   if(!sections.length) {{ alert('Generate the script first.'); return; }}
   var avatar  = (document.getElementById('vid-avatar-'+cid)||{{}}).value||'';
@@ -3497,7 +3502,11 @@ function submitToHeyGen(cid) {{
   ];
   sections.forEach(function(s,idx){{
     parts.push('script_'+(idx+1)+'='+encodeURIComponent(s.text));
-    if(s.imgUrl) {{ parts.push('scene_image_'+(idx+1)+'='+encodeURIComponent(s.imgUrl)); }}
+    if(s.imgUrl) {{
+      parts.push('scene_image_'+(idx+1)+'='+encodeURIComponent(s.imgUrl));
+    }} else if(s.sceneColor) {{
+      parts.push('scene_color_'+(idx+1)+'='+encodeURIComponent(s.sceneColor));
+    }}
   }});
   fetch('/pipeline-queue/story/'+cid+'/send-to-heygen',{{
     method:'POST',

@@ -5804,8 +5804,11 @@ async def pipeline_queue_send_to_heygen(cid: str, request: Request, user: dict =
             },
             "voice": voice_block,
         }
+        scene_color = str(form.get(f"scene_color_{i}", "")).strip()
         if scene_url:
             entry["background"] = {"type": "image", "url": scene_url}
+        elif scene_color:
+            entry["background"] = {"type": "color", "value": scene_color}
         elif bg_color:
             entry["background"] = {"type": "color", "value": bg_color}
         video_inputs.append(entry)
