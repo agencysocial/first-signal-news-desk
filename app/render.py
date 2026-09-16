@@ -3518,7 +3518,7 @@ function submitToHeyGen(cid) {{
       if(st) {{ st.textContent='Error: '+d.error; st.style.color='#f87171'; }}
       return;
     }}
-    if(st) {{ st.innerHTML='&#10003; Submitted! Video ID: <b>'+_esc(d.video_id)+'</b> &mdash; <a href="#" onclick="pollHeyGen(\''+_esc(cid)+'\');return false" style="color:#a5b4fc">Check status</a>'; st.style.color='#4ade80'; }}
+    if(st) {{ st.innerHTML='&#10003; Submitted! Video ID: <b>'+_esc(d.video_id)+'</b> &mdash; <a href="#" onclick="pollHeyGen({cid});return false" style="color:#a5b4fc">Check status</a>'; st.style.color='#4ade80'; }}
     setTimeout(function(){{ pollHeyGen(cid); }}, 10000);
   }}).catch(function(e){{
     if(btn) {{ btn.disabled=false; btn.textContent='&#127909; Send to HeyGen'; }}
@@ -3539,7 +3539,7 @@ function pollHeyGen(cid) {{
         if(st) {{ st.innerHTML='&#127909; Video ready: <a href="'+_esc(d.video_url)+'" target="_blank" style="color:#4ade80;font-weight:600">Download / View</a>'; st.style.color='#4ade80'; }}
       }} else {{
         var label = d.status||'processing';
-        if(st) {{ st.innerHTML='Status: <b>'+_esc(label)+'</b> &mdash; <a href="#" onclick="pollHeyGen(\''+_esc(cid)+'\');return false" style="color:#a5b4fc">Refresh</a>'; st.style.color='#a5b4fc'; }}
+        if(st) {{ st.innerHTML='Status: <b>'+_esc(label)+'</b> &mdash; <a href="#" onclick="pollHeyGen({cid});return false" style="color:#a5b4fc">Refresh</a>'; st.style.color='#a5b4fc'; }}
       }}
     }}).catch(function(e){{
       if(st) {{ st.textContent='Poll error: '+e.message; st.style.color='#f87171'; }}
