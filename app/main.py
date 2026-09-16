@@ -209,6 +209,45 @@ def _stamp_logo(image_bytes: bytes, cid: str, brand_slug: str = "first_signal") 
 
     if brand_slug == "cathy_talk":
         logo_path = static_dir / ("cathy_talk_logo.png" if is_light_bg else "cathy_talk_logo_white.png")
+    elif brand_slug == "daily_side_hustle":
+        # Stamp DSH logo badge: white box, navy border, DAILY/SIDE/HUSTLE stacked
+        from PIL import ImageDraw as _ImageDraw, ImageFont as _ImageFont
+        draw = _ImageDraw.Draw(card)
+        badge_w = max(140, int(w * 0.175))
+        badge_h = max(72, int(h * 0.09))
+        bx, by = MARGIN, MARGIN
+        radius = max(8, badge_w // 14)
+        draw.rounded_rectangle([(bx, by), (bx + badge_w, by + badge_h)],
+                                radius=radius, fill=(255, 255, 255, 245), outline=(13, 43, 82, 255), width=3)
+        try:
+            f_small = _ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(11, badge_w // 10))
+            f_large = _ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", max(20, badge_w // 6))
+        except Exception:
+            f_small = f_large = _ImageFont.load_default()
+        cx = bx + badge_w // 2
+        line_gap = max(2, badge_h // 14)
+        sh = max(11, badge_w // 10) + max(20, badge_w // 6) + max(11, badge_w // 10) + line_gap * 2
+        ty = by + max(4, (badge_h - sh) // 2)
+        for word, fnt, color in [
+            ("DAILY",  f_small, (13, 43, 82)),
+            ("SIDE",   f_large, (34, 197, 94)),
+            ("HUSTLE", f_small, (13, 43, 82)),
+        ]:
+            try:
+                bb = fnt.getbbox(word); tw = bb[2] - bb[0]; th = bb[3] - bb[1]
+            except Exception:
+                tw = len(word) * 8; th = 12
+            draw.text((cx - tw // 2, ty), word, font=fnt, fill=color)
+            ty += th + line_gap
+        out = _PILImage.new("RGB", card.size, (0, 0, 0))
+        out.paste(card, mask=card.split()[3])
+        card.close()
+        tmp_dir = Path("/tmp/fsn_images")
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        out_path = tmp_dir / f"{cid}.jpg"
+        out.save(str(out_path), "JPEG", quality=88, optimize=True)
+        out.close()
+        return out_path
     elif brand_slug == "the_american":
         # Stamp navy pennant badge "THE / AMERICAN" at top-left
         from PIL import ImageDraw as _ImageDraw, ImageFont as _ImageFont
@@ -713,6 +752,37 @@ _THEAMERICAN_CAPTION_SETTINGS = json.dumps({
 _THEAMERICAN_LOGO_URL = ""   # operator will upload via Settings UI when ready
 
 
+# Daily Side Hustle — side-hustle / extra-income lifestyle brand
+_DSH_BRAND_COLORS = json.dumps({
+    "color_footer":       "#0D2B52",   # Navy panel
+    "color_headline":     "#FFFFFF",   # White headline (line 1)
+    "color_accent":       "#FFDE00",   # Yellow income line (line 2, larger)
+    "color_tag_bg":       "#22C55E",   # Green paint blob
+    "color_tag_text":     "#071a30",   # Dark navy tag text inside blob
+})
+_DSH_IMAGE_SETTINGS = json.dumps({
+    "aspect_ratio":  "4:5",
+    "resolution":    "1K",
+    "model":         "gpt-image-2-text-to-image",
+    "photo_style":   "photorealistic, sharp, vivid, natural daylight or golden hour",
+})
+_DSH_VOICE = (
+    "You are Daily Side Hustle — a motivational side-income brand for people who want "
+    "to earn more outside their 9-to-5. Voice: energetic, practical, inspiring, and direct. "
+    "Lead with the opportunity and the income number. Speak to the reader's ambition. "
+    "No em-dashes. Be specific about income potential and the type of hustle."
+)
+_DSH_CAPTION_SETTINGS = json.dumps({
+    "short":        [10, 15],
+    "medium":       [40, 60],
+    "long":         [100, 150],
+    "extra_long":   [200, 300],
+    "agreement_hook": True,
+    "emojis":       False,
+})
+_DSH_LOGO_URL = ""   # operator will upload via Settings UI when ready
+
+
 def _seed_default_brands() -> None:
     """Upsert brand properties on every startup.
     Creates rows if missing; updates logo_url, colors, voice, and settings if already present
@@ -737,6 +807,13 @@ def _seed_default_brands() -> None:
             voice_instructions=_THEAMERICAN_VOICE, caption_settings=_THEAMERICAN_CAPTION_SETTINGS,
             logo_url=_THEAMERICAN_LOGO_URL,
             notes="American history, icons, presidents, inventors, entrepreneurs, nostalgia. 160K+ followers.",
+        ),
+        dict(
+            slug="daily_side_hustle", name="Daily Side Hustle", enabled=True, sort_order=3,
+            colors=_DSH_BRAND_COLORS, image_settings=_DSH_IMAGE_SETTINGS,
+            voice_instructions=_DSH_VOICE, caption_settings=_DSH_CAPTION_SETTINGS,
+            logo_url=_DSH_LOGO_URL,
+            notes="Side-hustle / extra-income lifestyle brand. Navy footer, green paint blob, yellow income headline.",
         ),
     ]
     session = SessionLocal()
@@ -797,7 +874,8 @@ def _brand_to_dict(b) -> dict:
 
 
 def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
-                                   brand: dict, notes: str = "") -> str:
+                                   brand: dict, notes: str = "",
+                                   accent: str = "") -> str:
     """Build a Kie.ai image prompt using brand-specific colors and layout."""
     tag = (tag or "").replace(",", "").replace(";", "").replace(":", "").strip()
     colors = brand.get("colors") or {}
@@ -897,6 +975,43 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"Flat 2D text, clean edges. "
             f"Generous empty parchment at the bottom — do NOT fill it with content. "
             f"{aspect} vertical portrait, sharp and photorealistic in the photo zone."
+        )
+
+    # Daily Side Hustle — navy footer, torn paper edge, green oval paint blob, two-tier headline
+    if brand_slug == "daily_side_hustle":
+        return (
+            f"Create a {aspect} vertical portrait social media card. Photorealistic photo-quality image. "
+            f"No visible text anywhere except the branded card layer described below.\n\n"
+            f"PHOTO LAYER — upper 58% of the card: "
+            f"{scene}.{notes_clause}{season_clause} "
+            f"Sharp, vivid, photorealistic, natural daylight or golden hour. "
+            f"No text, no watermarks, no overlays in the photo itself. {_ANTI_SLOP}\n\n"
+            f"TORN PAPER EDGE — at the boundary between photo and footer (about 58% down): "
+            f"A realistic white torn-paper ripped edge, like a piece of white paper was torn by hand. "
+            f"The tear is jagged and irregular with small white paper fibers. "
+            f"The white torn paper strip sits ON TOP of the photo at the bottom and bleeds slightly into the navy footer below. "
+            f"This is a real tactile paper texture effect — uneven, rough, organic.\n\n"
+            f"GREEN OVAL PAINT BLOB — centered at the torn paper edge, straddling the boundary: "
+            f"A wide oval brushstroke shape in vivid medium green. It looks like a thick horizontal paint smear "
+            f"made with a wide brush — organic edges, slightly irregular, with brush texture and small drips or streaks at the ends. "
+            f"The oval spans about 70% of the card width and is taller in the center than the edges. "
+            f"Inside this green paint blob, centered, in DARK NAVY BLUE bold italic uppercase sans-serif lettering: \"{tag}\".\n\n"
+            f"NAVY FOOTER — lower 42% of the card: "
+            f"Solid flat very dark navy blue background panel. No texture, no gradient. Contains:\n"
+            f"LINE 1 — white uppercase text in a bold condensed display font (Bebas Neue style), "
+            f"smaller size (~40pt), CENTERED horizontally with equal margins on both sides, no text cut off: \"{headline}\"\n"
+            f"LINE 2 — bright golden yellow uppercase text in bold condensed display font, "
+            f"LARGER than line 1 (~58pt), CENTERED horizontally, fully visible, no characters cut off: \"{accent or headline}\"\n\n"
+            f"GREEN BRUSH UNDERLINE — near the very bottom of the card: "
+            f"A short horizontal green brushstroke underline, centered, about 40% card width. Rough brush texture, organic.\n\n"
+            f"LOGO — top-left corner, small: "
+            f"A small rectangular badge with a white fill and dark navy border, rounded corners. "
+            f"Inside it stacked vertically: \"DAILY\" in small dark navy bold uppercase letters, "
+            f"\"SIDE\" in larger bold green uppercase letters, \"HUSTLE\" in small dark navy bold uppercase letters.\n\n"
+            f"CRITICAL RULES: No drop shadows on text. No outer glow. Flat 2D text rendering inside the footer. "
+            f"Every character of every text line must be FULLY VISIBLE inside the card — do not clip or crop any letter. "
+            f"Auto-scale font smaller if needed to fit. "
+            f"{aspect} vertical portrait format, sharp, 1K resolution."
         )
 
     # Default layout (First Signal News and future brands)
@@ -2488,6 +2603,7 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribu
     draft = item.get("draft") or {}
     headline = draft.get("headline") or item.get("text") or ""
     tag      = draft.get("tag") or "BREAKING NEWS"
+    accent   = draft.get("accent") or draft.get("income") or ""
     scene    = draft.get("scene") or draft.get("image_scene") or item.get("suggested_scene") or "United States Capitol building exterior, wide establishing shot"
     effective_notes = notes or draft.get("image_notes") or ""
     brand_slug_for_gen = item.get("brand_slug") or "first_signal"
@@ -2496,7 +2612,7 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribu
     try:
         brand = _get_brand(brand_slug_for_gen)
         if brand and brand.get("voice_instructions"):
-            prompt = _build_image_prompt_for_brand(headline, tag, scene, brand, effective_notes)
+            prompt = _build_image_prompt_for_brand(headline, tag, scene, brand, effective_notes, accent=accent)
         else:
             prompt = _build_image_prompt(headline, tag, scene, effective_notes)
         task_id = _kie_submit(prompt, key)

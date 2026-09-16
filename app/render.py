@@ -1253,7 +1253,7 @@ def render_pipeline_queue_page(
 
             # Brand image status dots (FSN + CathyTalk)
             _brand_images = item.get("brand_images") or {}
-            _BRAND_DEFS = [("first_signal", "FSN"), ("cathy_talk", "CT")]
+            _BRAND_DEFS = [("first_signal", "FSN"), ("cathy_talk", "CT"), ("daily_side_hustle", "DSH")]
             _dot_parts = []
             for _bslug, _blabel in _BRAND_DEFS:
                 _bdata = _brand_images.get(_bslug) or {}
@@ -2698,8 +2698,8 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
     type_vid  = "selected" if post_type == "video_package" else ""
 
     # Build saved brand package panels
-    _BRAND_LABELS = {"first_signal": "First Signal News", "cathy_talk": "CathyTalk"}
-    _BRAND_COLORS = {"first_signal": "#facc15", "cathy_talk": "#CE3175"}
+    _BRAND_LABELS = {"first_signal": "First Signal News", "cathy_talk": "CathyTalk", "daily_side_hustle": "Daily Side Hustle"}
+    _BRAND_COLORS = {"first_signal": "#facc15", "cathy_talk": "#CE3175", "daily_side_hustle": "#22C55E"}
     saved_pkg_panels = ""
     saved_pkg_buttons = ""
     for _bslug, _bdata in brand_drafts.items():
