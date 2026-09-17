@@ -4616,18 +4616,18 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
             except Exception:
                 return font.size if hasattr(font, "size") else 24
 
-    tag_font = _font(_BOLD, 28)
+    tag_font = _font(_BOLD, 42)
 
     # --- Red pill (tag) ---
     MARGIN   = 24
-    PAD_X, PAD_Y, PILL_R = 16, 8, 6
+    PAD_X, PAD_Y, PILL_R = 20, 10, 8
     tag_upper = (tag or "BREAKING").replace(",", "").replace(";", "").replace(":", "").upper()
     tw = _text_w(tag_font, tag_upper)
     th = _line_h(tag_font)
     pill_w = tw + PAD_X * 2
     pill_h = th + PAD_Y * 2
     pill_x = MARGIN
-    pill_y = FOOTER_Y + 30   # breathing room from image edge
+    pill_y = FOOTER_Y + 24   # breathing room from image edge
     try:
         draw.rounded_rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)],
                                 radius=PILL_R, fill=(208, 32, 32))

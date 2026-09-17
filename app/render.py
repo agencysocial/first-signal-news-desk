@@ -3142,12 +3142,30 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
       </div>
       <!-- Upload crop + apply template UI -->
       <div id="upload-crop-ui-{cid}" style="display:none;margin-bottom:10px;background:#080c14;border:1px solid #2a3555;border-radius:6px;padding:10px">
-        <div style="color:#93c5fd;font-size:11px;margin-bottom:6px;font-weight:600">&#9709; Drag image to reposition, then apply template</div>
-        <div id="crop-container-{cid}" style="width:240px;max-width:100%;aspect-ratio:4/5;overflow:hidden;position:relative;border-radius:4px;border:1px solid #2a3555;touch-action:none">
-          <img id="crop-preview-{cid}" src="" alt="upload preview"
-            style="position:absolute;max-width:none;cursor:grab;user-select:none;-webkit-user-drag:none">
+        <div style="color:#93c5fd;font-size:11px;margin-bottom:6px;font-weight:600">&#9709; Drag image to pan &bull; drag corner/edge handles to resize</div>
+        <!-- wrapper: position:relative so handles overlay can be positioned over the container without being clipped -->
+        <div style="position:relative;display:inline-block;width:100%;max-width:280px;vertical-align:top">
+          <div id="crop-container-{cid}" style="width:100%;aspect-ratio:4/5;overflow:hidden;position:relative;border-radius:4px;box-shadow:0 0 0 1px #2a3555;touch-action:none;background:#000;display:block">
+            <img id="crop-preview-{cid}" src="" alt="upload preview"
+              style="position:absolute;max-width:none;cursor:grab;user-select:none;-webkit-user-drag:none;opacity:0">
+            <!-- footer zone guide: shows where the card overlay will appear -->
+            <div style="position:absolute;bottom:0;left:0;right:0;height:33%;background:rgba(0,0,0,0.55);pointer-events:none;z-index:3;border-top:1px dashed rgba(255,255,255,0.2)">
+              <div style="margin-top:6px;color:rgba(255,255,255,0.3);font-size:8px;text-align:center;letter-spacing:.5px;font-weight:600">FOOTER &bull; HEADLINE &bull; TAG</div>
+            </div>
+          </div>
+          <!-- handles overlay: sibling of container so it is NOT clipped by overflow:hidden -->
+          <div id="crop-handles-{cid}" style="position:absolute;top:0;left:0;pointer-events:none;box-sizing:border-box;border:1px dashed rgba(147,197,253,0.35);z-index:10;display:none">
+            <div data-h="nw" style="position:absolute;width:14px;height:14px;background:#93c5fd;border:2px solid #fff;border-radius:3px;top:-7px;left:-7px;cursor:nw-resize;pointer-events:all;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>
+            <div data-h="n"  style="position:absolute;width:14px;height:14px;background:#93c5fd;border:2px solid #fff;border-radius:3px;top:-7px;left:50%;margin-left:-7px;cursor:n-resize;pointer-events:all;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>
+            <div data-h="ne" style="position:absolute;width:14px;height:14px;background:#93c5fd;border:2px solid #fff;border-radius:3px;top:-7px;right:-7px;cursor:ne-resize;pointer-events:all;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>
+            <div data-h="e"  style="position:absolute;width:14px;height:14px;background:#93c5fd;border:2px solid #fff;border-radius:3px;top:50%;margin-top:-7px;right:-7px;cursor:e-resize;pointer-events:all;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>
+            <div data-h="se" style="position:absolute;width:14px;height:14px;background:#93c5fd;border:2px solid #fff;border-radius:3px;bottom:-7px;right:-7px;cursor:se-resize;pointer-events:all;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>
+            <div data-h="s"  style="position:absolute;width:14px;height:14px;background:#93c5fd;border:2px solid #fff;border-radius:3px;bottom:-7px;left:50%;margin-left:-7px;cursor:s-resize;pointer-events:all;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>
+            <div data-h="sw" style="position:absolute;width:14px;height:14px;background:#93c5fd;border:2px solid #fff;border-radius:3px;bottom:-7px;left:-7px;cursor:sw-resize;pointer-events:all;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>
+            <div data-h="w"  style="position:absolute;width:14px;height:14px;background:#93c5fd;border:2px solid #fff;border-radius:3px;top:50%;margin-top:-7px;left:-7px;cursor:w-resize;pointer-events:all;box-sizing:border-box;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>
+          </div>
         </div>
-        <div style="color:#8b93a3;font-size:10px;margin-top:4px;text-align:center">Drag to reposition &bull; use slider to zoom</div>
+        <div style="color:#8b93a3;font-size:10px;margin-top:4px;text-align:center">Drag image to pan &bull; drag blue handles to resize &bull; slider to fine-tune</div>
         <div style="margin-top:6px;display:flex;align-items:center;gap:8px">
           <span style="color:#8b93a3;font-size:10px;white-space:nowrap">&#128269; Zoom</span>
           <input type="range" id="crop-zoom-{cid}" min="100" max="300" value="100" step="5"
@@ -3905,16 +3923,17 @@ function uploadImage(cid, input) {{
       window['_cs_' + cid] = null;
       var zoomSlider = document.getElementById('crop-zoom-' + cid);
       var zoomLabel  = document.getElementById('crop-zoom-label-' + cid);
+      var hd = document.getElementById('crop-handles-' + cid);
       if (zoomSlider) zoomSlider.value = 100;
       if (zoomLabel)  zoomLabel.textContent = '1\xd7';
+      if (hd) hd.style.display = 'none';
       if (preview) {{
-        preview.src = d.raw_url;
-        preview.style.position = 'absolute';
-        preview.style.maxWidth = 'none';
+        preview.style.opacity = '0';
         preview.style.width = '';
         preview.style.height = '';
         preview.style.left = '0px';
         preview.style.top  = '0px';
+        preview.src = d.raw_url;
         _initCropDrag(cid);
       }}
       if (cropUi)  cropUi.style.display = 'block';
@@ -3926,13 +3945,23 @@ function uploadImage(cid, input) {{
     }});
 }}
 function _cropApply(cid) {{
-  /* Apply absolute position + size to the preview img from _cs_ state */
   var img = document.getElementById('crop-preview-' + cid);
   var s = window['_cs_' + cid]; if (!img || !s) return;
-  img.style.width  = s.dw + 'px';
-  img.style.height = s.dh + 'px';
-  img.style.left   = (-s.ox) + 'px';
-  img.style.top    = (-s.oy) + 'px';
+  img.style.width   = s.dw + 'px';
+  img.style.height  = s.dh + 'px';
+  img.style.left    = (-s.ox) + 'px';
+  img.style.top     = (-s.oy) + 'px';
+  img.style.opacity = '1';
+  /* handles overlay is a sibling of crop-container (not inside overflow:hidden)
+     positioned within the wrapper div — left/top relative to wrapper = image left/top */
+  var hd = document.getElementById('crop-handles-' + cid);
+  if (hd) {{
+    hd.style.left    = (-s.ox) + 'px';
+    hd.style.top     = (-s.oy) + 'px';
+    hd.style.width   = s.dw + 'px';
+    hd.style.height  = s.dh + 'px';
+    hd.style.display = 'block';
+  }}
 }}
 function _cropReset(cid) {{
   /* Recalculate display size and center the image; called on load and zoom change */
@@ -3965,40 +3994,121 @@ function _cropReset(cid) {{
 }}
 function _initCropDrag(cid) {{
   var img = document.getElementById('crop-preview-' + cid);
-  var con = document.getElementById('crop-container-' + cid);
-  if (!img || img._dragInited) return;
+  var hd  = document.getElementById('crop-handles-' + cid);
+  if (!img) return;
+  /* clean up any previous listeners to prevent stacking on recrop */
+  if (img._cropCleanup) {{ try {{ img._cropCleanup(); }} catch(e) {{}} }}
   img._dragInited = true;
-  /* absolute positioning — no object-fit */
   img.style.position = 'absolute';
   img.style.maxWidth  = 'none';
   img.style.objectFit = 'unset';
-  img.style.cursor = 'grab';
-  img.addEventListener('load', function() {{ _cropReset(cid); }});
-  if (img.complete && img.naturalWidth > 0) _cropReset(cid);
-  var dragging = false, startMX, startMY, startOX, startOY;
+  img.style.opacity   = '0'; /* hidden until _cropReset fires — prevents flash of natural-size image */
+  img.style.cursor    = 'grab';
+
   function pt(e) {{ return e.touches ? e.touches[0] : e; }}
-  function onStart(e) {{
-    dragging = true;
-    var p = pt(e); startMX = p.clientX; startMY = p.clientY;
-    var s = window['_cs_' + cid] || {{}}; startOX = s.ox||0; startOY = s.oy||0;
+
+  /* ── drag-to-pan ── */
+  var panning = false, panSX, panSY, panOX, panOY;
+  function panStart(e) {{
+    if (e.target && e.target.dataset && e.target.dataset.h) return;
+    panning = true;
+    var p = pt(e); panSX = p.clientX; panSY = p.clientY;
+    var s = window['_cs_' + cid] || {{}}; panOX = s.ox||0; panOY = s.oy||0;
     img.style.cursor = 'grabbing'; e.preventDefault();
   }}
-  function onMove(e) {{
-    if (!dragging) return;
-    var p = pt(e);
-    var s = window['_cs_' + cid]; if (!s) return;
-    /* drag right → image follows finger → ox decreases (shows more left) */
-    var nx = Math.max(0, Math.min(s.dw - s.cw, startOX - (p.clientX - startMX)));
-    var ny = Math.max(0, Math.min(s.dh - s.ch, startOY - (p.clientY - startMY)));
-    s.ox = nx; s.oy = ny; _cropApply(cid); e.preventDefault();
+  function panMove(e) {{
+    if (!panning) return;
+    var p = pt(e); var s = window['_cs_' + cid]; if (!s) return;
+    s.ox = Math.max(0, Math.min(s.dw - s.cw, panOX - (p.clientX - panSX)));
+    s.oy = Math.max(0, Math.min(s.dh - s.ch, panOY - (p.clientY - panSY)));
+    _cropApply(cid); e.preventDefault();
   }}
-  function onEnd() {{ dragging = false; img.style.cursor = 'grab'; }}
-  img.addEventListener('mousedown', onStart);
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onEnd);
-  img.addEventListener('touchstart', onStart, {{passive:false}});
-  document.addEventListener('touchmove', onMove, {{passive:false}});
-  document.addEventListener('touchend', onEnd);
+  function panEnd() {{ panning = false; img.style.cursor = 'grab'; }}
+
+  /* ── corner/edge resize handles ── */
+  var resizing = false, rH, rSX, rSY, rS;
+  function resizeStart(e) {{
+    rH = e.currentTarget.dataset.h; resizing = true;
+    var p = pt(e); rSX = p.clientX; rSY = p.clientY;
+    var s = window['_cs_' + cid];
+    rS = s ? {{dw:s.dw, dh:s.dh, ox:s.ox, oy:s.oy, cw:s.cw, ch:s.ch, ar:s.dw/s.dh}} : null;
+    e.stopPropagation(); e.preventDefault();
+  }}
+  function resizeMove(e) {{
+    if (!resizing || !rS) return;
+    var p = pt(e); var dx = p.clientX - rSX; var dy = p.clientY - rSY;
+    var s = window['_cs_' + cid]; if (!s) return;
+    var minW = s.cw, minH = s.ch;
+    /* ddx/ddy: positive = image grows in that axis */
+    var ddx = (rH==='nw'||rH==='w'||rH==='sw') ? -dx : (rH==='ne'||rH==='e'||rH==='se') ? dx : 0;
+    var ddy = (rH==='nw'||rH==='n'||rH==='ne') ? -dy : (rH==='sw'||rH==='s'||rH==='se') ? dy : 0;
+    var ndw = rS.dw, ndh = rS.dh, nox = rS.ox, noy = rS.oy;
+    if (rH==='nw'||rH==='ne'||rH==='se'||rH==='sw') {{
+      /* corner: keep aspect ratio, use dominant axis */
+      if (Math.abs(ddx / rS.dw) >= Math.abs(ddy / rS.dh)) {{
+        ndw = Math.max(minW, rS.dw + ddx); ndh = ndw / rS.ar;
+        if (ndh < minH) {{ ndh = minH; ndw = ndh * rS.ar; }}
+      }} else {{
+        ndh = Math.max(minH, rS.dh + ddy); ndw = ndh * rS.ar;
+        if (ndw < minW) {{ ndw = minW; ndh = ndw / rS.ar; }}
+      }}
+    }} else {{
+      /* edge: single axis only */
+      if (ddx !== 0) ndw = Math.max(minW, rS.dw + ddx);
+      if (ddy !== 0) ndh = Math.max(minH, rS.dh + ddy);
+    }}
+    /* adjust offsets to keep the ANCHOR corner fixed in the viewport:
+       left-side handles anchor the right edge → nox shifts with ndw change
+       top-side handles anchor the bottom edge → noy shifts with ndh change */
+    if (rH==='nw'||rH==='w'||rH==='sw') nox = rS.ox + (rS.dw - ndw);
+    if (rH==='nw'||rH==='n'||rH==='ne') noy = rS.oy + (rS.dh - ndh);
+    s.dw = ndw; s.dh = ndh;
+    s.ox = Math.max(0, Math.min(ndw - s.cw, nox));
+    s.oy = Math.max(0, Math.min(ndh - s.ch, noy));
+    /* sync zoom slider */
+    var zsl = document.getElementById('crop-zoom-' + cid);
+    var lbl = document.getElementById('crop-zoom-label-' + cid);
+    if (zsl && s.baseScale && img.naturalWidth) {{
+      var pct = Math.round((ndw / img.naturalWidth / s.baseScale) * 100);
+      zsl.value = Math.max(100, Math.min(300, pct));
+      if (lbl) lbl.textContent = (Math.max(100,Math.min(300,pct))/100).toFixed(1) + '\xd7';
+    }}
+    _cropApply(cid); e.preventDefault();
+  }}
+  function resizeEnd() {{ resizing = false; }}
+
+  img.addEventListener('mousedown', panStart);
+  document.addEventListener('mousemove', panMove);
+  document.addEventListener('mouseup', panEnd);
+  img.addEventListener('touchstart', panStart, {{passive:false}});
+  document.addEventListener('touchmove', panMove, {{passive:false}});
+  document.addEventListener('touchend', panEnd);
+  if (hd) {{
+    Array.prototype.forEach.call(hd.querySelectorAll('[data-h]'), function(el) {{
+      el.addEventListener('mousedown', resizeStart);
+      el.addEventListener('touchstart', resizeStart, {{passive:false}});
+    }});
+    document.addEventListener('mousemove', resizeMove);
+    document.addEventListener('mouseup', resizeEnd);
+    document.addEventListener('touchmove', resizeMove, {{passive:false}});
+    document.addEventListener('touchend', resizeEnd);
+  }}
+
+  img._cropCleanup = function() {{
+    img.removeEventListener('mousedown', panStart);
+    document.removeEventListener('mousemove', panMove);
+    document.removeEventListener('mouseup', panEnd);
+    img.removeEventListener('touchstart', panStart);
+    document.removeEventListener('touchmove', panMove);
+    document.removeEventListener('touchend', panEnd);
+    document.removeEventListener('mousemove', resizeMove);
+    document.removeEventListener('mouseup', resizeEnd);
+    document.removeEventListener('touchmove', resizeMove);
+    document.removeEventListener('touchend', resizeEnd);
+  }};
+
+  img.addEventListener('load', function() {{ _cropReset(cid); }});
+  if (img.complete && img.naturalWidth > 0) _cropReset(cid);
 }}
 function _updateCropZoom(cid) {{
   var slider = document.getElementById('crop-zoom-' + cid);
@@ -4046,7 +4156,9 @@ function applyCardTemplate(cid) {{
         return;
       }}
       if (wrap && d.url) {{
-        wrap.innerHTML = '<img src="' + d.url + '?t=' + Date.now() + '" style="width:100%;border-radius:4px">';
+        wrap.innerHTML = '<img src="' + d.url + '?t=' + Date.now() + '" style="width:100%;border-radius:4px;display:block;margin-bottom:6px">'
+          + '<a href="' + d.url + '" download target="_blank" style="display:inline-block;font-size:11px;padding:4px 12px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;border-radius:4px;text-decoration:none;margin-bottom:10px">&#11015; Download</a>'
+          + '<button type="button" data-cid="' + cid + '" onclick="recropImage(this.dataset.cid)" style="display:inline-block;font-size:11px;padding:4px 12px;margin-left:6px;background:#0a1020;border:1px solid #2a3555;color:#93c5fd;cursor:pointer;border-radius:4px">&#9986; Recrop</button>';
       }}
       var cropUi = document.getElementById('upload-crop-ui-' + cid);
       if (cropUi) cropUi.style.display = 'none';
@@ -4058,27 +4170,27 @@ function applyCardTemplate(cid) {{
     }});
 }}
 function recropImage(cid) {{
-  var kieUrl = window['_kieUrl_'+cid];
+  var kieUrl = window['_kieUrl_'+cid] || window['_rawUpload_'+cid];
   if (!kieUrl) {{ alert('No raw source image available for recrop.'); return; }}
-  var preview = document.getElementById('crop-preview-'+cid);
-  var cropUi  = document.getElementById('upload-crop-ui-'+cid);
+  window['_rawUpload_'+cid] = kieUrl;
+  var preview    = document.getElementById('crop-preview-'+cid);
+  var cropUi     = document.getElementById('upload-crop-ui-'+cid);
+  var hd         = document.getElementById('crop-handles-'+cid);
   var zoomSlider = document.getElementById('crop-zoom-'+cid);
   var zoomLabel  = document.getElementById('crop-zoom-label-'+cid);
-  var st = document.getElementById('img-status-'+cid);
-  window['_rawUpload_'+cid] = kieUrl;
+  var st         = document.getElementById('img-status-'+cid);
   window['_cs_'+cid] = null;
   if (zoomSlider) zoomSlider.value = 100;
   if (zoomLabel)  zoomLabel.textContent = '1\xd7';
+  if (hd) hd.style.display = 'none'; /* hide until image reloads */
   if (preview) {{
-    preview._dragInited = false;
-    preview.src = kieUrl;
-    preview.style.position = 'absolute';
-    preview.style.maxWidth = 'none';
+    preview.style.opacity = '0';
     preview.style.width = '';
     preview.style.height = '';
     preview.style.left = '0px';
     preview.style.top  = '0px';
-    _initCropDrag(cid);
+    preview.src = kieUrl;
+    _initCropDrag(cid); /* cleanup + reinit */
   }}
   if (cropUi) cropUi.style.display = 'block';
   if (st) {{ st.textContent = 'Drag to reposition, then click Apply Template'; st.style.color = '#93c5fd'; }}
