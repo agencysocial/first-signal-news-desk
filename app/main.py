@@ -393,14 +393,21 @@ def _kie_submit(prompt: str, key: str, retries: int = 3, aspect_ratio: str = "4:
 
 
 def _kie_poll(task_id: str, key: str, prompt: str = "", retries: int = 2, aspect_ratio: str = "4:5") -> str:
-    """Poll until done. On 'fail', re-submit and retry up to `retries` times."""
+    """Poll until done. On 'fail' or timeout, re-submit and retry up to `retries` times."""
+    fail_msg = "unknown"
     for attempt in range(retries + 1):
         deadline = time.time() + _KIE_POLL_TIMEOUT
         current_task = task_id if attempt == 0 else _kie_submit(prompt, key, retries=2, aspect_ratio=aspect_ratio)
+        timed_out = False
         while time.time() < deadline:
-            r = httpx.get(f"{_KIE_RECORD}?taskId={current_task}",
-                          headers={"Authorization": f"Bearer {key}"}, timeout=30)
-            r.raise_for_status()
+            try:
+                r = httpx.get(f"{_KIE_RECORD}?taskId={current_task}",
+                              headers={"Authorization": f"Bearer {key}"}, timeout=30)
+                r.raise_for_status()
+            except Exception as e:
+                logger.warning("Kie poll request error (will retry): %s", e)
+                time.sleep(_KIE_POLL_INTERVAL)
+                continue
             data = (r.json().get("data") or {})
             state = data.get("state")
             if state == "success":
@@ -416,8 +423,13 @@ def _kie_poll(task_id: str, key: str, prompt: str = "", retries: int = 2, aspect
                 break  # retry with a new task submission
             time.sleep(_KIE_POLL_INTERVAL)
         else:
-            raise TimeoutError(f"Kie task {current_task} timed out after {_KIE_POLL_TIMEOUT}s")
+            timed_out = True
+            logger.warning("Kie task %s timed out after %ds (attempt %d/%d) — resubmitting",
+                           current_task, _KIE_POLL_TIMEOUT, attempt + 1, retries + 1)
+            fail_msg = f"timeout after {_KIE_POLL_TIMEOUT}s"
         if attempt == retries:
+            if timed_out:
+                raise TimeoutError(f"Kie task timed out after {retries + 1} attempts ({_KIE_POLL_TIMEOUT}s each)")
             raise RuntimeError(f"Kie task failed after {retries + 1} attempts — last failMsg: {fail_msg}")
         time.sleep(10)
     raise RuntimeError("Kie poll: exhausted retries")
