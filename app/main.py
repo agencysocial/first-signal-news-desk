@@ -4541,8 +4541,8 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
     from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font, ImageStat as _Stat
     import io as _io
 
-    TARGET_W, TARGET_H = 1024, 1280
-    TARGET_RATIO = TARGET_W / TARGET_H  # 0.8
+    TARGET_W, TARGET_H = 1122, 1402
+    TARGET_RATIO = TARGET_W / TARGET_H  # ~0.8
 
     src = _PIL.open(_io.BytesIO(image_bytes)).convert("RGB")
     src_w, src_h = src.size
