@@ -137,7 +137,11 @@ def _current_season() -> str:
 
 
 def _build_image_prompt(headline: str, tag: str, scene: str, notes: str = "") -> str:
-    tag = (tag or "").replace(",", "").replace(";", "").replace(":", "").strip()
+    # headline and tag are intentionally NOT included in the Kie prompt.
+    # Baking political/conflict text into the image prompt triggers OpenAI content
+    # policy rejections even when the scene itself is benign. The headline and tag
+    # are stamped onto the card server-side by PIL (_apply_card_template_pil), so
+    # Kie only needs to generate the photo + blank card layout.
     notes_clause = f" Additional direction: {notes}." if notes else ""
     season = _current_season()
     return (
@@ -146,17 +150,12 @@ def _build_image_prompt(headline: str, tag: str, scene: str, notes: str = "") ->
         f"ZONE 2 — LOWER ONE-THIRD (footer panel): A SOLID FLAT PURE BLACK (#000000) rectangle spanning "
         f"the full width at the bottom of the card. Completely opaque, ZERO transparency, ZERO gradient, "
         f"ZERO bleed from the photo above. Inside this black panel, left-aligned with consistent left padding:\n"
-        f"  - TOP OF FOOTER: a solid vivid fire-engine RED rounded rectangle pill (NOT orange, NOT dark red) "
-        f"containing the text \"{tag}\" in bold white uppercase letters. Font size ~18-20pt.\n"
-        f"  - DIRECTLY BELOW THE PILL: the headline \"{headline}\" in BOLD UPPERCASE Montserrat (or identical "
-        f"geometric sans-serif). Font size: 42-52pt — large, dominant, fills the panel width. "
-        f"Color: BRIGHT WARM GOLDEN YELLOW — the exact same vivid saturated yellow on every card, "
-        f"NOT pale yellow, NOT lime, NOT orange, NOT muted. Consistent across every generation.\n"
+        f"  - TOP OF FOOTER: a solid vivid fire-engine RED rounded rectangle pill shape (empty, no text).\n"
+        f"  - BELOW THE PILL: a blank area reserved for headline text in bold yellow uppercase — leave this area empty, solid black only.\n"
         f"\n"
-        f"CRITICAL CONSISTENCY RULES: The yellow headline color, the Montserrat font, and the font size "
-        f"MUST match exactly from card to card — never vary. "
-        f"Flat 2D text only — no drop shadows, no outer glows, no gradients on text. "
-        f"No logos, no URLs, no social handles. Photo fills only the upper two-thirds. "
+        f"CRITICAL RULES: Flat 2D footer only — no drop shadows, no outer glows, no gradients. "
+        f"No logos, no URLs, no social handles, NO TEXT of any kind in the footer. "
+        f"Photo fills only the upper two-thirds. "
         f"4:5 vertical portrait format, photorealistic, sharp, magazine-quality."
     )
 
@@ -1015,24 +1014,22 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"{aspect} vertical portrait format, photorealistic, sharp."
         )
 
-    # Default layout (First Signal News and future brands)
+    # Default layout (First Signal News and future brands).
+    # headline and tag text are intentionally omitted — baking political/conflict
+    # text into the prompt triggers OpenAI content policy rejections. Text is
+    # stamped server-side by PIL so Kie only needs the photo + blank card layout.
     return (
         f"A {aspect} vertical portrait breaking-news share card with TWO ZONES — strictly no overlap between them.\n\n"
         f"ZONE 1 — UPPER TWO-THIRDS (photo area): {scene}.{notes_clause}{season_clause} {_ANTI_SLOP}\n\n"
         f"ZONE 2 — LOWER ONE-THIRD (footer panel): A SOLID FLAT PURE BLACK (#000000) rectangle spanning "
         f"the full width at the bottom of the card. Completely opaque, ZERO transparency, ZERO gradient, "
         f"ZERO bleed from the photo above. Inside this black panel, left-aligned with consistent left padding:\n"
-        f"  - TOP OF FOOTER: a solid vivid fire-engine RED rounded rectangle pill (NOT orange, NOT dark red) "
-        f"containing the text \"{tag}\" in bold white uppercase letters. Font size ~18-20pt.\n"
-        f"  - DIRECTLY BELOW THE PILL: the headline \"{headline}\" in BOLD UPPERCASE Montserrat (or identical "
-        f"geometric sans-serif). Font size: 42-52pt — large, dominant, fills the panel width. "
-        f"Color: BRIGHT WARM GOLDEN YELLOW — the exact same vivid saturated yellow on every card, "
-        f"NOT pale yellow, NOT lime, NOT orange, NOT muted. Consistent across every generation.\n"
+        f"  - TOP OF FOOTER: a solid vivid fire-engine RED rounded rectangle pill shape (empty, no text).\n"
+        f"  - BELOW THE PILL: a blank area reserved for headline text — leave this area empty, solid black only.\n"
         f"\n"
-        f"CRITICAL CONSISTENCY RULES: The yellow headline color, the Montserrat font, and the font size "
-        f"MUST match exactly from card to card — never vary. "
-        f"Flat 2D text only — no drop shadows, no outer glows, no gradients on text. "
-        f"No logos, no URLs, no social handles. Photo fills only the upper two-thirds. "
+        f"CRITICAL RULES: Flat 2D footer only — no drop shadows, no outer glows, no gradients. "
+        f"No logos, no URLs, no social handles, NO TEXT of any kind in the footer. "
+        f"Photo fills only the upper two-thirds. "
         f"{aspect} vertical portrait format, photorealistic, sharp, magazine-quality."
     )
 
