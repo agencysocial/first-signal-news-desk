@@ -2615,12 +2615,16 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribu
         task_id = _kie_submit(prompt, key)
         kie_url = _kie_poll(task_id, key, prompt=prompt)
 
-        # Download and stamp logo into brand-specific tmp file.
+        # Download, stamp card template (headline + tag via PIL), then stamp logo.
         # Capture bytes then release the httpx response before PIL starts work.
         r = httpx.get(kie_url, timeout=60, follow_redirects=True)
         r.raise_for_status()
         _raw = _normalize_aspect(r.content)
         del r
+        # Apply headline + tag text server-side (PIL). This replaces what was
+        # previously baked into the Kie prompt — removed to avoid content policy
+        # rejections on political/conflict headlines.
+        _raw = _apply_card_template_pil(_raw, headline, tag, attribution="", brand_slug=brand_slug_for_gen)
         stamped_path = _stamp_logo(_raw, tmp_file_id, brand_slug=brand_slug_for_gen)
         del _raw
         _stamp_attribution(stamped_path, attribution)
