@@ -4595,9 +4595,18 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
     src = None
     draw = _Draw.Draw(out)
 
-    # --- Black footer (bottom 35%) ---
+    # --- Brand palette (per brand_slug) ---
+    _BRAND_PALETTE = {
+        "first_signal":      {"footer": (0,0,0),       "headline": (255,222,89),  "pill": (208,32,32),   "pill_text": (255,255,255)},
+        "cathy_talk":        {"footer": (255,255,255),  "headline": (34,34,34),    "pill": (206,49,117),  "pill_text": (255,255,255)},
+        "the_american":      {"footer": (242,225,190),  "headline": (7,29,56),     "pill": (181,33,37),   "pill_text": (248,241,226)},
+        "daily_side_hustle": {"footer": (13,43,82),     "headline": (255,255,255), "pill": (34,197,94),   "pill_text": (7,26,48)},
+    }
+    _PAL = _BRAND_PALETTE.get(brand_slug, _BRAND_PALETTE["first_signal"])
+
+    # --- Footer panel (bottom 35%) ---
     FOOTER_Y = int(TARGET_H * 0.65)
-    draw.rectangle([(0, FOOTER_Y), (TARGET_W, TARGET_H)], fill=(0, 0, 0))
+    draw.rectangle([(0, FOOTER_Y), (TARGET_W, TARGET_H)], fill=_PAL["footer"])
 
     # --- Fonts ---
     _BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
@@ -4643,13 +4652,13 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
     pill_y = FOOTER_Y + 24   # breathing room from image edge
     try:
         draw.rounded_rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)],
-                                radius=PILL_R, fill=(208, 32, 32))
+                                radius=PILL_R, fill=_PAL["pill"])
     except AttributeError:
-        draw.rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)], fill=(208, 32, 32))
-    draw.text((pill_x + PAD_X, pill_y + PAD_Y), tag_upper, font=tag_font, fill=(255, 255, 255))
+        draw.rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)], fill=_PAL["pill"])
+    draw.text((pill_x + PAD_X, pill_y + PAD_Y), tag_upper, font=tag_font, fill=_PAL["pill_text"])
 
-    # --- Yellow headline ---
-    HL_YELLOW = (255, 222, 89)
+    # --- Headline ---
+    HL_YELLOW = _PAL["headline"]
     HL_X  = MARGIN
     HL_MAX_W = TARGET_W - MARGIN * 2
     HL_Y  = pill_y + pill_h + 14
