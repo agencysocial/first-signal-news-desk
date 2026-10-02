@@ -4604,10 +4604,6 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
     }
     _PAL = _BRAND_PALETTE.get(brand_slug, _BRAND_PALETTE["first_signal"])
 
-    # --- Footer panel (bottom 35%) ---
-    FOOTER_Y = int(TARGET_H * 0.65)
-    draw.rectangle([(0, FOOTER_Y), (TARGET_W, TARGET_H)], fill=_PAL["footer"])
-
     # --- Fonts ---
     _BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
     _REG  = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
@@ -4638,32 +4634,6 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
             except Exception:
                 return font.size if hasattr(font, "size") else 24
 
-    tag_font = _font(_BOLD, 42)
-
-    # --- Red pill (tag) ---
-    MARGIN   = 24
-    PAD_X, PAD_Y, PILL_R = 20, 10, 8
-    tag_upper = (tag or "BREAKING").replace(";", "").replace(":", "").upper()
-    tw = _text_w(tag_font, tag_upper)
-    th = _line_h(tag_font)
-    pill_w = tw + PAD_X * 2
-    pill_h = th + PAD_Y * 2
-    pill_x = MARGIN
-    pill_y = FOOTER_Y + 24   # breathing room from image edge
-    try:
-        draw.rounded_rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)],
-                                radius=PILL_R, fill=_PAL["pill"])
-    except AttributeError:
-        draw.rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)], fill=_PAL["pill"])
-    draw.text((pill_x + PAD_X, pill_y + PAD_Y), tag_upper, font=tag_font, fill=_PAL["pill_text"])
-
-    # --- Headline ---
-    HL_YELLOW = _PAL["headline"]
-    HL_X  = MARGIN
-    HL_MAX_W = TARGET_W - MARGIN * 2
-    HL_Y  = pill_y + pill_h + 14
-    hl_text = (headline or "").upper()
-
     def _wrap(text, font, max_w):
         words = text.split()
         lines, cur = [], ""
@@ -4679,20 +4649,58 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
             lines.append(cur)
         return lines or [""]
 
-    # Pick largest font that fits in the remaining footer space
-    footer_avail = TARGET_H - HL_Y - 20   # 20px bottom pad
-    chosen_font, chosen_lines = _font(_BOLD, 36), _wrap(hl_text, _font(_BOLD, 36), HL_MAX_W)
-    for size in [82, 72, 62, 52, 44, 36, 28]:
-        fnt = _font(_BOLD, size)
-        lines = _wrap(hl_text, fnt, HL_MAX_W)
-        lh = _line_h(fnt)
-        if len(lines) * (lh + 8) <= footer_avail:
-            chosen_font, chosen_lines = fnt, lines
-            break
+    # Layout constants
+    MARGIN       = 24
+    PAD_X, PAD_Y, PILL_R = 20, 10, 8
+    PILL_TOP_PAD = 40   # space from footer edge to pill top (breathing room)
+    PILL_TO_HL   = 16   # gap between pill bottom and first headline line
+    LINE_GAP     = 8    # leading between headline lines
+    BOTTOM_PAD   = 36   # space below last headline line
+    HL_MAX_W     = TARGET_W - MARGIN * 2
 
-    lh = _line_h(chosen_font)
+    # Measure pill (fixed 42px tag font)
+    tag_font  = _font(_BOLD, 42)
+    tag_upper = (tag or "BREAKING").replace(";", "").replace(":", "").upper()
+    tw        = _text_w(tag_font, tag_upper)
+    th        = _line_h(tag_font)
+    pill_w    = tw + PAD_X * 2
+    pill_h    = th + PAD_Y * 2
+
+    # Pick headline font: largest size where wrapping handles width (no vertical constraint)
+    hl_text = (headline or "").upper()
+    chosen_font, chosen_lines = _font(_BOLD, 28), _wrap(hl_text, _font(_BOLD, 28), HL_MAX_W)
+    for size in [82, 72, 62, 52, 44, 36, 28]:
+        fnt   = _font(_BOLD, size)
+        lines = _wrap(hl_text, fnt, HL_MAX_W)
+        chosen_font, chosen_lines = fnt, lines
+        break   # always take the largest — wrapping prevents overflow
+
+    lh       = _line_h(chosen_font)
+    n_lines  = len(chosen_lines)
+
+    # Float footer height to exactly contain pill + headline + padding
+    content_h = PILL_TOP_PAD + pill_h + PILL_TO_HL + n_lines * (lh + LINE_GAP) - LINE_GAP + BOTTOM_PAD
+    FOOTER_Y  = TARGET_H - content_h
+    # Clamp: footer is at least 22% and at most 48% of image height
+    FOOTER_Y  = max(int(TARGET_H * 0.52), min(int(TARGET_H * 0.78), FOOTER_Y))
+
+    draw.rectangle([(0, FOOTER_Y), (TARGET_W, TARGET_H)], fill=_PAL["footer"])
+
+    # --- Red pill ---
+    pill_x = MARGIN
+    pill_y = FOOTER_Y + PILL_TOP_PAD
+    try:
+        draw.rounded_rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)],
+                                radius=PILL_R, fill=_PAL["pill"])
+    except AttributeError:
+        draw.rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)], fill=_PAL["pill"])
+    draw.text((pill_x + PAD_X, pill_y + PAD_Y), tag_upper, font=tag_font, fill=_PAL["pill_text"])
+
+    # --- Headline ---
+    HL_X = MARGIN
+    HL_Y = pill_y + pill_h + PILL_TO_HL
     for i, line in enumerate(chosen_lines):
-        draw.text((HL_X, HL_Y + i * (lh + 8)), line, font=chosen_font, fill=HL_YELLOW)
+        draw.text((HL_X, HL_Y + i * (lh + LINE_GAP)), line, font=chosen_font, fill=_PAL["headline"])
 
     # --- Attribution (top-right, on the photo) ---
     if attribution and attribution.strip():
