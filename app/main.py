@@ -4666,14 +4666,16 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
     pill_w    = tw + PAD_X * 2
     pill_h    = th + PAD_Y * 2
 
-    # Pick headline font: largest size where wrapping handles width (no vertical constraint)
+    # Pick headline font: largest size where headline wraps to ≤4 lines
     hl_text = (headline or "").upper()
     chosen_font, chosen_lines = _font(_BOLD, 28), _wrap(hl_text, _font(_BOLD, 28), HL_MAX_W)
     for size in [82, 72, 62, 52, 44, 36, 28]:
         fnt   = _font(_BOLD, size)
         lines = _wrap(hl_text, fnt, HL_MAX_W)
-        chosen_font, chosen_lines = fnt, lines
-        break   # always take the largest — wrapping prevents overflow
+        if len(lines) <= 4:
+            chosen_font, chosen_lines = fnt, lines
+            break
+        chosen_font, chosen_lines = fnt, lines  # keep shrinking; use last if nothing fits ≤4
 
     lh       = _line_h(chosen_font)
     n_lines  = len(chosen_lines)
