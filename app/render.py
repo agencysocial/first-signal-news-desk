@@ -3176,9 +3176,16 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
             style="font-size:10px;padding:3px 8px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;cursor:pointer;border-radius:4px;white-space:nowrap">
             &#8853; Center</button>
         </div>
-        <button type="button" onclick="applyCardTemplate('{cid}')"
-          style="margin-top:8px;width:100%;font-size:12px;padding:7px 12px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:4px;font-weight:600">
-          &#9654; Apply Template (headline + tag + branding)</button>
+        <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
+          <select id="template-type-{cid}"
+            style="flex:1;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:5px 6px;font-family:inherit">
+            <option value="breaking">Breaking News</option>
+            <option value="brief">The Brief</option>
+          </select>
+          <button type="button" onclick="applyCardTemplate('{cid}')"
+            style="flex:2;font-size:12px;padding:7px 12px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:4px;font-weight:600">
+            &#9654; Apply Template</button>
+        </div>
       </div>
       <textarea id="img-notes-{cid}" placeholder="Optional notes — e.g. &quot;show a courtroom&quot;, &quot;darker mood&quot;, &quot;wide shot of Capitol&quot;" rows="2"
         style="width:100%;box-sizing:border-box;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:6px;font-family:inherit;resize:vertical;margin-bottom:6px"></textarea>
@@ -4126,10 +4133,11 @@ function _cropCenter(cid) {{
 function applyCardTemplate(cid) {{
   var rawUrl = window['_rawUpload_' + cid];
   if (!rawUrl) {{ alert('No image uploaded yet.'); return; }}
-  var brand       = (document.getElementById('draft-brand-' + cid) || {{}}).value || 'first_signal';
-  var attribution = (document.getElementById('img-attribution-' + cid) || {{}}).value || '';
-  var headline    = (document.getElementById('draft-hl-' + cid) || {{}}).value || '';
-  var tag         = (document.getElementById('draft-tag-' + cid) || {{}}).value || 'BREAKING';
+  var brand        = (document.getElementById('draft-brand-' + cid) || {{}}).value || 'first_signal';
+  var attribution  = (document.getElementById('img-attribution-' + cid) || {{}}).value || '';
+  var headline     = (document.getElementById('draft-hl-' + cid) || {{}}).value || '';
+  var tag          = (document.getElementById('draft-tag-' + cid) || {{}}).value || 'BREAKING';
+  var templateType = (document.getElementById('template-type-' + cid) || {{}}).value || 'breaking';
   var s = window['_cs_' + cid] || {{}};
   var ovX = Math.max(1, (s.dw||1) - (s.cw||1));
   var ovY = Math.max(1, (s.dh||1) - (s.ch||1));
@@ -4148,6 +4156,7 @@ function applyCardTemplate(cid) {{
   fd.append('attribution', attribution);
   fd.append('headline', headline);
   fd.append('tag', tag);
+  fd.append('template_type', templateType);
   fetch('/pipeline-queue/story/' + cid + '/apply-card-template', {{method: 'POST', body: fd}})
     .then(function(r) {{ return r.json(); }})
     .then(function(d) {{

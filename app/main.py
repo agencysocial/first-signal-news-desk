@@ -2596,7 +2596,7 @@ def pipeline_queue_batch_status(user: dict = Depends(require_user)):
     })
 
 
-def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribution: str = "") -> None:
+def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribution: str = "", template_type: str = "breaking") -> None:
     """Generate image for a single cluster+brand, stamp logo, and update DB. Runs in a thread."""
     draft = item.get("draft") or {}
     headline = draft.get("headline") or item.get("text") or ""
@@ -2624,7 +2624,7 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribu
         # Apply headline + tag text server-side (PIL). This replaces what was
         # previously baked into the Kie prompt — removed to avoid content policy
         # rejections on political/conflict headlines.
-        _raw = _apply_card_template_pil(_raw, headline, tag, attribution="", brand_slug=brand_slug_for_gen)
+        _raw = _dispatch_template(template_type, _raw, headline, tag, attribution="", brand_slug=brand_slug_for_gen)
         stamped_path = _stamp_logo(_raw, tmp_file_id, brand_slug=brand_slug_for_gen)
         del _raw
         _stamp_attribution(stamped_path, attribution)
@@ -4719,6 +4719,252 @@ def _apply_card_template_pil(image_bytes: bytes, headline: str, tag: str,
     return buf.getvalue()
 
 
+def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
+                               attribution: str = "", crop_y: float = 0.5,
+                               crop_x: float = 0.5, zoom: float = 1.0,
+                               brand_slug: str = "first_signal") -> bytes:
+    """Apply 'THE BRIEF' editorial template — navy panel, globe, accent bar, dynamic headline."""
+    from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font, ImageStat as _Stat
+    import io as _io
+    import math as _math
+
+    TARGET_W, TARGET_H = 1122, 1402
+
+    # --- Crop / resize (same cover logic as _apply_card_template_pil) ---
+    src = _PIL.open(_io.BytesIO(image_bytes)).convert("RGB")
+    iw, ih = src.size
+    cx   = max(0.0, min(1.0, crop_x))
+    cy   = max(0.0, min(1.0, crop_y))
+    zoom = max(1.0, min(4.0, zoom))
+    base_scale = max(TARGET_W / iw, TARGET_H / ih)
+    scale      = base_scale * zoom
+    disp_w     = iw * scale
+    disp_h     = ih * scale
+    overflow_x = max(0.0, disp_w - TARGET_W)
+    overflow_y = max(0.0, disp_h - TARGET_H)
+    left_src   = int(overflow_x * cx / scale)
+    top_src    = int(overflow_y * cy / scale)
+    crop_w     = int(TARGET_W / scale)
+    crop_h     = int(TARGET_H / scale)
+    left_src   = max(0, min(iw - crop_w, left_src))
+    top_src    = max(0, min(ih - crop_h, top_src))
+    src = src.crop((left_src, top_src, left_src + crop_w, top_src + crop_h))
+    src = src.resize((TARGET_W, TARGET_H), _PIL.LANCZOS)
+
+    out  = src
+    src  = None
+    draw = _Draw.Draw(out)
+
+    # --- Colours ---
+    NAVY      = (3, 27, 53)
+    YELLOW    = (255, 214, 51)
+    WHITE     = (255, 255, 255)
+    BLACK     = (0, 0, 0)
+    BADGE_BG  = (5, 14, 32)
+
+    # --- Layout ---
+    DIVIDER_Y = int(TARGET_H * 0.57)   # ~799 px — photo/panel boundary
+    MARGIN    = 28
+
+    # --- Navy panel ---
+    draw.rectangle([(0, DIVIDER_Y), (TARGET_W, TARGET_H)], fill=NAVY)
+
+    # --- Yellow divider line ---
+    draw.rectangle([(0, DIVIDER_Y), (TARGET_W, DIVIDER_Y + 4)], fill=YELLOW)
+
+    # --- Fonts ---
+    _BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    _REG  = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+    def _font(path, size):
+        try:
+            return _Font.truetype(path, size)
+        except Exception:
+            return _Font.load_default()
+
+    def _text_w(font, text):
+        try:
+            bb = font.getbbox(text)
+            return bb[2] - bb[0]
+        except Exception:
+            try:
+                return font.getsize(text)[0]
+            except Exception:
+                return len(text) * (font.size if hasattr(font, "size") else 12)
+
+    def _line_h(font):
+        try:
+            bb = font.getbbox("Ag")
+            return bb[3] - bb[1]
+        except Exception:
+            try:
+                return font.getsize("Ag")[1]
+            except Exception:
+                return font.size if hasattr(font, "size") else 24
+
+    def _wrap(text, font, max_w):
+        words = text.split()
+        lines, cur = [], ""
+        for w in words:
+            test = (cur + " " + w).strip()
+            if _text_w(font, test) <= max_w:
+                cur = test
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines or [""]
+
+    # --- Globe decoration (right side of navy panel, drawn early so text sits on top) ---
+    GLOBE_CX = TARGET_W - 60
+    GLOBE_CY = DIVIDER_Y + 370
+    GLOBE_R  = 250
+    for lat in range(-80, 81, 18):
+        for lon in range(-180, 181, 15):
+            lat_r = _math.radians(lat)
+            lon_r = _math.radians(lon) - _math.radians(55)   # rotate to show Americas
+            x3 = _math.cos(lat_r) * _math.sin(lon_r)
+            y3 = _math.sin(lat_r)
+            z3 = _math.cos(lat_r) * _math.cos(lon_r)
+            if z3 > 0.05:
+                px = int(GLOBE_CX + x3 * GLOBE_R)
+                py = int(GLOBE_CY - y3 * GLOBE_R)
+                if 0 <= px < TARGET_W and DIVIDER_Y <= py < TARGET_H:
+                    lum = int(30 + 70 * z3)
+                    draw.ellipse([(px - 2, py - 2), (px + 2, py + 2)],
+                                 fill=(lum, lum + 35, lum + 70))
+    # Thin data lines
+    dc = (25, 60, 100)
+    draw.line([(TARGET_W - 340, DIVIDER_Y + 90), (TARGET_W - 110, DIVIDER_Y + 220)], fill=dc, width=1)
+    draw.line([(TARGET_W - 390, DIVIDER_Y + 170), (TARGET_W - 130, DIVIDER_Y + 310)], fill=dc, width=1)
+    for nx, ny in [(TARGET_W - 340, DIVIDER_Y + 90), (TARGET_W - 220, DIVIDER_Y + 155),
+                   (TARGET_W - 390, DIVIDER_Y + 170)]:
+        draw.ellipse([(nx - 4, ny - 4), (nx + 4, ny + 4)], fill=(40, 90, 145))
+
+    # --- Logo (top-left, auto light/dark) ---
+    static_dir = Path(__file__).resolve().parent / "static"
+    try:
+        region = out.crop((0, 0, min(300, TARGET_W // 3), min(120, TARGET_H // 6)))
+        stat = _Stat.Stat(region)
+        region.close()
+        avg_b = 0.299 * stat.mean[0] + 0.587 * stat.mean[1] + 0.114 * stat.mean[2]
+        logo_name = "logo_black_text.png" if avg_b > 140 else "logo_white_text.png"
+        logo_rgba = _PIL.open(static_dir / logo_name).convert("RGBA")
+        LOGO_W = 200
+        logo_rgba = logo_rgba.resize(
+            (LOGO_W, int(logo_rgba.height * LOGO_W / logo_rgba.width)), _PIL.LANCZOS)
+        out.paste(logo_rgba.convert("RGB"), (20, 20), logo_rgba.split()[3])
+        logo_rgba.close()
+    except Exception:
+        pass
+
+    # --- "| THE BRIEF" badge (top-right) ---
+    badge_fnt    = _font(_BOLD, 30)
+    txt_the      = "| THE "
+    txt_brief    = "BRIEF"
+    w_the        = _text_w(badge_fnt, txt_the)
+    w_brief      = _text_w(badge_fnt, txt_brief)
+    bh_inner     = _line_h(badge_fnt)
+    BPX, BPY     = 18, 12
+    badge_w      = w_the + w_brief + BPX * 2
+    badge_h      = bh_inner + BPY * 2
+    badge_x      = TARGET_W - badge_w - 16
+    badge_y      = 16
+    try:
+        draw.rounded_rectangle(
+            [(badge_x, badge_y), (badge_x + badge_w, badge_y + badge_h)],
+            radius=6, fill=BADGE_BG)
+    except AttributeError:
+        draw.rectangle(
+            [(badge_x, badge_y), (badge_x + badge_w, badge_y + badge_h)], fill=BADGE_BG)
+    draw.text((badge_x + BPX, badge_y + BPY), txt_the,   font=badge_fnt, fill=WHITE)
+    draw.text((badge_x + BPX + w_the, badge_y + BPY), txt_brief, font=badge_fnt, fill=YELLOW)
+
+    # --- 3-word tag label (straddling the yellow divider) ---
+    tag_fnt   = _font(_BOLD, 38)
+    tag_upper = (tag or "BREAKING").upper()
+    tw        = _text_w(tag_fnt, tag_upper)
+    th_inner  = _line_h(tag_fnt)
+    TPX, TPY  = 22, 12
+    tag_rect_w = tw + TPX * 2
+    tag_rect_h = th_inner + TPY * 2
+    tag_x      = MARGIN
+    tag_y      = DIVIDER_Y - 10      # straddle the yellow divider line
+    draw.rectangle(
+        [(tag_x, tag_y), (tag_x + tag_rect_w, tag_y + tag_rect_h)], fill=YELLOW)
+    draw.text((tag_x + TPX, tag_y + TPY), tag_upper, font=tag_fnt, fill=BLACK)
+
+    # --- Main headline (white, largest size ≤ 4 lines) ---
+    ACCENT_BAR_W  = 6
+    HL_INDENT     = MARGIN + ACCENT_BAR_W + 16
+    HL_MAX_W      = TARGET_W - HL_INDENT - 50
+    HL_Y_START    = tag_y + tag_rect_h + 22
+    LINE_GAP      = 10
+
+    hl_text = (headline or "").upper()
+    chosen_font  = _font(_BOLD, 28)
+    chosen_lines = _wrap(hl_text, chosen_font, HL_MAX_W)
+    for size in [82, 72, 62, 52, 44, 36, 28]:
+        fnt   = _font(_BOLD, size)
+        lines = _wrap(hl_text, fnt, HL_MAX_W)
+        if len(lines) <= 4:
+            chosen_font, chosen_lines = fnt, lines
+            break
+        chosen_font, chosen_lines = fnt, lines
+
+    lh      = _line_h(chosen_font)
+    n_lines = len(chosen_lines)
+    hl_total_h = n_lines * (lh + LINE_GAP) - LINE_GAP
+
+    # Left yellow accent bar (spans headline height)
+    bar_top = HL_Y_START - 4
+    bar_bot = HL_Y_START + hl_total_h + 4
+    draw.rectangle(
+        [(MARGIN, bar_top), (MARGIN + ACCENT_BAR_W, bar_bot)], fill=YELLOW)
+
+    for i, line in enumerate(chosen_lines):
+        draw.text(
+            (HL_INDENT, HL_Y_START + i * (lh + LINE_GAP)),
+            line, font=chosen_font, fill=WHITE)
+
+    # --- Bottom accent: yellow dash + three dots ---
+    bot_y = bar_bot + 30
+    if bot_y < TARGET_H - 24:
+        draw.rectangle([(MARGIN, bot_y), (MARGIN + 60, bot_y + 4)], fill=YELLOW)
+        for di in range(3):
+            dx = MARGIN + 76 + di * 14
+            draw.ellipse([(dx, bot_y - 1), (dx + 7, bot_y + 5)], fill=(80, 130, 180))
+
+    # --- Attribution (top-right of photo, below badge) ---
+    if attribution and attribution.strip():
+        attr_fnt = _font(_REG, max(16, TARGET_W // 60))
+        pad = 10
+        aw  = _text_w(attr_fnt, attribution)
+        ax  = TARGET_W - int(aw) - pad
+        ay  = badge_y + badge_h + 6
+        draw.text((ax + 1, ay + 1), attribution, font=attr_fnt, fill=BLACK)
+        draw.text((ax, ay), attribution, font=attr_fnt, fill=WHITE)
+
+    buf = _io.BytesIO()
+    out.save(buf, "JPEG", quality=92)
+    out.close()
+    return buf.getvalue()
+
+
+def _dispatch_template(template_type: str, image_bytes: bytes, headline: str,
+                       tag: str, attribution: str = "", crop_y: float = 0.5,
+                       crop_x: float = 0.5, zoom: float = 1.0,
+                       brand_slug: str = "first_signal") -> bytes:
+    """Route to the correct PIL card template function."""
+    if template_type == "brief":
+        return _apply_brief_template_pil(
+            image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
+    return _apply_card_template_pil(
+        image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
+
+
 @app.post("/pipeline-queue/story/{cid}/upload-image")
 async def pipeline_queue_story_upload_image(cid: str, request: Request, user: dict = Depends(require_user)):
     """Accept an uploaded image, resize preserving aspect ratio, store raw to Supabase for crop UI."""
@@ -4796,10 +5042,11 @@ async def pipeline_queue_apply_card_template(cid: str, request: Request, user: d
     crop_y     = float(form.get("crop_y", 0.5))
     crop_x     = float(form.get("crop_x", 0.5))
     zoom       = float(form.get("zoom", 1.0))
-    brand_slug = str(form.get("brand_slug", "first_signal")).strip() or "first_signal"
-    attribution = str(form.get("attribution", "")).strip()
-    headline   = str(form.get("headline", "")).strip()
-    tag        = str(form.get("tag", "BREAKING")).strip() or "BREAKING"
+    brand_slug    = str(form.get("brand_slug", "first_signal")).strip() or "first_signal"
+    attribution   = str(form.get("attribution", "")).strip()
+    headline      = str(form.get("headline", "")).strip()
+    tag           = str(form.get("tag", "BREAKING")).strip() or "BREAKING"
+    template_type = str(form.get("template_type", "breaking")).strip() or "breaking"
     if not raw_url:
         return JSONResponse({"error": "raw_url required"}, status_code=400)
     try:
@@ -4825,7 +5072,7 @@ async def pipeline_queue_apply_card_template(cid: str, request: Request, user: d
                 raw_image_bytes = tmp_raw.read_bytes()
             else:
                 return JSONResponse({"error": "Image not found — please re-upload"}, status_code=400)
-        result_bytes = _apply_card_template_pil(raw_image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
+        result_bytes = _dispatch_template(template_type, raw_image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
 
         tmp_dir = Path("/tmp/fsn_images")
         tmp_dir.mkdir(parents=True, exist_ok=True)
