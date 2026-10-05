@@ -4376,9 +4376,10 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         headline   = str(form.get("headline", "")).strip()
         tag        = str(form.get("tag", "")).strip()
         scene      = str(form.get("scene", "")).strip()
-        notes       = str(form.get("notes", "")).strip()
-        attribution = str(form.get("attribution", "")).strip()
-        brand_slug  = str(form.get("brand_slug", "")).strip() or None
+        notes         = str(form.get("notes", "")).strip()
+        attribution   = str(form.get("attribution", "")).strip()
+        brand_slug    = str(form.get("brand_slug", "")).strip() or None
+        template_type = str(form.get("template_type", "breaking")).strip() or "breaking"
 
         items, item = _resolve_queue_item(cluster_id)
         if not item:
@@ -4438,7 +4439,7 @@ async def pipeline_queue_story_regenerate_image(cid: str, request: Request,
         if not key:
             return JSONResponse({"error": "KIE_AI_API_KEY not set on server"}, status_code=400)
 
-        background_tasks.add_task(_generate_one_image, str(cluster_id), key, item, notes, attribution)
+        background_tasks.add_task(_generate_one_image, str(cluster_id), key, item, notes, attribution, template_type)
         return JSONResponse({"ok": True})
     except Exception as exc:
         logger.error("regenerate-image %s: %s", cid, exc)
@@ -4937,13 +4938,14 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
             dx = MARGIN + 76 + di * 14
             draw.ellipse([(dx, bot_y - 1), (dx + 7, bot_y + 5)], fill=(80, 130, 180))
 
-    # --- Attribution (top-right of photo, below badge) ---
+    # --- Attribution (bottom-right of photo, just above yellow divider) ---
     if attribution and attribution.strip():
         attr_fnt = _font(_REG, max(16, TARGET_W // 60))
         pad = 10
         aw  = _text_w(attr_fnt, attribution)
+        ah  = _line_h(attr_fnt)
         ax  = TARGET_W - int(aw) - pad
-        ay  = badge_y + badge_h + 6
+        ay  = DIVIDER_Y - ah - 10
         draw.text((ax + 1, ay + 1), attribution, font=attr_fnt, fill=BLACK)
         draw.text((ax, ay), attribution, font=attr_fnt, fill=WHITE)
 

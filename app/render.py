@@ -3385,8 +3385,9 @@ function regenImage(cid) {{
   if (st) st.textContent='Queued...';
   if (wrap) wrap.innerHTML='<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
   var brand=(document.getElementById('draft-brand-'+cid)||{{}}).value||(window._wsBrandDefault||'first_signal');
+  var tmplType=(document.getElementById('template-type-'+cid)||{{}}).value||'breaking';
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)+'&attribution='+encodeURIComponent(attribution)
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)+'&attribution='+encodeURIComponent(attribution)+'&template_type='+encodeURIComponent(tmplType)
   }}).then(function(r){{
     if(!r.ok) return r.text().then(function(t){{ throw new Error('HTTP '+r.status+': '+t.slice(0,200)); }});
     return r.json();
@@ -3854,8 +3855,9 @@ function regenImage(cid) {{
   if (st) st.textContent = 'Queued...';
   if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
   var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||(window._wsBrandDefault||'first_signal');
+  var tmplType = (document.getElementById('template-type-'+cid)||{{}}).value||'breaking';
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)+'&attribution='+encodeURIComponent(attribution)
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)+'&attribution='+encodeURIComponent(attribution)+'&template_type='+encodeURIComponent(tmplType)
   }}).then(function(r){{
     if(!r.ok) return r.text().then(function(t){{ throw new Error('Server error '+r.status+': '+t.slice(0,200)); }});
     return r.json();
@@ -4692,8 +4694,9 @@ function regenImage(cid) {{
   if (st) st.textContent = 'Queued...';
   if (wrap) wrap.innerHTML = '<div style="width:200px;height:250px;background:#0d111a;border:1px solid #2a3555;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#8b93a3;font-size:12px">Generating...</div>';
   var brand = (document.getElementById('draft-brand-'+cid)||{{}}).value||'{escape(brand_slug)}';
+  var tmplType = (document.getElementById('template-type-'+cid)||{{}}).value||'breaking';
   fetch('/pipeline-queue/story/'+cid+'/regenerate-image',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},
-    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)+'&attribution='+encodeURIComponent(attribution)
+    body:'headline='+encodeURIComponent(hl)+'&tag='+encodeURIComponent(tag)+'&scene='+encodeURIComponent(scene)+'&notes='+encodeURIComponent(notes)+'&brand_slug='+encodeURIComponent(brand)+'&attribution='+encodeURIComponent(attribution)+'&template_type='+encodeURIComponent(tmplType)
   }}).then(function(r){{
     if(!r.ok) return r.text().then(function(t){{ throw new Error('Server error '+r.status+': '+t.slice(0,200)); }});
     return r.json();
