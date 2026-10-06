@@ -2857,11 +2857,21 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
         </div>
         <input type="hidden" id="draft-type-{cid}" value="image_card">
       </div>
-      <div style="margin-bottom:10px">
-        <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Brand Property</label>
-        <select id="draft-brand-{cid}" data-current="{escape(brand_slug)}" style="width:100%;padding:8px">
-          <option value="first_signal">First Signal News</option>
-        </select>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div>
+          <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Brand Property</label>
+          <select id="draft-brand-{cid}" data-current="{escape(brand_slug)}" style="width:100%;padding:8px">
+            <option value="first_signal">First Signal News</option>
+          </select>
+        </div>
+        <div>
+          <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Card Template</label>
+          <select id="template-type-{cid}"
+            style="width:100%;padding:8px;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:13px;border-radius:4px;font-family:inherit">
+            <option value="breaking">Breaking News</option>
+            <option value="brief">The Brief</option>
+          </select>
+        </div>
       </div>
       <div style="margin-bottom:12px">
         <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Image Scene</label>
@@ -3176,14 +3186,9 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
             style="font-size:10px;padding:3px 8px;background:#0a1020;border:1px solid #2a3555;color:#8b93a3;cursor:pointer;border-radius:4px;white-space:nowrap">
             &#8853; Center</button>
         </div>
-        <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
-          <select id="template-type-{cid}"
-            style="flex:1;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:11px;border-radius:4px;padding:5px 6px;font-family:inherit">
-            <option value="breaking">Breaking News</option>
-            <option value="brief">The Brief</option>
-          </select>
+        <div style="margin-top:8px">
           <button type="button" onclick="applyCardTemplate('{cid}')"
-            style="flex:2;font-size:12px;padding:7px 12px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:4px;font-weight:600">
+            style="width:100%;font-size:12px;padding:7px 12px;background:#1e3a8a;border:1px solid #2563eb;color:#fff;cursor:pointer;border-radius:4px;font-weight:600">
             &#9654; Apply Template</button>
         </div>
       </div>
