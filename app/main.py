@@ -4953,6 +4953,17 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
             dx = MARGIN + 76 + di * 14
             draw.ellipse([(dx, bot_y - 1), (dx + 7, bot_y + 5)], fill=(80, 130, 180))
 
+    # --- Attribution: bottom-right of photo, just above yellow divider ---
+    if attribution and attribution.strip():
+        attr_fnt = _font(_BOLD, max(18, TARGET_W // 55))
+        pad = 12
+        aw  = _text_w(attr_fnt, attribution)
+        ah  = _line_h(attr_fnt)
+        ax  = TARGET_W - int(aw) - pad
+        ay  = DIVIDER_Y - ah - 14
+        draw.text((ax + 1, ay + 1), attribution, font=attr_fnt, fill=BLACK)
+        draw.text((ax, ay), attribution, font=attr_fnt, fill=WHITE)
+
     buf = _io.BytesIO()
     out.save(buf, "JPEG", quality=92)
     out.close()
