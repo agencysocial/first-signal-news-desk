@@ -949,43 +949,20 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"{aspect} vertical portrait format, photorealistic, sharp, magazine-quality."
         )
 
-    # The American — premium Americana editorial, torn-paper parchment style
+    # The American — premium Americana editorial photo only (parchment layout built by PIL)
     if brand_slug == "the_american":
         return (
-            f"A {aspect} vertical portrait premium American-history editorial card. "
-            f"Inspired by mid-century American magazines, vintage newspapers, and historical archives. "
-            f"Patriotic, authoritative, warm — NOT a modern political-campaign graphic. TWO ZONES, no overlap or bleed.\n\n"
-            f"ZONE 1 — UPPER 62% (photo area): {scene}.{notes_clause}{season_clause} "
-            f"BLACK-AND-WHITE historical editorial photography — saturation 0, contrast slightly increased, brightness slightly reduced. "
-            f"Rich tonal range, strong composition, Life Magazine / historical archive aesthetic. "
-            f"Avoid over-stylized or cinematic looks. {_ANTI_SLOP}\n\n"
-            f"TRANSITION — TORN PAPER EDGE: Between the photo and the lower panel, a subtle editorial torn-paper edge. "
-            f"Irregular and hand-torn in character but REFINED — not oversized, not scrapbook-like, not excessively jagged. "
-            f"A thin deep-navy backing layer shows beneath the torn edge. "
-            f"Below the tear, the aged parchment panel begins.\n\n"
-            f"ZONE 2 — LOWER 38% (editorial panel): AGED PARCHMENT background — warm cream (#F2E1BE), "
-            f"subtle paper grain texture suggesting old newsprint or archival paper. Completely opaque. "
-            f"Moderate padding at the top (between torn edge and category row) and a small bottom margin below the headline — "
-            f"do NOT leave excessive empty space. The panel should feel full and editorial, not sparse. "
-            f"Inside the panel, all elements are CENTERED horizontally:\n\n"
-            f"  CATEGORY ROW (centered, near top of panel with moderate spacing):\n"
-            f"  Deep navy (#071D38) horizontal rule — small deep navy star ★ — "
-            f"  HERITAGE RED (#B52125) rounded rectangle ribbon containing \"{tag}\" in BOLD WARM-OFF-WHITE ALL CAPS — "
-            f"  small deep navy star ★ — deep navy horizontal rule. "
-            f"  Stars and rules are DEEP NAVY only, NOT red. Ribbon is large enough to pop clearly.\n\n"
-            f"  MAIN HEADLINE (centered, below category row with clear vertical spacing):\n"
-            f"  \"{headline}\" in OSWALD BOLD 700, ALL CAPS, deep navy (#071D38). "
-            f"  CENTER-ALIGNED. EXTREMELY LARGE — scale the font so it fills most of the panel width, approximately 80-95pt. "
-            f"  Line-height ~0.92. Letter-spacing slightly tight (-0.5%). "
-            f"  Wraps over 3-4 lines. Leave only a small bottom margin (20-30px) below the last line — do NOT leave large empty space. "
-            f"  No subtitle, no secondary copy, no URL, no CTA below the headline.\n\n"
-            f"CRITICAL RULES: "
-            f"No alternating red/navy words in the headline — entire headline is deep navy only. "
-            f"No excessive stars, eagles, flags, gradients, drop shadows, glows, or decorative clutter. "
-            f"No social handles, watermarks, or logos baked into the image — those are overlaid separately. "
-            f"Flat 2D text, clean edges. "
-            f"Generous empty parchment at the bottom — do NOT fill it with content. "
-            f"{aspect} vertical portrait, sharp and photorealistic in the photo zone."
+            f"A {aspect} vertical portrait historical editorial photograph. "
+            f"Life Magazine / historical archive aesthetic. Patriotic, authoritative. "
+            f"NOT a modern political-campaign graphic.\n\n"
+            f"PHOTO: {scene}.{notes_clause}{season_clause} "
+            f"BLACK-AND-WHITE historical editorial photography — saturation 0, contrast slightly increased. "
+            f"Rich tonal range, strong composition, full frame. {_ANTI_SLOP}\n\n"
+            f"CRITICAL: NO text, NO typography, NO banners, NO lower-third panels, NO parchment textures, "
+            f"NO torn-paper edges, NO decorative elements in the image — the photograph fills the entire frame. "
+            f"Text and layout are overlaid separately. "
+            f"No social handles, watermarks, or logos baked in. "
+            f"{aspect} vertical portrait."
         )
 
     # Daily Side Hustle — DSH brand template: torn paper edge, green oval paint blob, navy footer
@@ -5018,6 +4995,195 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
     return buf.getvalue()
 
 
+def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
+                                  attribution: str = "", crop_y: float = 0.5,
+                                  crop_x: float = 0.5, zoom: float = 1.0,
+                                  brand_slug: str = "the_american") -> bytes:
+    """The American parchment editorial template — torn paper, stars, centered pill, navy headline."""
+    from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font
+    import io as _io, random as _random
+
+    TARGET_W, TARGET_H = 1122, 1402
+
+    # --- Crop / resize (same logic as other templates) ---
+    src = _PIL.open(_io.BytesIO(image_bytes)).convert("RGB")
+    iw, ih = src.size
+    cx   = max(0.0, min(1.0, crop_x))
+    cy   = max(0.0, min(1.0, crop_y))
+    zoom = max(1.0, min(4.0, zoom))
+    base_scale = max(TARGET_W / iw, TARGET_H / ih)
+    scale      = base_scale * zoom
+    disp_w     = iw * scale
+    disp_h     = ih * scale
+    overflow_x = max(0.0, disp_w - TARGET_W)
+    overflow_y = max(0.0, disp_h - TARGET_H)
+    left_src   = int(overflow_x * cx / scale)
+    top_src    = int(overflow_y * cy / scale)
+    crop_w     = int(TARGET_W / scale)
+    crop_h     = int(TARGET_H / scale)
+    left_src   = max(0, min(iw - crop_w, left_src))
+    top_src    = max(0, min(ih - crop_h, top_src))
+    src = src.crop((left_src, top_src, left_src + crop_w, top_src + crop_h))
+    src = src.resize((TARGET_W, TARGET_H), _PIL.LANCZOS)
+    out  = src
+    src  = None
+    draw = _Draw.Draw(out)
+
+    PARCHMENT = (242, 225, 190)
+    NAVY      = (7, 29, 56)
+    RED       = (181, 33, 37)
+    OFF_WHITE = (248, 241, 226)
+    _BOLD     = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+    def _font(path, size):
+        try:
+            return _Font.truetype(path, size)
+        except Exception:
+            return _Font.load_default()
+
+    def _text_w(font, text):
+        try:
+            bb = font.getbbox(text)
+            return bb[2] - bb[0]
+        except Exception:
+            try:
+                return font.getsize(text)[0]
+            except Exception:
+                return len(text) * (font.size if hasattr(font, "size") else 12)
+
+    def _line_h(font):
+        try:
+            bb = font.getbbox("Ag")
+            return bb[3] - bb[1]
+        except Exception:
+            try:
+                return font.getsize("Ag")[1]
+            except Exception:
+                return font.size if hasattr(font, "size") else 24
+
+    def _wrap(text, font, max_w):
+        words = text.split()
+        lines, cur = [], ""
+        for w in words:
+            test = (cur + " " + w).strip()
+            if _text_w(font, test) <= max_w:
+                cur = test
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines or [""]
+
+    MARGIN   = 28
+    HL_MAX_W = TARGET_W - MARGIN * 2
+
+    # Tag pill metrics
+    tag_upper = (tag or "BREAKING").upper()
+    tag_fnt   = _font(_BOLD, 34)
+    tag_tw    = _text_w(tag_fnt, tag_upper)
+    tag_th    = _line_h(tag_fnt)
+    PILL_PX, PILL_PY = 20, 10
+    pill_w = tag_tw + PILL_PX * 2
+    pill_h = tag_th + PILL_PY * 2
+
+    # Headline font (largest size ≤4 lines)
+    hl_text      = (headline or "").upper()
+    hl_font      = _font(_BOLD, 28)
+    hl_lines     = _wrap(hl_text, hl_font, HL_MAX_W)
+    for size in [82, 72, 62, 52, 44, 36, 28]:
+        fnt   = _font(_BOLD, size)
+        lines = _wrap(hl_text, fnt, HL_MAX_W)
+        if len(lines) <= 4:
+            hl_font, hl_lines = fnt, lines
+            break
+        hl_font, hl_lines = fnt, lines
+
+    lh      = _line_h(hl_font)
+    n_lines = len(hl_lines)
+    LINE_GAP = 8
+
+    # Float divider: size panel to exactly hold content
+    TORN_H    = 36
+    TOP_PAD   = 24
+    STAR_ROW_H = pill_h + 14
+    HL_BLOCK_H = n_lines * (lh + LINE_GAP) - LINE_GAP
+    BOTTOM_PAD = 44
+    content_h  = TORN_H + TOP_PAD + STAR_ROW_H + 18 + HL_BLOCK_H + BOTTOM_PAD
+    DIVIDER_Y  = max(int(TARGET_H * 0.54), min(int(TARGET_H * 0.72), TARGET_H - content_h))
+
+    # --- Parchment rectangle ---
+    draw.rectangle([(0, DIVIDER_Y), (TARGET_W, TARGET_H)], fill=PARCHMENT)
+
+    # --- Torn paper edge (sine + noise) ---
+    rng = _random.Random(abs(hash(hl_text[:40])) % 999983)
+    tear_pts = []
+    x = 0
+    while x <= TARGET_W:
+        base_j = int(12 * __import__('math').sin(x * 0.07))
+        noise  = rng.randint(-10, 10)
+        spike  = rng.randint(-22, -16) if rng.random() < 0.1 else 0
+        tear_pts.append((x, DIVIDER_Y + base_j + noise + spike))
+        x += 4
+    # Parchment polygon that overlaps into the photo to create the torn look
+    poly = [(0, DIVIDER_Y - 30)] + tear_pts + [(TARGET_W, DIVIDER_Y - 30)]
+    draw.polygon(poly, fill=PARCHMENT)
+    # Thin navy accent line tracing the tear
+    for i in range(len(tear_pts) - 1):
+        draw.line([tear_pts[i], tear_pts[i + 1]], fill=NAVY, width=3)
+
+    # --- Star row: ——— ★ [PILL] ★ ——— (centered) ---
+    star_fnt = _font(_BOLD, 24)
+    star_w   = _text_w(star_fnt, "★")
+    star_h   = _line_h(star_fnt)
+    STAR_GAP = 14
+
+    parchment_top = DIVIDER_Y + TORN_H // 2
+    star_row_cy   = parchment_top + TOP_PAD + STAR_ROW_H // 2
+
+    pill_x = (TARGET_W - pill_w) // 2
+    pill_y = star_row_cy - pill_h // 2
+    try:
+        draw.rounded_rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)],
+                                radius=8, fill=RED)
+    except AttributeError:
+        draw.rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)], fill=RED)
+    draw.text((pill_x + PILL_PX, pill_y + PILL_PY), tag_upper, font=tag_fnt, fill=OFF_WHITE)
+
+    # Stars flanking pill
+    star_y = star_row_cy - star_h // 2
+    left_star_x  = pill_x - STAR_GAP - star_w
+    right_star_x = pill_x + pill_w + STAR_GAP
+    draw.text((left_star_x, star_y), "★", font=star_fnt, fill=NAVY)
+    draw.text((right_star_x, star_y), "★", font=star_fnt, fill=NAVY)
+
+    # Horizontal rules from stars to card edges
+    rule_y = star_row_cy - 1
+    draw.rectangle([(MARGIN, rule_y), (left_star_x - 10, rule_y + 2)], fill=NAVY)
+    draw.rectangle([(right_star_x + star_w + 10, rule_y), (TARGET_W - MARGIN, rule_y + 2)], fill=NAVY)
+
+    # --- Headline (left-aligned, dark navy) ---
+    HL_Y = pill_y + pill_h + 18
+    for i, line in enumerate(hl_lines):
+        draw.text((MARGIN, HL_Y + i * (lh + LINE_GAP)), line, font=hl_font, fill=NAVY)
+
+    # --- Attribution (top-right of photo) ---
+    if attribution and attribution.strip():
+        attr_fnt = _font(_BOLD, max(18, TARGET_W // 55))
+        aw = _text_w(attr_fnt, attribution)
+        ah = _line_h(attr_fnt)
+        ax = TARGET_W - aw - 12
+        ay = DIVIDER_Y - ah - 24
+        draw.text((ax + 1, ay + 1), attribution, font=attr_fnt, fill=(0, 0, 0))
+        draw.text((ax, ay), attribution, font=attr_fnt, fill=(255, 255, 255))
+
+    buf = _io.BytesIO()
+    out.save(buf, "JPEG", quality=92)
+    out.close()
+    return buf.getvalue()
+
+
 def _dispatch_template(template_type: str, image_bytes: bytes, headline: str,
                        tag: str, attribution: str = "", crop_y: float = 0.5,
                        crop_x: float = 0.5, zoom: float = 1.0,
@@ -5025,6 +5191,9 @@ def _dispatch_template(template_type: str, image_bytes: bytes, headline: str,
     """Route to the correct PIL card template function."""
     if template_type == "brief":
         return _apply_brief_template_pil(
+            image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
+    if brand_slug == "the_american":
+        return _apply_american_template_pil(
             image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
     return _apply_card_template_pil(
         image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)

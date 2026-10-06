@@ -2867,9 +2867,10 @@ def render_story_workspace_page(item: dict, flash: str = "") -> str:
         <div>
           <label style="color:#8b93a3;font-size:10px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Card Template</label>
           <select id="template-type-{cid}"
-            style="width:100%;padding:8px;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:13px;border-radius:4px;font-family:inherit">
-            <option value="breaking">Breaking News</option>
-            <option value="brief">The Brief</option>
+            style="width:100%;padding:8px;background:#060910;border:1px solid #2a3555;color:#c0c8d8;font-size:13px;border-radius:4px;font-family:inherit"
+            onchange="">
+            <option value="breaking">Image Card</option>
+            <option value="brief" data-fsn-only="1">The Brief (First Signal only)</option>
           </select>
         </div>
       </div>
@@ -4137,6 +4138,31 @@ function _cropCenter(cid) {{
   s.oy = Math.max(0, (s.dh - s.ch) / 2);
   _cropApply(cid);
 }}
+function syncTemplateOptions(cid) {{
+  /* Show/hide template options based on brand — e.g. "The Brief" is FSN-only */
+  var brandSel = document.getElementById('draft-brand-' + cid);
+  var tmplSel  = document.getElementById('template-type-' + cid);
+  if (!brandSel || !tmplSel) return;
+  var brand = brandSel.value || 'first_signal';
+  var isFSN = (brand === 'first_signal');
+  Array.prototype.forEach.call(tmplSel.options, function(opt) {{
+    if (opt.dataset.fsnOnly) {{
+      opt.hidden   = !isFSN;
+      opt.disabled = !isFSN;
+      if (!isFSN && opt.selected) tmplSel.value = 'breaking';
+    }}
+  }});
+}}
+/* Wire up brand dropdowns once DOM is ready */
+(function() {{
+  function _wireBrandDropdown(sel) {{
+    var cid = sel.id.replace('draft-brand-', '');
+    sel.addEventListener('change', function() {{ syncTemplateOptions(cid); }});
+    syncTemplateOptions(cid);
+  }}
+  document.querySelectorAll('[id^="draft-brand-"]').forEach(_wireBrandDropdown);
+}})();
+
 function applyCardTemplate(cid) {{
   var rawUrl = window['_rawUpload_' + cid];
   if (!rawUrl) {{ alert('No image uploaded yet.'); return; }}
