@@ -5224,7 +5224,7 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
                                   brand_slug: str = "the_american") -> bytes:
     """The American parchment editorial template — torn paper, stars, centered pill, navy headline."""
     from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font
-    import io as _io, random as _random
+    import io as _io, random as _random, math as _math
 
     TARGET_W, TARGET_H = 1122, 1402
 
@@ -5356,14 +5356,21 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
     for i in range(len(tear_pts) - 1):
         draw.line([tear_pts[i], tear_pts[i + 1]], fill=NAVY, width=3)
 
-    # --- Star row: ——— ★ [PILL] ★ ——— (centered) ---
-    star_fnt = _font(_BOLD, 24)
-    star_w   = _text_w(star_fnt, "★")
-    star_h   = _line_h(star_fnt)
-    STAR_GAP = 14
+    # --- Star row: ——— ★ [PILL] ★ ——— (centered, polygon stars) ---
+    STAR_R_OUT = 14   # outer radius of 5-pointed polygon star
+    STAR_R_IN  = 6    # inner radius
+    STAR_GAP   = 20   # gap from star edge to pill edge
 
-    parchment_top = DIVIDER_Y + TORN_H // 2
-    star_row_cy   = parchment_top + TOP_PAD + STAR_ROW_H // 2
+    def _draw_star(cx, cy):
+        pts = []
+        for i in range(10):
+            angle = _math.radians(i * 36 - 90)
+            r = STAR_R_OUT if i % 2 == 0 else STAR_R_IN
+            pts.append((cx + r * _math.cos(angle), cy + r * _math.sin(angle)))
+        draw.polygon(pts, fill=NAVY)
+
+    parchment_top = DIVIDER_Y + TORN_H
+    star_row_cy   = parchment_top + TOP_PAD + pill_h // 2
 
     pill_x = (TARGET_W - pill_w) // 2
     pill_y = star_row_cy - pill_h // 2
@@ -5374,17 +5381,16 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
         draw.rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)], fill=RED)
     draw.text((pill_x + PILL_PX, pill_y + PILL_PY), tag_upper, font=tag_fnt, fill=OFF_WHITE)
 
-    # Stars flanking pill
-    star_y = star_row_cy - star_h // 2
-    left_star_x  = pill_x - STAR_GAP - star_w
-    right_star_x = pill_x + pill_w + STAR_GAP
-    draw.text((left_star_x, star_y), "★", font=star_fnt, fill=NAVY)
-    draw.text((right_star_x, star_y), "★", font=star_fnt, fill=NAVY)
+    # Polygon stars flanking pill
+    left_star_cx  = pill_x - STAR_GAP - STAR_R_OUT
+    right_star_cx = pill_x + pill_w + STAR_GAP + STAR_R_OUT
+    _draw_star(left_star_cx, star_row_cy)
+    _draw_star(right_star_cx, star_row_cy)
 
-    # Horizontal rules from stars to card edges
-    rule_y = star_row_cy - 1
-    draw.rectangle([(MARGIN, rule_y), (left_star_x - 10, rule_y + 2)], fill=NAVY)
-    draw.rectangle([(right_star_x + star_w + 10, rule_y), (TARGET_W - MARGIN, rule_y + 2)], fill=NAVY)
+    # Horizontal rules: from MARGIN to star, and from star to far edge
+    rule_y = star_row_cy
+    draw.rectangle([(MARGIN, rule_y - 1), (left_star_cx - STAR_R_OUT - 10, rule_y + 1)], fill=NAVY)
+    draw.rectangle([(right_star_cx + STAR_R_OUT + 10, rule_y - 1), (TARGET_W - MARGIN, rule_y + 1)], fill=NAVY)
 
     # --- Headline (centered, dark navy) ---
     HL_Y = pill_y + pill_h + 18
