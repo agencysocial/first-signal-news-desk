@@ -4873,6 +4873,47 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
                     dot_r = 2 if z3 > 0.4 else 1
                     draw.ellipse([(px - dot_r, py - dot_r), (px + dot_r, py + dot_r)],
                                  fill=(r, g, b))
+    # --- Americas coastline overlay (bright dots trace North + South America) ---
+    _AMERICAS = [
+        # North America west coast
+        (32,-117),(34,-120),(36,-122),(38,-123),(40,-124),(44,-124),(47,-124),
+        (49,-123),(54,-130),(58,-137),(60,-145),(58,-152),(55,-160),
+        # Alaska
+        (60,-165),(64,-166),(68,-166),(70,-158),(71,-155),
+        # Canada arctic / Hudson Bay east
+        (70,-90),(68,-80),(65,-72),(62,-68),(58,-62),
+        # East coast south
+        (55,-59),(50,-55),(47,-53),(45,-63),(43,-70),(41,-71),
+        (40,-74),(38,-75),(35,-76),(32,-80),(28,-81),(25,-80),(24,-81),
+        # Gulf + Central America
+        (20,-87),(15,-87),(10,-83),(8,-77),
+        # South America west coast
+        (5,-77),(0,-78),(-5,-81),(-10,-78),(-15,-75),(-20,-70),
+        (-30,-71),(-35,-72),(-40,-73),(-45,-74),(-50,-75),(-54,-67),(-55,-65),
+        # South America east coast
+        (-52,-57),(-45,-63),(-38,-57),(-30,-50),(-22,-42),(-16,-39),
+        (-10,-37),(-5,-35),
+        # Brazil north + Venezuela
+        (0,-50),(5,-53),(7,-57),(8,-60),(10,-62),(11,-63),(11,-72),
+        # Gulf of Mexico coast
+        (20,-87),(22,-97),(25,-97),(29,-94),(30,-89),(29,-89),
+    ]
+    for _lat, _lon in _AMERICAS:
+        _lr = _math.radians(_lat)
+        _lo = _math.radians(_lon) + _math.radians(90)
+        _x3 = _math.cos(_lr) * _math.sin(_lo)
+        _y3 = _math.sin(_lr)
+        _z3 = _math.cos(_lr) * _math.cos(_lo)
+        if _z3 > 0.0:
+            _px = int(GLOBE_CX + _x3 * GLOBE_R)
+            _py = int(GLOBE_CY - _y3 * GLOBE_R)
+            if 0 <= _px < TARGET_W and DIVIDER_Y <= _py < TARGET_H:
+                _a = min(1.0, _z3 / 0.6)
+                _cr = int(160 + 80 * _a)
+                _cg = int(210 + 40 * _a)
+                _cb = 255
+                draw.ellipse([(_px - 4, _py - 4), (_px + 4, _py + 4)], fill=(_cr, _cg, _cb))
+
     # Connection lines between nodes (Americas cities)
     nodes = []
     for lat, lon in [(-10, -60), (20, -100), (40, -75), (50, -90), (5, -80)]:
@@ -4886,11 +4927,11 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
             ny = int(GLOBE_CY - y3 * GLOBE_R)
             if 0 <= nx < TARGET_W and DIVIDER_Y <= ny < TARGET_H:
                 nodes.append((nx, ny))
-    dc = (30, 70, 130)
+    dc = (40, 90, 160)
     for i in range(len(nodes) - 1):
         draw.line([nodes[i], nodes[i + 1]], fill=dc, width=1)
     for nx, ny in nodes:
-        draw.ellipse([(nx - 5, ny - 5), (nx + 5, ny + 5)], fill=(40, 100, 180))
+        draw.ellipse([(nx - 5, ny - 5), (nx + 5, ny + 5)], fill=(80, 160, 255))
 
     # --- Logo (top-left) ---
     static_dir = Path(__file__).resolve().parent / "static"
