@@ -4731,7 +4731,7 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
 
     TARGET_W, TARGET_H = 1122, 1402
 
-    # --- Crop / resize (same cover logic as _apply_card_template_pil) ---
+    # --- Crop / resize ---
     src = _PIL.open(_io.BytesIO(image_bytes)).convert("RGB")
     iw, ih = src.size
     cx   = max(0.0, min(1.0, crop_x))
@@ -4763,19 +4763,8 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
     BLACK     = (0, 0, 0)
     BADGE_BG  = (5, 14, 32)
 
-    # --- Layout ---
-    DIVIDER_Y = int(TARGET_H * 0.57)   # ~799 px — photo/panel boundary
-    MARGIN    = 28
-
-    # --- Navy panel ---
-    draw.rectangle([(0, DIVIDER_Y), (TARGET_W, TARGET_H)], fill=NAVY)
-
-    # --- Yellow divider line ---
-    draw.rectangle([(0, DIVIDER_Y), (TARGET_W, DIVIDER_Y + 4)], fill=YELLOW)
-
     # --- Fonts ---
     _BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    _REG  = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
     def _font(path, size):
         try:
@@ -4818,33 +4807,85 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
             lines.append(cur)
         return lines or [""]
 
-    # --- Globe decoration (right side of navy panel, drawn early so text sits on top) ---
-    GLOBE_CX = TARGET_W - 60
-    GLOBE_CY = DIVIDER_Y + 370
-    GLOBE_R  = 250
-    for lat in range(-80, 81, 18):
-        for lon in range(-180, 181, 15):
+    # --- Layout constants ---
+    MARGIN       = 28
+    DIVIDER_Y    = int(TARGET_H * 0.57)   # ~799 px — photo/panel boundary
+    ACCENT_BAR_W = 6
+    HL_INDENT    = MARGIN + ACCENT_BAR_W + 16
+    HL_MAX_W     = TARGET_W - HL_INDENT - 60
+    LINE_GAP     = 12
+
+    # --- Pick headline font: largest size where text wraps to ≤ 4 lines ---
+    hl_text      = (headline or "").upper()
+    chosen_font  = _font(_BOLD, 42)
+    chosen_lines = _wrap(hl_text, chosen_font, HL_MAX_W)
+    for size in [110, 96, 82, 70, 60, 50, 42]:
+        fnt   = _font(_BOLD, size)
+        lines = _wrap(hl_text, fnt, HL_MAX_W)
+        if len(lines) <= 4:
+            chosen_font, chosen_lines = fnt, lines
+            break
+        chosen_font, chosen_lines = fnt, lines
+
+    lh         = _line_h(chosen_font)
+    n_lines    = len(chosen_lines)
+    hl_total_h = n_lines * (lh + LINE_GAP) - LINE_GAP
+
+    # Tag pill metrics (needed before drawing, to set DIVIDER_Y-relative positions)
+    tag_fnt   = _font(_BOLD, 40)
+    tag_upper = (tag or "BREAKING").upper()
+    TPX, TPY  = 22, 12
+    tag_rect_h = _line_h(tag_fnt) + TPY * 2
+
+    # --- Navy panel ---
+    draw.rectangle([(0, DIVIDER_Y), (TARGET_W, TARGET_H)], fill=NAVY)
+
+    # --- Yellow divider line ---
+    draw.rectangle([(0, DIVIDER_Y), (TARGET_W, DIVIDER_Y + 4)], fill=YELLOW)
+
+    # --- Globe decoration (right side of navy panel) ---
+    # Centered in the right half so it's fully visible
+    GLOBE_CX = int(TARGET_W * 0.78)        # ~876 px from left
+    GLOBE_CY = DIVIDER_Y + int((TARGET_H - DIVIDER_Y) * 0.55)  # middle of navy panel
+    GLOBE_R  = int((TARGET_H - DIVIDER_Y) * 0.42)              # ~253 px radius
+    for lat in range(-80, 81, 15):
+        for lon in range(-180, 181, 12):
             lat_r = _math.radians(lat)
-            lon_r = _math.radians(lon) - _math.radians(55)   # rotate to show Americas
+            lon_r = _math.radians(lon) - _math.radians(50)
             x3 = _math.cos(lat_r) * _math.sin(lon_r)
             y3 = _math.sin(lat_r)
             z3 = _math.cos(lat_r) * _math.cos(lon_r)
-            if z3 > 0.05:
+            if z3 > 0.02:
                 px = int(GLOBE_CX + x3 * GLOBE_R)
                 py = int(GLOBE_CY - y3 * GLOBE_R)
                 if 0 <= px < TARGET_W and DIVIDER_Y <= py < TARGET_H:
-                    lum = int(30 + 70 * z3)
-                    draw.ellipse([(px - 2, py - 2), (px + 2, py + 2)],
-                                 fill=(lum, lum + 35, lum + 70))
-    # Thin data lines
-    dc = (25, 60, 100)
-    draw.line([(TARGET_W - 340, DIVIDER_Y + 90), (TARGET_W - 110, DIVIDER_Y + 220)], fill=dc, width=1)
-    draw.line([(TARGET_W - 390, DIVIDER_Y + 170), (TARGET_W - 130, DIVIDER_Y + 310)], fill=dc, width=1)
-    for nx, ny in [(TARGET_W - 340, DIVIDER_Y + 90), (TARGET_W - 220, DIVIDER_Y + 155),
-                   (TARGET_W - 390, DIVIDER_Y + 170)]:
-        draw.ellipse([(nx - 4, ny - 4), (nx + 4, ny + 4)], fill=(40, 90, 145))
+                    alpha = min(1.0, z3 / 0.7)
+                    r = int(20 + 80 * alpha)
+                    g = int(60 + 100 * alpha)
+                    b = int(120 + 100 * alpha)
+                    dot_r = 2 if z3 > 0.4 else 1
+                    draw.ellipse([(px - dot_r, py - dot_r), (px + dot_r, py + dot_r)],
+                                 fill=(r, g, b))
+    # Connection lines between nodes
+    nodes = []
+    for lat, lon in [(-10, -60), (20, -100), (40, -75), (50, -90), (5, -80)]:
+        lat_r = _math.radians(lat)
+        lon_r = _math.radians(lon) - _math.radians(50)
+        x3 = _math.cos(lat_r) * _math.sin(lon_r)
+        y3 = _math.sin(lat_r)
+        z3 = _math.cos(lat_r) * _math.cos(lon_r)
+        if z3 > 0.1:
+            nx = int(GLOBE_CX + x3 * GLOBE_R)
+            ny = int(GLOBE_CY - y3 * GLOBE_R)
+            if 0 <= nx < TARGET_W and DIVIDER_Y <= ny < TARGET_H:
+                nodes.append((nx, ny))
+    dc = (30, 70, 130)
+    for i in range(len(nodes) - 1):
+        draw.line([nodes[i], nodes[i + 1]], fill=dc, width=1)
+    for nx, ny in nodes:
+        draw.ellipse([(nx - 5, ny - 5), (nx + 5, ny + 5)], fill=(40, 100, 180))
 
-    # --- Logo (top-left, auto light/dark) ---
+    # --- Logo (top-left) ---
     static_dir = Path(__file__).resolve().parent / "static"
     try:
         region = out.crop((0, 0, min(300, TARGET_W // 3), min(120, TARGET_H // 6)))
@@ -4862,17 +4903,17 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
         pass
 
     # --- "| THE BRIEF" badge (top-right) ---
-    badge_fnt    = _font(_BOLD, 30)
-    txt_the      = "| THE "
-    txt_brief    = "BRIEF"
-    w_the        = _text_w(badge_fnt, txt_the)
-    w_brief      = _text_w(badge_fnt, txt_brief)
-    bh_inner     = _line_h(badge_fnt)
-    BPX, BPY     = 18, 12
-    badge_w      = w_the + w_brief + BPX * 2
-    badge_h      = bh_inner + BPY * 2
-    badge_x      = TARGET_W - badge_w - 16
-    badge_y      = 16
+    badge_fnt = _font(_BOLD, 30)
+    txt_the   = "| THE "
+    txt_brief = "BRIEF"
+    w_the     = _text_w(badge_fnt, txt_the)
+    w_brief   = _text_w(badge_fnt, txt_brief)
+    bh_inner  = _line_h(badge_fnt)
+    BPX, BPY  = 18, 12
+    badge_w   = w_the + w_brief + BPX * 2
+    badge_h   = bh_inner + BPY * 2
+    badge_x   = TARGET_W - badge_w - 16
+    badge_y   = 16
     try:
         draw.rounded_rectangle(
             [(badge_x, badge_y), (badge_x + badge_w, badge_y + badge_h)],
@@ -4880,74 +4921,37 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
     except AttributeError:
         draw.rectangle(
             [(badge_x, badge_y), (badge_x + badge_w, badge_y + badge_h)], fill=BADGE_BG)
-    draw.text((badge_x + BPX, badge_y + BPY), txt_the,   font=badge_fnt, fill=WHITE)
+    draw.text((badge_x + BPX, badge_y + BPY), txt_the,  font=badge_fnt, fill=WHITE)
     draw.text((badge_x + BPX + w_the, badge_y + BPY), txt_brief, font=badge_fnt, fill=YELLOW)
 
-    # --- 3-word tag label (straddling the yellow divider) ---
-    tag_fnt   = _font(_BOLD, 38)
-    tag_upper = (tag or "BREAKING").upper()
-    tw        = _text_w(tag_fnt, tag_upper)
-    th_inner  = _line_h(tag_fnt)
-    TPX, TPY  = 22, 12
+    # --- 3-word tag (straddles yellow divider) ---
+    tw         = _text_w(tag_fnt, tag_upper)
     tag_rect_w = tw + TPX * 2
-    tag_rect_h = th_inner + TPY * 2
     tag_x      = MARGIN
-    tag_y      = DIVIDER_Y - 10      # straddle the yellow divider line
-    draw.rectangle(
-        [(tag_x, tag_y), (tag_x + tag_rect_w, tag_y + tag_rect_h)], fill=YELLOW)
+    tag_y      = DIVIDER_Y - 10
+    draw.rectangle([(tag_x, tag_y), (tag_x + tag_rect_w, tag_y + tag_rect_h)], fill=YELLOW)
     draw.text((tag_x + TPX, tag_y + TPY), tag_upper, font=tag_fnt, fill=BLACK)
 
-    # --- Main headline (white, largest size ≤ 4 lines) ---
-    ACCENT_BAR_W  = 6
-    HL_INDENT     = MARGIN + ACCENT_BAR_W + 16
-    HL_MAX_W      = TARGET_W - HL_INDENT - 50
-    HL_Y_START    = tag_y + tag_rect_h + 22
-    LINE_GAP      = 10
+    # --- Main headline: line 2 in YELLOW, all others in WHITE ---
+    HL_Y_START = tag_y + tag_rect_h + 20
 
-    hl_text = (headline or "").upper()
-    chosen_font  = _font(_BOLD, 28)
-    chosen_lines = _wrap(hl_text, chosen_font, HL_MAX_W)
-    for size in [82, 72, 62, 52, 44, 36, 28]:
-        fnt   = _font(_BOLD, size)
-        lines = _wrap(hl_text, fnt, HL_MAX_W)
-        if len(lines) <= 4:
-            chosen_font, chosen_lines = fnt, lines
-            break
-        chosen_font, chosen_lines = fnt, lines
-
-    lh      = _line_h(chosen_font)
-    n_lines = len(chosen_lines)
-    hl_total_h = n_lines * (lh + LINE_GAP) - LINE_GAP
-
-    # Left yellow accent bar (spans headline height)
     bar_top = HL_Y_START - 4
     bar_bot = HL_Y_START + hl_total_h + 4
-    draw.rectangle(
-        [(MARGIN, bar_top), (MARGIN + ACCENT_BAR_W, bar_bot)], fill=YELLOW)
+    draw.rectangle([(MARGIN, bar_top), (MARGIN + ACCENT_BAR_W, bar_bot)], fill=YELLOW)
 
     for i, line in enumerate(chosen_lines):
+        color = YELLOW if i == 1 else WHITE
         draw.text(
             (HL_INDENT, HL_Y_START + i * (lh + LINE_GAP)),
-            line, font=chosen_font, fill=WHITE)
+            line, font=chosen_font, fill=color)
 
     # --- Bottom accent: yellow dash + three dots ---
-    bot_y = bar_bot + 30
-    if bot_y < TARGET_H - 24:
+    bot_y = bar_bot + 28
+    if bot_y < TARGET_H - 20:
         draw.rectangle([(MARGIN, bot_y), (MARGIN + 60, bot_y + 4)], fill=YELLOW)
         for di in range(3):
             dx = MARGIN + 76 + di * 14
             draw.ellipse([(dx, bot_y - 1), (dx + 7, bot_y + 5)], fill=(80, 130, 180))
-
-    # --- Attribution (bottom-right of photo, just above yellow divider) ---
-    if attribution and attribution.strip():
-        attr_fnt = _font(_REG, max(16, TARGET_W // 60))
-        pad = 10
-        aw  = _text_w(attr_fnt, attribution)
-        ah  = _line_h(attr_fnt)
-        ax  = TARGET_W - int(aw) - pad
-        ay  = DIVIDER_Y - ah - 10
-        draw.text((ax + 1, ay + 1), attribution, font=attr_fnt, fill=BLACK)
-        draw.text((ax, ay), attribution, font=attr_fnt, fill=WHITE)
 
     buf = _io.BytesIO()
     out.save(buf, "JPEG", quality=92)
