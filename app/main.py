@@ -928,25 +928,17 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
     season_clause = f" Season: {season} — outdoor scenes must reflect current {season} conditions."
 
     # CathyTalk uses an approved distinct layout — white footer, editorial lifestyle card
+    # CathyTalk — photo only (white footer + pink tag + headline built by PIL)
     if brand_slug == "cathy_talk":
         return (
-            f"A {aspect} vertical portrait editorial lifestyle share card with TWO ZONES — strictly no overlap.\n\n"
-            f"ZONE 1 — UPPER 63% (photo area): {scene}.{notes_clause}{season_clause} "
+            f"A {aspect} vertical portrait editorial lifestyle photograph. "
             f"Light, warm, editorial lifestyle photography — warm natural light, clean composition, "
-            f"soft cream and warm tones. No dark backgrounds. {_ANTI_SLOP}\n\n"
-            f"ZONE 2 — LOWER 37% (footer panel): A SOLID FLAT PURE WHITE rectangle spanning the full "
-            f"width at the bottom of the card. Completely opaque, zero transparency, zero gradient, "
-            f"zero bleed from the photo above. Inside this white panel (left-aligned, 20px left padding):\n"
-            f"  - FIRST LINE: the category label \"{tag}\" in vivid deep rose pink UPPERCASE letters. "
-            f"Font size: approximately 28-32pt — visibly large, NOT small caps, NOT tiny. Normal letter spacing (no wide tracking).\n"
-            f"  - SECOND LINE: a short horizontal rule, 34px wide, 2px tall, vivid deep rose pink.\n"
-            f"  - THIRD LINE: the headline \"{headline}\" in BOLD near-black charcoal, "
-            f"modern sans-serif (Raleway or similar), mixed case, wrapped over 2 to 3 lines. "
-            f"Font size: approximately 52-64pt — this is the LARGEST text on the card, filling most of the white panel width. "
-            f"It must look like a magazine cover headline, impossible to miss at a glance on a phone screen.\n\n"
-            f"RULES: Flat 2D text — no drop shadows, no glows, no gradients on text. "
-            f"No watermark text at the bottom. No logos rendered in the image — the logo is overlaid separately. "
-            f"{aspect} vertical portrait format, photorealistic, sharp, magazine-quality."
+            f"soft cream and warm tones. No dark backgrounds.\n\n"
+            f"PHOTO: {scene}.{notes_clause}{season_clause} {_ANTI_SLOP}\n\n"
+            f"CRITICAL: NO text, NO typography, NO banners, NO footer panels, NO category labels, "
+            f"NO horizontal rules, NO decorative overlays in the image — the photograph fills the entire frame. "
+            f"Text and layout are overlaid separately. No watermarks or logos baked in. "
+            f"{aspect} vertical portrait, photorealistic, sharp, magazine-quality."
         )
 
     # The American — premium Americana editorial photo only (parchment layout built by PIL)
@@ -965,29 +957,15 @@ def _build_image_prompt_for_brand(headline: str, tag: str, scene: str,
             f"{aspect} vertical portrait."
         )
 
-    # Daily Side Hustle — DSH brand template: torn paper edge, green oval paint blob, navy footer
+    # Daily Side Hustle — photo only (torn paper + green blob + navy footer + headline built by PIL)
     if brand_slug == "daily_side_hustle":
         return (
-            f"A {aspect} vertical portrait social media card. Photorealistic photo-quality image. "
-            f"No visible text anywhere except the branded card layer described below.\n\n"
-            f"PHOTO LAYER — upper 58% of the card: "
-            f"{scene}.{notes_clause}{season_clause} "
-            f"Sharp, vivid, photorealistic, natural daylight or golden hour. No text or logos in the photo. {_ANTI_SLOP}\n\n"
-            f"TORN PAPER EDGE — at the boundary between photo and footer (about 58% down): "
-            f"A realistic white torn-paper ripped edge, like a piece of white paper torn by hand — "
-            f"jagged and irregular with small white paper fibers. The white torn strip bleeds slightly "
-            f"into the navy footer below. Uneven, rough, organic texture.\n\n"
-            f"GREEN OVAL PAINT BLOB — centered at the torn paper edge, straddling the boundary: "
-            f"A wide oval brushstroke shape in vivid medium green. Thick horizontal paint smear, "
-            f"organic edges, brush texture with small streaks at the ends. Spans about 70% of card width. "
-            f"Inside the blob, centered, in DARK NAVY BLUE bold italic uppercase sans-serif: \"{tag}\".\n\n"
-            f"NAVY FOOTER — lower 42% of the card: "
-            f"Solid flat very dark navy blue panel, no texture, no gradient. Contains:\n"
-            f"  The headline \"{headline}\" in BOLD UPPERCASE condensed display font (Bebas Neue style), "
-            f"large (~52pt), CENTERED horizontally with equal margins. BRIGHT WHITE text. "
-            f"Every character fully visible inside the card — never cut off.\n\n"
-            f"CRITICAL RULES: Flat 2D text — no drop shadows, no outer glows. "
-            f"No logos, no watermarks baked in — logo is overlaid separately. "
+            f"A {aspect} vertical portrait social media photograph. Photorealistic photo-quality image.\n\n"
+            f"PHOTO: {scene}.{notes_clause}{season_clause} "
+            f"Sharp, vivid, photorealistic, natural daylight or golden hour. {_ANTI_SLOP}\n\n"
+            f"CRITICAL: NO text, NO typography, NO banners, NO footer panels, NO torn-paper edges, "
+            f"NO oval blobs, NO decorative overlays in the image — the photograph fills the entire frame. "
+            f"Text and layout are overlaid separately. No logos or watermarks baked in. "
             f"{aspect} vertical portrait format, photorealistic, sharp."
         )
 
@@ -2604,8 +2582,9 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribu
         _raw = _dispatch_template(template_type, _raw, headline, tag, attribution=attribution, brand_slug=brand_slug_for_gen)
         stamped_path = _stamp_logo(_raw, tmp_file_id, brand_slug=brand_slug_for_gen)
         del _raw
-        # Brief handles attribution internally (bottom-right of photo); skip top-right stamp
-        if template_type != "brief":
+        # These brands handle attribution internally in their PIL functions; skip top-right stamp
+        _brands_with_internal_attr = {"brief", "the_american", "cathy_talk", "daily_side_hustle"}
+        if template_type != "brief" and brand_slug_for_gen not in _brands_with_internal_attr:
             _stamp_attribution(stamped_path, attribution)
 
         # Upload stamped image to Supabase Storage for permanent hosting (survives redeploys)
@@ -4995,6 +4974,250 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
     return buf.getvalue()
 
 
+def _apply_cathytalk_template_pil(image_bytes: bytes, headline: str, tag: str,
+                                   attribution: str = "", crop_y: float = 0.5,
+                                   crop_x: float = 0.5, zoom: float = 1.0,
+                                   brand_slug: str = "cathy_talk") -> bytes:
+    """CathyTalk editorial template — white footer, pink tag + rule, dark bold headline."""
+    from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font
+    import io as _io
+
+    TARGET_W, TARGET_H = 1122, 1402
+
+    src = _PIL.open(_io.BytesIO(image_bytes)).convert("RGB")
+    iw, ih = src.size
+    cx   = max(0.0, min(1.0, crop_x));  cy   = max(0.0, min(1.0, crop_y))
+    zoom = max(1.0, min(4.0, zoom))
+    base_scale = max(TARGET_W / iw, TARGET_H / ih)
+    scale      = base_scale * zoom
+    disp_w     = iw * scale;  disp_h = ih * scale
+    overflow_x = max(0.0, disp_w - TARGET_W);  overflow_y = max(0.0, disp_h - TARGET_H)
+    left_src   = int(overflow_x * cx / scale);  top_src  = int(overflow_y * cy / scale)
+    crop_w     = int(TARGET_W / scale);          crop_h   = int(TARGET_H / scale)
+    left_src   = max(0, min(iw - crop_w, left_src));  top_src = max(0, min(ih - crop_h, top_src))
+    src = src.crop((left_src, top_src, left_src + crop_w, top_src + crop_h))
+    src = src.resize((TARGET_W, TARGET_H), _PIL.LANCZOS)
+    out  = src;  src = None
+    draw = _Draw.Draw(out)
+
+    WHITE     = (255, 255, 255)
+    CHARCOAL  = (34, 34, 34)
+    PINK      = (206, 49, 117)
+    _BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    _REG  = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+    def _font(p, s):
+        try: return _Font.truetype(p, s)
+        except Exception: return _Font.load_default()
+
+    def _tw(f, t):
+        try: bb = f.getbbox(t); return bb[2] - bb[0]
+        except Exception:
+            try: return f.getsize(t)[0]
+            except Exception: return len(t) * (f.size if hasattr(f, 'size') else 12)
+
+    def _lh(f):
+        try: bb = f.getbbox("Ag"); return bb[3] - bb[1]
+        except Exception:
+            try: return f.getsize("Ag")[1]
+            except Exception: return f.size if hasattr(f, 'size') else 24
+
+    def _wrap(text, font, max_w):
+        words = text.split(); lines, cur = [], ""
+        for w in words:
+            t = (cur + " " + w).strip()
+            if _tw(font, t) <= max_w: cur = t
+            else:
+                if cur: lines.append(cur)
+                cur = w
+        if cur: lines.append(cur)
+        return lines or [""]
+
+    MARGIN   = 24
+    HL_MAX_W = TARGET_W - MARGIN * 2
+    LINE_GAP = 8
+
+    tag_upper = (tag or "").upper()
+    tag_fnt   = _font(_BOLD, 30)
+    tag_lh    = _lh(tag_fnt)
+
+    hl_text  = headline or ""
+    hl_font  = _font(_BOLD, 28);  hl_lines = _wrap(hl_text, hl_font, HL_MAX_W)
+    for size in [72, 62, 52, 44, 36, 28]:
+        fnt = _font(_BOLD, size); lines = _wrap(hl_text, fnt, HL_MAX_W)
+        if len(lines) <= 4: hl_font, hl_lines = fnt, lines; break
+        hl_font, hl_lines = fnt, lines
+
+    lh      = _lh(hl_font)
+    n_lines = len(hl_lines)
+    RULE_H  = 3
+
+    TOP_PAD   = 28
+    TAG_TO_RULE = 10
+    RULE_TO_HL  = 14
+    BOT_PAD   = 36
+    content_h = TOP_PAD + tag_lh + TAG_TO_RULE + RULE_H + RULE_TO_HL + n_lines * (lh + LINE_GAP) - LINE_GAP + BOT_PAD
+    FOOTER_Y  = max(int(TARGET_H * 0.56), min(int(TARGET_H * 0.74), TARGET_H - content_h))
+
+    draw.rectangle([(0, FOOTER_Y), (TARGET_W, TARGET_H)], fill=WHITE)
+
+    y = FOOTER_Y + TOP_PAD
+    draw.text((MARGIN, y), tag_upper, font=tag_fnt, fill=PINK)
+    y += tag_lh + TAG_TO_RULE
+    draw.rectangle([(MARGIN, y), (MARGIN + 40, y + RULE_H)], fill=PINK)
+    y += RULE_H + RULE_TO_HL
+    for i, line in enumerate(hl_lines):
+        draw.text((MARGIN, y + i * (lh + LINE_GAP)), line, font=hl_font, fill=CHARCOAL)
+
+    if attribution and attribution.strip():
+        attr_fnt = _font(_REG, max(16, TARGET_W // 60))
+        aw = _tw(attr_fnt, attribution); ah = _lh(attr_fnt)
+        ax = TARGET_W - aw - 12;        ay = FOOTER_Y - ah - 14
+        draw.text((ax+1, ay+1), attribution, font=attr_fnt, fill=(0, 0, 0))
+        draw.text((ax, ay), attribution, font=attr_fnt, fill=WHITE)
+
+    buf = _io.BytesIO()
+    out.save(buf, "JPEG", quality=92)
+    out.close()
+    return buf.getvalue()
+
+
+def _apply_dsh_template_pil(image_bytes: bytes, headline: str, tag: str,
+                              attribution: str = "", crop_y: float = 0.5,
+                              crop_x: float = 0.5, zoom: float = 1.0,
+                              brand_slug: str = "daily_side_hustle") -> bytes:
+    """Daily Side Hustle template — torn white edge, green oval blob with tag, navy footer, white headline."""
+    from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font
+    import io as _io, random as _random, math as _math
+
+    TARGET_W, TARGET_H = 1122, 1402
+
+    src = _PIL.open(_io.BytesIO(image_bytes)).convert("RGB")
+    iw, ih = src.size
+    cx   = max(0.0, min(1.0, crop_x));  cy  = max(0.0, min(1.0, crop_y))
+    zoom = max(1.0, min(4.0, zoom))
+    base_scale = max(TARGET_W / iw, TARGET_H / ih)
+    scale      = base_scale * zoom
+    disp_w     = iw * scale;  disp_h = ih * scale
+    overflow_x = max(0.0, disp_w - TARGET_W);  overflow_y = max(0.0, disp_h - TARGET_H)
+    left_src   = int(overflow_x * cx / scale);  top_src   = int(overflow_y * cy / scale)
+    crop_w     = int(TARGET_W / scale);          crop_h    = int(TARGET_H / scale)
+    left_src   = max(0, min(iw - crop_w, left_src));  top_src = max(0, min(ih - crop_h, top_src))
+    src = src.crop((left_src, top_src, left_src + crop_w, top_src + crop_h))
+    src = src.resize((TARGET_W, TARGET_H), _PIL.LANCZOS)
+    out  = src;  src = None
+    draw = _Draw.Draw(out)
+
+    NAVY      = (13, 43, 82)
+    GREEN     = (34, 197, 94)
+    DARK_NAVY = (7, 26, 48)
+    WHITE     = (255, 255, 255)
+    _BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    _REG  = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+    def _font(p, s):
+        try: return _Font.truetype(p, s)
+        except Exception: return _Font.load_default()
+
+    def _tw(f, t):
+        try: bb = f.getbbox(t); return bb[2] - bb[0]
+        except Exception:
+            try: return f.getsize(t)[0]
+            except Exception: return len(t) * (f.size if hasattr(f, 'size') else 12)
+
+    def _lh(f):
+        try: bb = f.getbbox("Ag"); return bb[3] - bb[1]
+        except Exception:
+            try: return f.getsize("Ag")[1]
+            except Exception: return f.size if hasattr(f, 'size') else 24
+
+    def _wrap(text, font, max_w):
+        words = text.split(); lines, cur = [], ""
+        for w in words:
+            t = (cur + " " + w).strip()
+            if _tw(font, t) <= max_w: cur = t
+            else:
+                if cur: lines.append(cur)
+                cur = w
+        if cur: lines.append(cur)
+        return lines or [""]
+
+    MARGIN   = 28
+    HL_MAX_W = TARGET_W - MARGIN * 2
+    LINE_GAP = 10
+
+    tag_upper = (tag or "").upper()
+    tag_fnt   = _font(_BOLD, 36)
+    tag_tw    = _tw(tag_fnt, tag_upper)
+    tag_th    = _lh(tag_fnt)
+
+    hl_text = (headline or "").upper()
+    hl_font = _font(_BOLD, 28);  hl_lines = _wrap(hl_text, hl_font, HL_MAX_W)
+    for size in [72, 62, 52, 44, 36, 28]:
+        fnt = _font(_BOLD, size);  lines = _wrap(hl_text, fnt, HL_MAX_W)
+        if len(lines) <= 4: hl_font, hl_lines = fnt, lines; break
+        hl_font, hl_lines = fnt, lines
+
+    lh      = _lh(hl_font)
+    n_lines = len(hl_lines)
+
+    BLOB_H    = tag_th + 30
+    BLOB_HALF = BLOB_H // 2
+    HL_BLOCK  = n_lines * (lh + LINE_GAP) - LINE_GAP
+    BOT_PAD   = 44
+    TOP_PAD   = 28
+
+    content_h = BLOB_HALF + TOP_PAD + HL_BLOCK + BOT_PAD
+    DIVIDER_Y = max(int(TARGET_H * 0.52), min(int(TARGET_H * 0.70), TARGET_H - content_h))
+
+    # Navy footer
+    draw.rectangle([(0, DIVIDER_Y), (TARGET_W, TARGET_H)], fill=NAVY)
+
+    # Torn white edge at divider
+    rng = _random.Random(abs(hash(hl_text[:40])) % 999983)
+    tear_pts = []
+    x = 0
+    while x <= TARGET_W:
+        base_j = int(10 * _math.sin(x * 0.06))
+        noise  = rng.randint(-8, 8)
+        spike  = rng.randint(-18, -12) if rng.random() < 0.10 else 0
+        tear_pts.append((x, DIVIDER_Y + base_j + noise + spike))
+        x += 4
+    poly = [(0, DIVIDER_Y - 20)] + tear_pts + [(TARGET_W, DIVIDER_Y - 20)]
+    draw.polygon(poly, fill=WHITE)
+
+    # Green oval blob straddling the divider
+    BLOB_W  = int(TARGET_W * 0.72)
+    blob_x1 = (TARGET_W - BLOB_W) // 2
+    blob_x2 = blob_x1 + BLOB_W
+    blob_y1 = DIVIDER_Y - BLOB_HALF
+    blob_y2 = DIVIDER_Y + BLOB_HALF
+    draw.ellipse([(blob_x1, blob_y1), (blob_x2, blob_y2)], fill=GREEN)
+
+    # Tag centered inside blob
+    blob_cx_text = (TARGET_W - tag_tw) // 2
+    blob_cy_text = DIVIDER_Y - tag_th // 2
+    draw.text((blob_cx_text, blob_cy_text), tag_upper, font=tag_fnt, fill=DARK_NAVY)
+
+    # Headline (centered in navy footer, below blob)
+    HL_Y = DIVIDER_Y + BLOB_HALF + TOP_PAD
+    for i, line in enumerate(hl_lines):
+        lw = _tw(hl_font, line)
+        draw.text(((TARGET_W - lw) // 2, HL_Y + i * (lh + LINE_GAP)), line, font=hl_font, fill=WHITE)
+
+    if attribution and attribution.strip():
+        attr_fnt = _font(_REG, max(16, TARGET_W // 60))
+        aw = _tw(attr_fnt, attribution);  ah = _lh(attr_fnt)
+        ax = TARGET_W - aw - 12;          ay = DIVIDER_Y - BLOB_HALF - ah - 16
+        draw.text((ax+1, ay+1), attribution, font=attr_fnt, fill=(0, 0, 0))
+        draw.text((ax, ay), attribution, font=attr_fnt, fill=WHITE)
+
+    buf = _io.BytesIO()
+    out.save(buf, "JPEG", quality=92)
+    out.close()
+    return buf.getvalue()
+
+
 def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
                                   attribution: str = "", crop_y: float = 0.5,
                                   crop_x: float = 0.5, zoom: float = 1.0,
@@ -5194,6 +5417,12 @@ def _dispatch_template(template_type: str, image_bytes: bytes, headline: str,
             image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
     if brand_slug == "the_american":
         return _apply_american_template_pil(
+            image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
+    if brand_slug == "cathy_talk":
+        return _apply_cathytalk_template_pil(
+            image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
+    if brand_slug == "daily_side_hustle":
+        return _apply_dsh_template_pil(
             image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
     return _apply_card_template_pil(
         image_bytes, headline, tag, attribution, crop_y, crop_x, zoom, brand_slug)
