@@ -5254,7 +5254,7 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
 
     PARCHMENT = (242, 225, 190)
     NAVY      = (7, 29, 56)
-    RED       = (181, 33, 37)
+    RED       = (194, 30, 45)
     OFF_WHITE = (248, 241, 226)
     _BOLD     = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
@@ -5386,10 +5386,11 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
     draw.rectangle([(MARGIN, rule_y), (left_star_x - 10, rule_y + 2)], fill=NAVY)
     draw.rectangle([(right_star_x + star_w + 10, rule_y), (TARGET_W - MARGIN, rule_y + 2)], fill=NAVY)
 
-    # --- Headline (left-aligned, dark navy) ---
+    # --- Headline (centered, dark navy) ---
     HL_Y = pill_y + pill_h + 18
     for i, line in enumerate(hl_lines):
-        draw.text((MARGIN, HL_Y + i * (lh + LINE_GAP)), line, font=hl_font, fill=NAVY)
+        lw = _text_w(hl_font, line)
+        draw.text(((TARGET_W - lw) // 2, HL_Y + i * (lh + LINE_GAP)), line, font=hl_font, fill=NAVY)
 
     # --- Attribution (top-right of photo) ---
     if attribution and attribution.strip():
