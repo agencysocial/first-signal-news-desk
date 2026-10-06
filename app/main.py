@@ -2624,10 +2624,12 @@ def _generate_one_image(cid: str, key: str, item: dict, notes: str = "", attribu
         # Apply headline + tag text server-side (PIL). This replaces what was
         # previously baked into the Kie prompt — removed to avoid content policy
         # rejections on political/conflict headlines.
-        _raw = _dispatch_template(template_type, _raw, headline, tag, attribution="", brand_slug=brand_slug_for_gen)
+        _raw = _dispatch_template(template_type, _raw, headline, tag, attribution=attribution, brand_slug=brand_slug_for_gen)
         stamped_path = _stamp_logo(_raw, tmp_file_id, brand_slug=brand_slug_for_gen)
         del _raw
-        _stamp_attribution(stamped_path, attribution)
+        # Brief handles attribution internally (bottom-right of photo); skip top-right stamp
+        if template_type != "brief":
+            _stamp_attribution(stamped_path, attribution)
 
         # Upload stamped image to Supabase Storage for permanent hosting (survives redeploys)
         supabase_url = _supabase_storage_upload(stamped_path, cid, brand_slug_for_gen)
@@ -4809,7 +4811,6 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
 
     # --- Layout constants ---
     MARGIN       = 28
-    DIVIDER_Y    = int(TARGET_H * 0.57)   # ~799 px — photo/panel boundary
     ACCENT_BAR_W = 6
     HL_INDENT    = MARGIN + ACCENT_BAR_W + 16
     HL_MAX_W     = TARGET_W - HL_INDENT - 60
@@ -4837,6 +4838,12 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
     TPX, TPY  = 22, 12
     tag_rect_h = _line_h(tag_fnt) + TPY * 2
 
+    # --- Float DIVIDER_Y: size the navy panel to fit content, no dead space ---
+    # tag straddles divider (-10 above, rest below), then gap, headline, bottom accent
+    panel_needed = tag_rect_h + 10 + 20 + hl_total_h + 28 + 10 + 55
+    DIVIDER_Y    = max(int(TARGET_H * 0.53),
+                       min(int(TARGET_H * 0.68), TARGET_H - panel_needed))
+
     # --- Navy panel ---
     draw.rectangle([(0, DIVIDER_Y), (TARGET_W, TARGET_H)], fill=NAVY)
 
@@ -4851,7 +4858,7 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
     for lat in range(-80, 81, 15):
         for lon in range(-180, 181, 12):
             lat_r = _math.radians(lat)
-            lon_r = _math.radians(lon) - _math.radians(50)
+            lon_r = _math.radians(lon) + _math.radians(90)  # center Americas (lon≈-90°)
             x3 = _math.cos(lat_r) * _math.sin(lon_r)
             y3 = _math.sin(lat_r)
             z3 = _math.cos(lat_r) * _math.cos(lon_r)
@@ -4860,17 +4867,17 @@ def _apply_brief_template_pil(image_bytes: bytes, headline: str, tag: str,
                 py = int(GLOBE_CY - y3 * GLOBE_R)
                 if 0 <= px < TARGET_W and DIVIDER_Y <= py < TARGET_H:
                     alpha = min(1.0, z3 / 0.7)
-                    r = int(20 + 80 * alpha)
-                    g = int(60 + 100 * alpha)
-                    b = int(120 + 100 * alpha)
+                    r = int(30 + 90 * alpha)
+                    g = int(80 + 110 * alpha)
+                    b = int(140 + 100 * alpha)
                     dot_r = 2 if z3 > 0.4 else 1
                     draw.ellipse([(px - dot_r, py - dot_r), (px + dot_r, py + dot_r)],
                                  fill=(r, g, b))
-    # Connection lines between nodes
+    # Connection lines between nodes (Americas cities)
     nodes = []
     for lat, lon in [(-10, -60), (20, -100), (40, -75), (50, -90), (5, -80)]:
         lat_r = _math.radians(lat)
-        lon_r = _math.radians(lon) - _math.radians(50)
+        lon_r = _math.radians(lon) + _math.radians(90)
         x3 = _math.cos(lat_r) * _math.sin(lon_r)
         y3 = _math.sin(lat_r)
         z3 = _math.cos(lat_r) * _math.cos(lon_r)
