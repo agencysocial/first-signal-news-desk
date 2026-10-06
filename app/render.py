@@ -5896,16 +5896,24 @@ def render_social_scanner_page(
     ])
     reddit_subs_default = "politics\nConservative\nnews\nRepublican"
 
+    # ── Build account/subreddit rows ──────────────────────────────────────────
+    # IMPORTANT: delete forms and add forms are rendered as STANDALONE elements,
+    # never nested inside the scan form. Nested <form> tags are invalid HTML —
+    # the browser closes the outer form on the first inner </form>, leaving the
+    # Scan Now button and all its hidden inputs outside any form (clicking does
+    # nothing). Fix: the scan form is an empty <form id="social-scan"> anchor;
+    # checkboxes and hidden inputs reference it via form="social-scan".
     if active_tab == "twitter":
         accts = twitter_accounts or []
-        # Checkbox list of accounts (all checked by default)
+        # Checkbox rows — form= ties them to the scan form without nesting
         account_rows = ""
         for a in accts:
             account_rows += (
                 f'<div style="display:flex;align-items:center;justify-content:space-between;'
                 f'padding:4px 6px;border-bottom:1px solid #12192a">'
                 f'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;font-size:12px;color:#c0c8d8">'
-                f'<input type="checkbox" name="handle" value="{escape(a)}" checked style="accent-color:#1d9bf0"> @{escape(a)}'
+                f'<input type="checkbox" name="handle" value="{escape(a)}" checked'
+                f' form="social-scan" style="accent-color:#1d9bf0"> @{escape(a)}'
                 f'</label>'
                 f'<form method="post" action="/social-scanner/accounts/delete" style="margin:0">'
                 f'<input type="hidden" name="handle" value="{escape(a)}">'
@@ -5926,14 +5934,14 @@ def render_social_scanner_page(
             '<div style="color:#8b93a3;font-size:12px;padding:10px 6px">No accounts yet. Add one below.</div>'
             if not accts else ""
         )
-        form_content = (
+        mgmt_html = (
             f'<div style="border:1px solid #2a3555;border-radius:4px;background:#060910;'
             f'margin-bottom:8px;max-height:220px;overflow-y:auto">'
             f'{account_rows or no_accounts_msg}'
             f'</div>'
             f'{add_account_form}'
-            f'<input type="hidden" name="platform" value="twitter">'
         )
+        platform_val = "twitter"
     else:
         subs = reddit_subs or []
         sub_rows = ""
@@ -5942,7 +5950,8 @@ def render_social_scanner_page(
                 f'<div style="display:flex;align-items:center;justify-content:space-between;'
                 f'padding:4px 6px;border-bottom:1px solid #12192a">'
                 f'<label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;font-size:12px;color:#c0c8d8">'
-                f'<input type="checkbox" name="subreddit" value="{escape(s)}" checked style="accent-color:#ff4500"> r/{escape(s)}'
+                f'<input type="checkbox" name="subreddit" value="{escape(s)}" checked'
+                f' form="social-scan" style="accent-color:#ff4500"> r/{escape(s)}'
                 f'</label>'
                 f'<form method="post" action="/social-scanner/subreddits/delete" style="margin:0">'
                 f'<input type="hidden" name="subreddit" value="{escape(s)}">'
@@ -5963,32 +5972,36 @@ def render_social_scanner_page(
             '<div style="color:#8b93a3;font-size:12px;padding:10px 6px">No subreddits yet. Add one below.</div>'
             if not subs else ""
         )
-        form_content = (
+        mgmt_html = (
             f'<div style="border:1px solid #2a3555;border-radius:4px;background:#060910;'
             f'margin-bottom:8px;max-height:220px;overflow-y:auto">'
             f'{sub_rows or no_subs_msg}'
             f'</div>'
             f'{add_sub_form}'
-            f'<input type="hidden" name="platform" value="reddit">'
         )
+        platform_val = "reddit"
 
+    # ── Scan form: empty anchor + all controls via form= attribute ─────────────
+    # The form element itself contains NO children — all inputs/buttons reference
+    # it by id so no management form can accidentally nest inside it.
     scan_form = (
-        f'<form method="post" action="/social-scanner/scan">'
-        f'{form_content}'
-        f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
-        f'<select name="hours" style="font-size:12px;padding:5px 8px">'
+        f'<form id="social-scan" method="post" action="/social-scanner/scan"></form>'
+        f'<input type="hidden" name="platform" value="{platform_val}" form="social-scan">'
+        f'{mgmt_html}'
+        f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px">'
+        f'<select name="hours" form="social-scan" style="font-size:12px;padding:5px 8px">'
         f'<option value="24">Last 24 hours</option>'
         f'<option value="48">Last 48 hours</option>'
         f'<option value="72">Last 72 hours</option>'
         f'</select>'
-        f'<button type="submit" class="primary" style="padding:6px 18px;font-size:13px"'
+        f'<button type="submit" form="social-scan" class="primary" style="padding:6px 18px;font-size:13px"'
         + (' disabled' if is_running else '') + '>'
         + ('&#9203; Scanning...' if is_running else '&#128269; Scan Now')
         + '</button>'
         f'<form method="post" action="/social-scanner/reset" style="margin:0">'
         f'<button type="submit" style="font-size:12px;padding:5px 14px;background:#1a0008;border-color:#5a0028;color:#f9a8d4">'
         f'&#9726; Clear</button></form>'
-        f'</div></form>'
+        f'</div>'
     )
 
     # Results table
