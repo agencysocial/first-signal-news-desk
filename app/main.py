@@ -5224,7 +5224,27 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
                                   brand_slug: str = "the_american") -> bytes:
     """The American parchment editorial template — torn paper, stars, centered pill, navy headline."""
     from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font
-    import io as _io, random as _random, math as _math
+    import io as _io, random as _random, math as _math, urllib.request as _req
+
+    def _american_font(size: int):
+        """Oswald-Bold (condensed display) — downloaded once to /tmp; falls back to DejaVu."""
+        _cache = Path("/tmp/fsn_fonts")
+        _cache.mkdir(exist_ok=True)
+        _fp = _cache / "Oswald-Bold.ttf"
+        if not _fp.exists():
+            try:
+                _req.urlretrieve(
+                    "https://github.com/googlefonts/OswaldFont/raw/main/fonts/ttf/Oswald-Bold.ttf",
+                    str(_fp))
+            except Exception:
+                pass
+        try:
+            return _Font.truetype(str(_fp), size)
+        except Exception:
+            try:
+                return _Font.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
+            except Exception:
+                return _Font.load_default()
 
     TARGET_W, TARGET_H = 1122, 1402
 
@@ -5311,12 +5331,12 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
     pill_w = tag_tw + PILL_PX * 2
     pill_h = tag_th + PILL_PY * 2
 
-    # Headline font (largest size ≤4 lines)
+    # Headline font — Oswald Bold (condensed display); falls back to DejaVu
     hl_text      = (headline or "").upper()
-    hl_font      = _font(_BOLD, 28)
+    hl_font      = _american_font(28)
     hl_lines     = _wrap(hl_text, hl_font, HL_MAX_W)
-    for size in [82, 72, 62, 52, 44, 36, 28]:
-        fnt   = _font(_BOLD, size)
+    for size in [92, 80, 70, 60, 50, 42, 34, 28]:
+        fnt   = _american_font(size)
         lines = _wrap(hl_text, fnt, HL_MAX_W)
         if len(lines) <= 4:
             hl_font, hl_lines = fnt, lines
@@ -5339,20 +5359,39 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
     # --- Parchment rectangle ---
     draw.rectangle([(0, DIVIDER_Y), (TARGET_W, TARGET_H)], fill=PARCHMENT)
 
-    # --- Torn paper edge (sine + noise) ---
+    # --- Torn paper edge (organic control-point interpolation) ---
     rng = _random.Random(abs(hash(hl_text[:40])) % 999983)
+    # Build sparse control points every 60-100px so the tear looks like ripped paper,
+    # not an EKG trace (previous fine-step approach caused the jagged noise look).
+    ctrl_pts = []
+    cx = 0
+    while cx <= TARGET_W + 100:
+        roll = rng.random()
+        if roll < 0.25:
+            cy = DIVIDER_Y - rng.randint(22, 48)   # large upward tear chunk
+        elif roll < 0.50:
+            cy = DIVIDER_Y - rng.randint(6, 20)    # small upward nick
+        else:
+            cy = DIVIDER_Y + rng.randint(0, 14)    # flat or slight dip
+        ctrl_pts.append((cx, cy))
+        cx += rng.randint(55, 95)
+
+    # Linear-interpolate between control points at 4px resolution + tiny texture jitter
     tear_pts = []
-    x = 0
-    while x <= TARGET_W:
-        base_j = int(12 * __import__('math').sin(x * 0.07))
-        noise  = rng.randint(-10, 10)
-        spike  = rng.randint(-22, -16) if rng.random() < 0.1 else 0
-        tear_pts.append((x, DIVIDER_Y + base_j + noise + spike))
-        x += 4
-    # Parchment polygon that overlaps into the photo to create the torn look
-    poly = [(0, DIVIDER_Y - 30)] + tear_pts + [(TARGET_W, DIVIDER_Y - 30)]
+    for i in range(len(ctrl_pts) - 1):
+        x0, y0 = ctrl_pts[i];  x1, y1 = ctrl_pts[i + 1]
+        steps = max(1, (x1 - x0) // 4)
+        for j in range(steps):
+            t = j / steps
+            tear_pts.append((int(x0 + (x1 - x0) * t),
+                              int(y0 + (y1 - y0) * t) + rng.randint(-2, 2)))
+    if ctrl_pts:
+        tear_pts.append(ctrl_pts[-1])
+
+    # Parchment polygon fills up into photo, hiding the straight DIVIDER_Y edge
+    poly = [(0, DIVIDER_Y - 55)] + tear_pts + [(TARGET_W, DIVIDER_Y - 55)]
     draw.polygon(poly, fill=PARCHMENT)
-    # Thin navy accent line tracing the tear
+    # Navy accent line traces the organic tear edge
     for i in range(len(tear_pts) - 1):
         draw.line([tear_pts[i], tear_pts[i + 1]], fill=NAVY, width=3)
 
@@ -5398,13 +5437,13 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
         lw = _text_w(hl_font, line)
         draw.text(((TARGET_W - lw) // 2, HL_Y + i * (lh + LINE_GAP)), line, font=hl_font, fill=NAVY)
 
-    # --- Attribution (top-right of photo) ---
+    # --- Attribution: top-right corner of photo ---
     if attribution and attribution.strip():
-        attr_fnt = _font(_BOLD, max(18, TARGET_W // 55))
+        attr_fnt = _font(_BOLD, max(16, TARGET_W // 62))
         aw = _text_w(attr_fnt, attribution)
         ah = _line_h(attr_fnt)
         ax = TARGET_W - aw - 12
-        ay = DIVIDER_Y - ah - 24
+        ay = 14                     # top-right, not bottom of photo
         draw.text((ax + 1, ay + 1), attribution, font=attr_fnt, fill=(0, 0, 0))
         draw.text((ax, ay), attribution, font=attr_fnt, fill=(255, 255, 255))
 
