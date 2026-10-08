@@ -5224,7 +5224,7 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
                                   brand_slug: str = "the_american") -> bytes:
     """The American parchment editorial template — torn paper, stars, centered pill, navy headline."""
     from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font
-    import io as _io, random as _random, math as _math, urllib.request as _req
+    import io as _io, random as _random, math as _math
 
     TARGET_W, TARGET_H = 1122, 1402
 
@@ -5235,19 +5235,10 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
     _BOLD     = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
     def _american_font(size: int):
-        """Oswald-Bold (condensed display) — downloaded once to /tmp; falls back to DejaVu."""
-        try:
-            _cache = Path("/tmp/fsn_fonts")
-            _cache.mkdir(exist_ok=True)
-            _fp = _cache / "Oswald-Bold.ttf"
-            if not _fp.exists():
-                _req.urlretrieve(
-                    "https://github.com/googlefonts/OswaldFont/raw/main/fonts/ttf/Oswald-Bold.ttf",
-                    str(_fp))
-            return _Font.truetype(str(_fp), size)
-        except Exception:
-            pass
-        for path in [_BOLD,
+        """Oswald-Bold — bundled in app/fonts/, no network call needed."""
+        # Try bundled font first (committed to repo, always present on Render)
+        _bundled = Path(__file__).parent / "fonts" / "Oswald-Bold.ttf"
+        for path in [str(_bundled), _BOLD,
                      "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
                      "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"]:
             try:
