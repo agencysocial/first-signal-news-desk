@@ -5226,57 +5226,35 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
     from PIL import Image as _PIL, ImageDraw as _Draw, ImageFont as _Font
     import io as _io, random as _random, math as _math, urllib.request as _req
 
-    def _american_font(size: int):
-        """Oswald-Bold (condensed display) — downloaded once to /tmp; falls back to DejaVu."""
-        _cache = Path("/tmp/fsn_fonts")
-        _cache.mkdir(exist_ok=True)
-        _fp = _cache / "Oswald-Bold.ttf"
-        if not _fp.exists():
-            try:
-                _req.urlretrieve(
-                    "https://github.com/googlefonts/OswaldFont/raw/main/fonts/ttf/Oswald-Bold.ttf",
-                    str(_fp))
-            except Exception:
-                pass
-        try:
-            return _Font.truetype(str(_fp), size)
-        except Exception:
-            try:
-                return _Font.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size)
-            except Exception:
-                return _Font.load_default()
-
     TARGET_W, TARGET_H = 1122, 1402
-
-    # --- Crop / resize (same logic as other templates) ---
-    src = _PIL.open(_io.BytesIO(image_bytes)).convert("RGB")
-    iw, ih = src.size
-    cx   = max(0.0, min(1.0, crop_x))
-    cy   = max(0.0, min(1.0, crop_y))
-    zoom = max(1.0, min(4.0, zoom))
-    base_scale = max(TARGET_W / iw, TARGET_H / ih)
-    scale      = base_scale * zoom
-    disp_w     = iw * scale
-    disp_h     = ih * scale
-    overflow_x = max(0.0, disp_w - TARGET_W)
-    overflow_y = max(0.0, disp_h - TARGET_H)
-    left_src   = int(overflow_x * cx / scale)
-    top_src    = int(overflow_y * cy / scale)
-    crop_w     = int(TARGET_W / scale)
-    crop_h     = int(TARGET_H / scale)
-    left_src   = max(0, min(iw - crop_w, left_src))
-    top_src    = max(0, min(ih - crop_h, top_src))
-    src = src.crop((left_src, top_src, left_src + crop_w, top_src + crop_h))
-    src = src.resize((TARGET_W, TARGET_H), _PIL.LANCZOS)
-    out  = src
-    src  = None
-    draw = _Draw.Draw(out)
 
     PARCHMENT = (242, 225, 190)
     NAVY      = (7, 29, 56)
     RED       = (194, 30, 45)
     OFF_WHITE = (248, 241, 226)
     _BOLD     = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+
+    def _american_font(size: int):
+        """Oswald-Bold (condensed display) — downloaded once to /tmp; falls back to DejaVu."""
+        try:
+            _cache = Path("/tmp/fsn_fonts")
+            _cache.mkdir(exist_ok=True)
+            _fp = _cache / "Oswald-Bold.ttf"
+            if not _fp.exists():
+                _req.urlretrieve(
+                    "https://github.com/googlefonts/OswaldFont/raw/main/fonts/ttf/Oswald-Bold.ttf",
+                    str(_fp))
+            return _Font.truetype(str(_fp), size)
+        except Exception:
+            pass
+        for path in [_BOLD,
+                     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                     "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"]:
+            try:
+                return _Font.truetype(path, size)
+            except Exception:
+                continue
+        return _Font.load_default()
 
     def _font(path, size):
         try:
@@ -5322,6 +5300,8 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
     MARGIN   = 28
     HL_MAX_W = TARGET_W - MARGIN * 2
 
+    # ── Step 1: compute layout metrics FIRST so we know DIVIDER_Y before cropping ──
+
     # Tag pill metrics
     tag_upper = (tag or "BREAKING").upper()
     tag_fnt   = _font(_BOLD, 34)
@@ -5332,9 +5312,9 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
     pill_h = tag_th + PILL_PY * 2
 
     # Headline font — Oswald Bold (condensed display); falls back to DejaVu
-    hl_text      = (headline or "").upper()
-    hl_font      = _american_font(28)
-    hl_lines     = _wrap(hl_text, hl_font, HL_MAX_W)
+    hl_text  = (headline or "").upper()
+    hl_font  = _american_font(28)
+    hl_lines = _wrap(hl_text, hl_font, HL_MAX_W)
     for size in [92, 80, 70, 60, 50, 42, 34, 28]:
         fnt   = _american_font(size)
         lines = _wrap(hl_text, fnt, HL_MAX_W)
@@ -5347,36 +5327,64 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
     n_lines = len(hl_lines)
     LINE_GAP = 8
 
-    # Float divider: size panel to exactly hold content
-    TORN_H    = 36
-    TOP_PAD   = 24
+    TORN_H     = 55           # vertical space the torn edge occupies
+    TOP_PAD    = 28
     STAR_ROW_H = pill_h + 14
     HL_BLOCK_H = n_lines * (lh + LINE_GAP) - LINE_GAP
-    BOTTOM_PAD = 44
+    BOTTOM_PAD = 48
     content_h  = TORN_H + TOP_PAD + STAR_ROW_H + 18 + HL_BLOCK_H + BOTTOM_PAD
-    DIVIDER_Y  = max(int(TARGET_H * 0.54), min(int(TARGET_H * 0.72), TARGET_H - content_h))
+    DIVIDER_Y  = max(int(TARGET_H * 0.52), min(int(TARGET_H * 0.68), TARGET_H - content_h))
 
-    # --- Parchment rectangle ---
+    # ── Step 2: crop photo to fill ONLY the photo area (TARGET_W × DIVIDER_Y) ──
+    src = _PIL.open(_io.BytesIO(image_bytes)).convert("RGB")
+    iw, ih = src.size
+    cx_f  = max(0.0, min(1.0, crop_x))
+    cy_f  = max(0.0, min(1.0, crop_y))
+    zoom  = max(1.0, min(4.0, zoom))
+    # Scale photo to fill TARGET_W wide by DIVIDER_Y tall (photo area only)
+    base_scale = max(TARGET_W / iw, DIVIDER_Y / ih)
+    scale      = base_scale * zoom
+    disp_w     = iw * scale
+    disp_h     = ih * scale
+    overflow_x = max(0.0, disp_w - TARGET_W)
+    overflow_y = max(0.0, disp_h - DIVIDER_Y)
+    left_src   = int(overflow_x * cx_f / scale)
+    top_src    = int(overflow_y * cy_f / scale)
+    crop_w     = int(TARGET_W / scale)
+    crop_h     = int(DIVIDER_Y / scale)
+    left_src   = max(0, min(iw - crop_w, left_src))
+    top_src    = max(0, min(ih - crop_h, top_src))
+    src        = src.crop((left_src, top_src, left_src + crop_w, top_src + crop_h))
+    photo_img  = src.resize((TARGET_W, DIVIDER_Y), _PIL.LANCZOS)
+    src        = None
+
+    # ── Step 3: build full canvas — photo on top, parchment below ──
+    out  = _PIL.new("RGB", (TARGET_W, TARGET_H), PARCHMENT)
+    out.paste(photo_img, (0, 0))
+    photo_img.close()
+    draw = _Draw.Draw(out)
+
+    # Parchment rectangle from DIVIDER_Y to bottom
     draw.rectangle([(0, DIVIDER_Y), (TARGET_W, TARGET_H)], fill=PARCHMENT)
 
-    # --- Torn paper edge (organic control-point interpolation) ---
+    # ── Step 4: torn paper edge ──
+    # Sparse control points (60-100px apart) for organic ripped-paper look.
+    # Points go ABOVE DIVIDER_Y (into photo area) so parchment colour bleeds upward.
     rng = _random.Random(abs(hash(hl_text[:40])) % 999983)
-    # Build sparse control points every 60-100px so the tear looks like ripped paper,
-    # not an EKG trace (previous fine-step approach caused the jagged noise look).
     ctrl_pts = []
-    cx = 0
-    while cx <= TARGET_W + 100:
+    px = 0
+    while px <= TARGET_W + 100:
         roll = rng.random()
-        if roll < 0.25:
-            cy = DIVIDER_Y - rng.randint(22, 48)   # large upward tear chunk
-        elif roll < 0.50:
-            cy = DIVIDER_Y - rng.randint(6, 20)    # small upward nick
+        if roll < 0.30:
+            py = DIVIDER_Y - rng.randint(30, 70)   # deep upward tear chunk
+        elif roll < 0.60:
+            py = DIVIDER_Y - rng.randint(8, 28)    # moderate nick
         else:
-            cy = DIVIDER_Y + rng.randint(0, 14)    # flat or slight dip
-        ctrl_pts.append((cx, cy))
-        cx += rng.randint(55, 95)
+            py = DIVIDER_Y + rng.randint(0, 10)    # very slight dip
+        ctrl_pts.append((px, py))
+        px += rng.randint(60, 100)
 
-    # Linear-interpolate between control points at 4px resolution + tiny texture jitter
+    # Linear-interpolate at 4px steps + tiny per-step jitter for texture
     tear_pts = []
     for i in range(len(ctrl_pts) - 1):
         x0, y0 = ctrl_pts[i];  x1, y1 = ctrl_pts[i + 1]
@@ -5384,28 +5392,29 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
         for j in range(steps):
             t = j / steps
             tear_pts.append((int(x0 + (x1 - x0) * t),
-                              int(y0 + (y1 - y0) * t) + rng.randint(-2, 2)))
+                              int(y0 + (y1 - y0) * t) + rng.randint(-3, 3)))
     if ctrl_pts:
         tear_pts.append(ctrl_pts[-1])
 
-    # Parchment polygon fills up into photo, hiding the straight DIVIDER_Y edge
-    poly = [(0, DIVIDER_Y - 55)] + tear_pts + [(TARGET_W, DIVIDER_Y - 55)]
+    # Parchment polygon fills upward from DIVIDER_Y-80 so the straight edge is hidden
+    ANCHOR_Y = DIVIDER_Y - 80
+    poly = [(0, ANCHOR_Y)] + tear_pts + [(TARGET_W, ANCHOR_Y)]
     draw.polygon(poly, fill=PARCHMENT)
     # Navy accent line traces the organic tear edge
     for i in range(len(tear_pts) - 1):
-        draw.line([tear_pts[i], tear_pts[i + 1]], fill=NAVY, width=3)
+        draw.line([tear_pts[i], tear_pts[i + 1]], fill=NAVY, width=4)
 
-    # --- Star row: ——— ★ [PILL] ★ ——— (centered, polygon stars) ---
-    STAR_R_OUT = 14   # outer radius of 5-pointed polygon star
-    STAR_R_IN  = 6    # inner radius
-    STAR_GAP   = 20   # gap from star edge to pill edge
+    # ── Step 5: star row — ——— ★ [PILL] ★ ——— (centered, polygon stars) ──
+    STAR_R_OUT = 14
+    STAR_R_IN  = 6
+    STAR_GAP   = 20
 
-    def _draw_star(cx, cy):
+    def _draw_star(scx, scy):
         pts = []
         for i in range(10):
             angle = _math.radians(i * 36 - 90)
             r = STAR_R_OUT if i % 2 == 0 else STAR_R_IN
-            pts.append((cx + r * _math.cos(angle), cy + r * _math.sin(angle)))
+            pts.append((scx + r * _math.cos(angle), scy + r * _math.sin(angle)))
         draw.polygon(pts, fill=NAVY)
 
     parchment_top = DIVIDER_Y + TORN_H
@@ -5420,30 +5429,28 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
         draw.rectangle([(pill_x, pill_y), (pill_x + pill_w, pill_y + pill_h)], fill=RED)
     draw.text((pill_x + PILL_PX, pill_y + PILL_PY), tag_upper, font=tag_fnt, fill=OFF_WHITE)
 
-    # Polygon stars flanking pill
     left_star_cx  = pill_x - STAR_GAP - STAR_R_OUT
     right_star_cx = pill_x + pill_w + STAR_GAP + STAR_R_OUT
     _draw_star(left_star_cx, star_row_cy)
     _draw_star(right_star_cx, star_row_cy)
 
-    # Horizontal rules: from MARGIN to star, and from star to far edge
     rule_y = star_row_cy
     draw.rectangle([(MARGIN, rule_y - 1), (left_star_cx - STAR_R_OUT - 10, rule_y + 1)], fill=NAVY)
     draw.rectangle([(right_star_cx + STAR_R_OUT + 10, rule_y - 1), (TARGET_W - MARGIN, rule_y + 1)], fill=NAVY)
 
-    # --- Headline (centered, dark navy) ---
+    # ── Step 6: headline (centered, dark navy) ──
     HL_Y = pill_y + pill_h + 18
     for i, line in enumerate(hl_lines):
         lw = _text_w(hl_font, line)
         draw.text(((TARGET_W - lw) // 2, HL_Y + i * (lh + LINE_GAP)), line, font=hl_font, fill=NAVY)
 
-    # --- Attribution: top-right corner of photo ---
+    # ── Step 7: attribution top-right corner of photo ──
     if attribution and attribution.strip():
         attr_fnt = _font(_BOLD, max(16, TARGET_W // 62))
         aw = _text_w(attr_fnt, attribution)
         ah = _line_h(attr_fnt)
         ax = TARGET_W - aw - 12
-        ay = 14                     # top-right, not bottom of photo
+        ay = 14
         draw.text((ax + 1, ay + 1), attribution, font=attr_fnt, fill=(0, 0, 0))
         draw.text((ax, ay), attribution, font=attr_fnt, fill=(255, 255, 255))
 
