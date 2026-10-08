@@ -5359,41 +5359,37 @@ def _apply_american_template_pil(image_bytes: bytes, headline: str, tag: str,
     draw.rectangle([(0, DIVIDER_Y), (TARGET_W, TARGET_H)], fill=PARCHMENT)
 
     # ── Step 4: torn paper edge ──
-    # Sparse control points (60-100px apart) for organic ripped-paper look.
-    # Points go ABOVE DIVIDER_Y (into photo area) so parchment colour bleeds upward.
+    # Per-column approach: for each x, compute the tear y and fill parchment from
+    # there down. Keeps the tear narrow (≤20px above DIVIDER_Y) so it looks like
+    # ripped paper, not mountain peaks.
+    TEAR_MAX = 20   # max px the tear reaches above DIVIDER_Y
     rng = _random.Random(abs(hash(hl_text[:40])) % 999983)
+
+    # Sparse control points every 30-55px
     ctrl_pts = []
     px = 0
-    while px <= TARGET_W + 100:
-        roll = rng.random()
-        if roll < 0.30:
-            py = DIVIDER_Y - rng.randint(30, 70)   # deep upward tear chunk
-        elif roll < 0.60:
-            py = DIVIDER_Y - rng.randint(8, 28)    # moderate nick
-        else:
-            py = DIVIDER_Y + rng.randint(0, 10)    # very slight dip
+    while px <= TARGET_W + 55:
+        py = DIVIDER_Y - rng.randint(3, TEAR_MAX)
         ctrl_pts.append((px, py))
-        px += rng.randint(60, 100)
+        px += rng.randint(30, 55)
 
-    # Linear-interpolate at 4px steps + tiny per-step jitter for texture
-    tear_pts = []
+    # Build per-pixel tear profile by linear interpolation + tiny jitter
+    tear_y = [DIVIDER_Y] * (TARGET_W + 1)
     for i in range(len(ctrl_pts) - 1):
         x0, y0 = ctrl_pts[i];  x1, y1 = ctrl_pts[i + 1]
-        steps = max(1, (x1 - x0) // 4)
-        for j in range(steps):
-            t = j / steps
-            tear_pts.append((int(x0 + (x1 - x0) * t),
-                              int(y0 + (y1 - y0) * t) + rng.randint(-3, 3)))
-    if ctrl_pts:
-        tear_pts.append(ctrl_pts[-1])
+        for x in range(x0, min(x1, TARGET_W + 1)):
+            t = (x - x0) / max(1, x1 - x0)
+            y = int(y0 + (y1 - y0) * t) + rng.randint(-2, 2)
+            tear_y[x] = max(DIVIDER_Y - TEAR_MAX, min(DIVIDER_Y + 4, y))
 
-    # Parchment polygon fills upward from DIVIDER_Y-80 so the straight edge is hidden
-    ANCHOR_Y = DIVIDER_Y - 80
-    poly = [(0, ANCHOR_Y)] + tear_pts + [(TARGET_W, ANCHOR_Y)]
-    draw.polygon(poly, fill=PARCHMENT)
-    # Navy accent line traces the organic tear edge
+    # Fill parchment column-by-column from tear line down (covers photo edge cleanly)
+    for x in range(TARGET_W):
+        draw.line([(x, tear_y[x]), (x, TARGET_H)], fill=PARCHMENT)
+
+    # Thin dark line traces the tear edge
+    tear_pts = [(x, tear_y[x]) for x in range(TARGET_W)]
     for i in range(len(tear_pts) - 1):
-        draw.line([tear_pts[i], tear_pts[i + 1]], fill=NAVY, width=4)
+        draw.line([tear_pts[i], tear_pts[i + 1]], fill=NAVY, width=2)
 
     # ── Step 5: star row — ——— ★ [PILL] ★ ——— (centered, polygon stars) ──
     STAR_R_OUT = 14
