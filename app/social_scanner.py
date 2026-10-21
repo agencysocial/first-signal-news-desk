@@ -10,9 +10,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 _APIFY_BASE = "https://api.apify.com/v2"
-_TWITTER_ACTOR = "apidojo/tweet-scraper"
-_REDDIT_ACTOR  = "trudax/reddit-search-scraper"
-_ARTICLE_ACTOR = "apify/article-extractor-smart"
+_TWITTER_ACTOR = "apidojo~tweet-scraper"
+_REDDIT_ACTOR  = "trudax~reddit-search-scraper"
+_ARTICLE_ACTOR = "apify~article-extractor-smart"
 
 _DEFAULT_TWITTER_QUERIES = [
     "Trump breaking",
