@@ -224,3 +224,13 @@ class CoveredPost(Base):
     headline_used: Mapped[str | None] = mapped_column(Text, nullable=True)
     editor: Mapped[str | None] = mapped_column(String(200), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AppSetting(Base):
+    """Persistent key/value store for operator-configured lists (Twitter handles,
+    Reddit subs, etc.) that must survive Render restarts and deploys."""
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")  # JSON-encoded
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

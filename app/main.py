@@ -1275,11 +1275,9 @@ VALID_STATUSES = {
 # would be noise, not signal.
 _scan_state = {"running": False, "completed_unacknowledged": False, "last_result": None}
 
-# Social scanner (Twitter + Reddit) state — stored in /tmp so the worker thread
-# can write progress that the poll endpoint can read.
-_SOCIAL_JOB_PATH      = Path("/tmp/social_scan_job.json")
-_TWITTER_ACCOUNTS_PATH  = Path("/tmp/twitter_accounts.json")
-_REDDIT_SUBS_PATH       = Path("/tmp/reddit_subs.json")
+# Social scanner (Twitter + Reddit) state — job progress in /tmp (ephemeral OK);
+# operator-configured handles/subs stored in DB via AppSetting (survives restarts).
+_SOCIAL_JOB_PATH = Path("/tmp/social_scan_job.json")
 
 # Default Twitter accounts to scan when none have been added yet
 _DEFAULT_TWITTER_ACCOUNTS: list[str] = [
@@ -1293,20 +1291,55 @@ _DEFAULT_TWITTER_ACCOUNTS: list[str] = [
 ]
 
 
-def _load_twitter_accounts() -> list[str]:
-    if _TWITTER_ACCOUNTS_PATH.exists():
-        try:
-            data = json.loads(_TWITTER_ACCOUNTS_PATH.read_text())
+def _ensure_app_settings_table():
+    from app.models import AppSetting as _AS
+    from app.db import Base as _Base, engine as _engine
+    _Base.metadata.create_all(_engine, tables=[_AS.__table__], checkfirst=True)
+
+
+def _load_setting(key: str, default: list) -> list:
+    _ensure_app_settings_table()
+    from app.models import AppSetting as _AS
+    from app.db import SessionLocal as _SL
+    db = _SL()
+    try:
+        row = db.get(_AS, key)
+        if row:
+            data = json.loads(row.value)
             if isinstance(data, list):
                 return data
-        except Exception:
-            pass
-    _TWITTER_ACCOUNTS_PATH.write_text(json.dumps(_DEFAULT_TWITTER_ACCOUNTS))
-    return list(_DEFAULT_TWITTER_ACCOUNTS)
+    except Exception:
+        pass
+    finally:
+        db.close()
+    return list(default)
+
+
+def _save_setting(key: str, value: list) -> None:
+    _ensure_app_settings_table()
+    from app.models import AppSetting as _AS
+    from app.db import SessionLocal as _SL
+    db = _SL()
+    try:
+        row = db.get(_AS, key)
+        if row:
+            row.value = json.dumps(value)
+        else:
+            db.add(_AS(key=key, value=json.dumps(value)))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def _load_twitter_accounts() -> list[str]:
+    return _load_setting("twitter_accounts", _DEFAULT_TWITTER_ACCOUNTS)
 
 
 def _save_twitter_accounts(accounts: list[str]) -> None:
-    _TWITTER_ACCOUNTS_PATH.write_text(json.dumps(accounts))
+    _save_setting("twitter_accounts", accounts)
 
 
 _DEFAULT_REDDIT_SUBS: list[str] = [
@@ -1321,19 +1354,11 @@ _DEFAULT_REDDIT_SUBS: list[str] = [
 
 
 def _load_reddit_subs() -> list[str]:
-    if _REDDIT_SUBS_PATH.exists():
-        try:
-            data = json.loads(_REDDIT_SUBS_PATH.read_text())
-            if isinstance(data, list):
-                return data
-        except Exception:
-            pass
-    _REDDIT_SUBS_PATH.write_text(json.dumps(_DEFAULT_REDDIT_SUBS))
-    return list(_DEFAULT_REDDIT_SUBS)
+    return _load_setting("reddit_subs", _DEFAULT_REDDIT_SUBS)
 
 
 def _save_reddit_subs(subs: list[str]) -> None:
-    _REDDIT_SUBS_PATH.write_text(json.dumps(subs))
+    _save_setting("reddit_subs", subs)
 
 def _social_read_job() -> dict:
     try:
