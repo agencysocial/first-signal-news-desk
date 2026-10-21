@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 _APIFY_BASE = "https://api.apify.com/v2"
-_TWITTER_ACTOR = "apidojo/tweet-scraper"
+_TWITTER_ACTOR = "apify/twitter-scraper"
 _REDDIT_ACTOR  = "trudax/reddit-search-scraper"
 _ARTICLE_ACTOR = "apify/article-extractor-smart"
 
@@ -84,21 +84,16 @@ def start_twitter_scan(
         # Scan specific accounts by handle — surfaces their recent tweets
         return _apify_run(token, _TWITTER_ACTOR, {
             "twitterHandles": handles,
-            "maxItems": 60,
+            "maxTweetsPerQuery": 60,
             "since": since,
-            "minimumRetweets": 0,
-            "minimumLikes": 5,
             "lang": "en",
         })
     # Fall back to keyword queries
     q = queries or _DEFAULT_TWITTER_QUERIES
     return _apify_run(token, _TWITTER_ACTOR, {
-        "searchTerms": q,
-        "maxItems": 60,
+        "searchQueries": q,
+        "maxTweetsPerQuery": 10,
         "since": since,
-        "onlyVerifiedUsers": False,
-        "minimumRetweets": 5,
-        "minimumLikes": 25,
         "lang": "en",
     })
 
