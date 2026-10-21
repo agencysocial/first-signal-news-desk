@@ -81,19 +81,20 @@ def start_twitter_scan(
 ) -> str:
     since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d")
     if handles:
-        # apidojo/tweet-scraper uses searchTerms with "from:handle" syntax
+        # apidojo/tweet-scraper uses searchTerms with "from:handle" syntax.
+        # maxItems is the TOTAL across all terms, so scale by handle count.
         terms = [f"from:{h.lstrip('@')} since:{since}" for h in handles]
         return _apify_run(token, _TWITTER_ACTOR, {
             "searchTerms": terms,
-            "maxItems": 10,
+            "maxItems": len(terms) * 15,
             "sort": "Latest",
         })
-    # Keyword queries
+    # Keyword queries — scale similarly
     q = queries or _DEFAULT_TWITTER_QUERIES
     terms = [f"{kw} since:{since} lang:en" for kw in q]
     return _apify_run(token, _TWITTER_ACTOR, {
         "searchTerms": terms,
-        "maxItems": 10,
+        "maxItems": len(terms) * 8,
         "sort": "Latest",
     })
 
