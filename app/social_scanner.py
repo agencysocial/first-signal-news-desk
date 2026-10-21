@@ -78,18 +78,22 @@ def start_twitter_scan(
     queries: list[str] | None = None,
     hours: int = 24,
     handles: list[str] | None = None,
-) -> str:
+) -> str | list[str]:
+    """Returns a single run_id for keyword mode, or a list of run_ids for handle mode
+    (one run per handle so each handle gets exactly 5 slots, not greedy-shared)."""
     since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d")
     if handles:
-        # apidojo/tweet-scraper uses searchTerms with "from:handle" syntax.
-        # maxItems is the TOTAL across all terms, so scale by handle count.
-        terms = [f"from:{h.lstrip('@')} since:{since}" for h in handles]
-        return _apify_run(token, _TWITTER_ACTOR, {
-            "searchTerms": terms,
-            "maxItems": len(terms) * 5,
-            "sort": "Top",
-        })
-    # Keyword queries — scale similarly
+        # One run per handle — guarantees 5 posts per handle regardless of popularity.
+        run_ids = []
+        for h in handles:
+            term = f"from:{h.lstrip('@')} since:{since}"
+            run_ids.append(_apify_run(token, _TWITTER_ACTOR, {
+                "searchTerms": [term],
+                "maxItems": 5,
+                "sort": "Top",
+            }))
+        return run_ids
+    # Keyword queries — single run, scale maxItems by query count
     q = queries or _DEFAULT_TWITTER_QUERIES
     terms = [f"{kw} since:{since} lang:en" for kw in q]
     return _apify_run(token, _TWITTER_ACTOR, {
@@ -148,6 +152,25 @@ def _normalize_reddit(raw: dict) -> dict:
         "page_name":    f"r/{sub}",
         "page_display": f"r/{sub}",
     }
+
+
+def poll_until_done_multi(token: str, run_ids: list[str], timeout: int = 900) -> list[dict]:
+    """Poll multiple Apify runs in parallel; return list of {status, dataset_id} per run."""
+    import time
+    deadline = time.time() + timeout
+    remaining = {rid: {"status": "RUNNING", "dataset_id": None} for rid in run_ids}
+    while time.time() < deadline:
+        all_done = True
+        for rid in list(remaining):
+            if remaining[rid]["status"] in ("RUNNING", "READY"):
+                all_done = False
+                status, dataset_id = _apify_poll(token, rid)
+                remaining[rid]["status"] = status
+                remaining[rid]["dataset_id"] = dataset_id
+        if all_done:
+            break
+        time.sleep(6)
+    return list(remaining.values())
 
 
 # ── Unified fetch ──────────────────────────────────────────────────────────────

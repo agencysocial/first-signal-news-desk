@@ -3965,25 +3965,41 @@ def _social_scan_worker(token: str, platform: str, queries_or_subs: list[str], h
         _social_write_job(job)
 
         if platform == "twitter":
-            # queries_or_subs contains handles (stripped of @) when accounts are selected
-            run_id = _social.start_twitter_scan(
+            run_result = _social.start_twitter_scan(
                 token, handles=queries_or_subs or None, hours=hours
             )
         else:
-            run_id = _social.start_reddit_scan(token, queries_or_subs or None, hours=hours)
+            run_result = _social.start_reddit_scan(token, queries_or_subs or None, hours=hours)
 
-
-        job["run_id"] = run_id
+        # Handle mode returns a list of run IDs (one per handle); keyword/reddit returns a single ID
+        multi_mode = isinstance(run_result, list)
+        job["run_id"] = run_result[0] if multi_mode else run_result
         _social_write_job(job)
 
-        status, dataset_id = _social.poll_until_done(token, run_id, timeout=900)
+        if multi_mode:
+            run_states = _social.poll_until_done_multi(token, run_result, timeout=900)
+            results = []
+            seen_urls: set[str] = set()
+            for rs in run_states:
+                if rs["status"] == "SUCCEEDED" and rs["dataset_id"]:
+                    for item in _social.fetch_results(token, rs["dataset_id"], platform):
+                        if item["url"] not in seen_urls:
+                            seen_urls.add(item["url"])
+                            results.append(item)
+            status = "SUCCEEDED" if results else "FAILED"
+            dataset_id = None  # already fetched above
+        else:
+            status, dataset_id = _social.poll_until_done(token, run_result, timeout=900)
+            results = []
+
         job = _social_read_job()
         job["apify_status"] = status
 
-        if status == "SUCCEEDED" and dataset_id:
-            results = _social.fetch_results(token, dataset_id, platform)
+        if status == "SUCCEEDED":
+            if dataset_id:  # single-run mode — fetch now
+                results = _social.fetch_results(token, dataset_id, platform)
+            results.sort(key=lambda x: x["engagement_score"], reverse=True)
             existing = _social_read_results()
-            # Merge: add new results on top (dedup by url), cap at 200 total
             seen_urls = {r["url"] for r in results}
             for r in existing:
                 if r["url"] not in seen_urls and r.get("platform") != platform:
