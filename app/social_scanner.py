@@ -86,8 +86,8 @@ def start_twitter_scan(
         terms = [f"from:{h.lstrip('@')} since:{since}" for h in handles]
         return _apify_run(token, _TWITTER_ACTOR, {
             "searchTerms": terms,
-            "maxItems": len(terms) * 15,
-            "sort": "Latest",
+            "maxItems": len(terms) * 5,
+            "sort": "Top",
         })
     # Keyword queries — scale similarly
     q = queries or _DEFAULT_TWITTER_QUERIES
