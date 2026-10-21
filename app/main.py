@@ -3549,16 +3549,11 @@ _FB_COMPETITORS_PATH   = Path("/tmp/fb_competitors.json")
 
 
 def _load_competitor_urls() -> list[str]:
-    """Load competitor URLs from /tmp (persisted across workers).
-    Seeds from the repo file on first call after a cold start."""
-    if _FB_COMPETITORS_PATH.exists():
-        try:
-            data = json.loads(_FB_COMPETITORS_PATH.read_text())
-            if isinstance(data, list):
-                return data
-        except Exception:
-            pass
-    # Seed from file in repo
+    """Load competitor URLs from DB. Seeds from competitors.txt on first call."""
+    existing = _load_setting("fb_competitor_urls", [])
+    if existing:
+        return existing
+    # Seed from file in repo on first run
     aim_comp = Path(__file__).parent.parent / "input" / "competitors.txt"
     fsn_comp = _FSN_ROOT / "input" / "competitors.txt"
     comp_file = aim_comp if aim_comp.exists() else (fsn_comp if fsn_comp.exists() else None)
@@ -3566,12 +3561,13 @@ def _load_competitor_urls() -> list[str]:
     if comp_file:
         urls = [l.strip() for l in comp_file.read_text(encoding="utf-8").splitlines()
                 if l.strip() and not l.strip().startswith("#")]
-    _FB_COMPETITORS_PATH.write_text(json.dumps(urls))
+    if urls:
+        _save_setting("fb_competitor_urls", urls)
     return urls
 
 
 def _save_competitor_urls(urls: list[str]) -> None:
-    _FB_COMPETITORS_PATH.write_text(json.dumps(urls))
+    _save_setting("fb_competitor_urls", urls)
 
 
 def _fb_read_job() -> dict:
