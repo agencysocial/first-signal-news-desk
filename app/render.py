@@ -6181,12 +6181,20 @@ def render_faceless_video_page(
                 status_cell = f'<span style="color:#4ade80">&#10003; Done</span> {dl}'
                 bar = ""
             elif status == "running":
-                status_cell = f'<span style="color:#facc15">&#9203; Running</span>'
+                cancel_btn = (
+                    f'<form method="post" action="/faceless-video/cancel/{job_id}" style="display:inline;margin-left:8px">'
+                    f'<button type="submit" style="font-size:11px;padding:2px 9px;background:#2a0a0a;border:1px solid #7f1d1d;'
+                    f'color:#f87171;border-radius:4px;cursor:pointer">&#10005; Cancel</button></form>'
+                )
+                status_cell = f'<span style="color:#facc15">&#9203; Running</span>{cancel_btn}'
                 bar = (
                     f'<div style="margin-top:4px;height:4px;background:#1a1f2b;border-radius:2px;width:100%">'
                     f'<div style="height:4px;background:#2563eb;border-radius:2px;width:{pct}%"></div></div>'
                     f'<div style="font-size:11px;color:#8b93a3;margin-top:2px">{msg_str} ({pct}%)</div>'
                 )
+            elif status == "cancelled":
+                status_cell = f'<span style="color:#8b93a3">&#10005; Cancelled</span>'
+                bar = ""
             elif status == "error":
                 status_cell = f'<span style="color:#f87171">&#9888; Error</span>'
                 bar = f'<div style="font-size:11px;color:#f87171;margin-top:2px">{err[:120]}</div>'

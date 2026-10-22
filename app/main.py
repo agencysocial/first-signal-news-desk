@@ -6861,6 +6861,17 @@ def _fv_update(job_id: str, **kwargs):
         logger.error("fv_update %s: %s", job_id, exc)
 
 
+def _fv_is_cancelled(job_id: str) -> bool:
+    from app.models import FacelessVideoJob as _FVJ
+    try:
+        session = _fv_get_db()
+        row = session.get(_FVJ, job_id)
+        session.close()
+        return row is not None and row.status == "cancelled"
+    except Exception:
+        return False
+
+
 def _fv_worker(job_id: str, script: str, duration: int, voice_id: str, music_url: str = "", music_prompt: str = ""):
     """Background thread — runs the full pipeline and updates DB."""
     kie_key = os.environ.get("KIE_AI_API_KEY", "")
@@ -6868,6 +6879,9 @@ def _fv_worker(job_id: str, script: str, duration: int, voice_id: str, music_url
 
     def _progress(msg: str, pct: int):
         _fv_update(job_id, progress_msg=msg, progress_pct=pct)
+
+    def _cancel_check() -> bool:
+        return _fv_is_cancelled(job_id)
 
     try:
         final_path = _fv.generate_faceless_video(
@@ -6880,11 +6894,17 @@ def _fv_worker(job_id: str, script: str, duration: int, voice_id: str, music_url
             music_url=music_url,
             music_prompt=music_prompt,
             progress_callback=_progress,
+            cancel_check=_cancel_check,
         )
+        if _fv_is_cancelled(job_id):
+            return
         _fv_update(job_id, status="done", progress_msg="Complete", progress_pct=100, final_path=final_path)
+    except _fv.CancelledError:
+        logger.info("fv_worker %s: cancelled", job_id)
     except Exception as exc:
         logger.error("fv_worker %s: %s", job_id, exc)
-        _fv_update(job_id, status="error", error_msg=str(exc)[:500])
+        if not _fv_is_cancelled(job_id):
+            _fv_update(job_id, status="error", error_msg=str(exc)[:500])
 
 
 @app.get("/faceless-video", response_class=HTMLResponse)
@@ -6971,3 +6991,22 @@ def faceless_video_download(job_id: str, user: dict = Depends(require_user)):
     except Exception as exc:
         logger.error("fv_download %s: %s", job_id, exc)
         return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+@app.post("/faceless-video/cancel/{job_id}")
+def faceless_video_cancel(job_id: str, user: dict = Depends(require_user)):
+    from app.models import FacelessVideoJob as _FVJ
+    import re
+    if not re.match(r'^[0-9a-f-]{36}$', job_id):
+        return RedirectResponse("/faceless-video?msg=Invalid+job+id", status_code=303)
+    try:
+        session = _fv_get_db()
+        row = session.get(_FVJ, job_id)
+        if row and row.status in ("running", "pending"):
+            row.status = "cancelled"
+            row.progress_msg = "Cancelled"
+            session.commit()
+        session.close()
+    except Exception as exc:
+        logger.error("fv_cancel %s: %s", job_id, exc)
+    return RedirectResponse("/faceless-video?msg=Job+cancelled", status_code=303)

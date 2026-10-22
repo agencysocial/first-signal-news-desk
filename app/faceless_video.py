@@ -22,6 +22,11 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+
+class CancelledError(Exception):
+    """Raised inside the pipeline when the operator cancels the job."""
+
+
 _KIE_CREATE = "https://api.kie.ai/api/v1/jobs/createTask"
 _KIE_RECORD = "https://api.kie.ai/api/v1/jobs/recordInfo"
 _KIE_IMAGE_MODEL = "gpt-image-2-text-to-image"
@@ -73,9 +78,11 @@ def _kie_headers(key: str) -> dict:
     return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
 
-def _kie_poll(key: str, task_id: str, timeout: int = 480) -> dict:
+def _kie_poll(key: str, task_id: str, timeout: int = 480, cancel_check=None) -> dict:
     deadline = time.time() + timeout
     while time.time() < deadline:
+        if cancel_check and cancel_check():
+            raise CancelledError("Job cancelled during Kie poll")
         r = httpx.get(f"{_KIE_RECORD}?taskId={task_id}", headers=_kie_headers(key), timeout=15)
         r.raise_for_status()
         data = r.json().get("data", {})
@@ -96,7 +103,7 @@ def _extract_image_url(data: dict) -> str:
     raise RuntimeError(f"No image URL in Kie response: {json.dumps(data)[:300]}")
 
 
-def _kie_generate_image(kie_key: str, prompt: str) -> str:
+def _kie_generate_image(kie_key: str, prompt: str, cancel_check=None) -> str:
     body = {
         "model": _KIE_IMAGE_MODEL,
         "input": {"prompt": prompt, "aspect_ratio": "9:16", "resolution": "1K"},
@@ -106,7 +113,7 @@ def _kie_generate_image(kie_key: str, prompt: str) -> str:
     payload = r.json()
     if payload.get("code") != 200:
         raise RuntimeError(f"Kie image: code={payload.get('code')} {payload.get('msg')}")
-    return _extract_image_url(_kie_poll(kie_key, payload["data"]["taskId"], timeout=480))
+    return _extract_image_url(_kie_poll(kie_key, payload["data"]["taskId"], timeout=480, cancel_check=cancel_check))
 
 
 # ── ElevenLabs TTS + Sound Effects ─────────────────────────────────────────────
@@ -319,6 +326,7 @@ def generate_faceless_video(
     music_url: str = "",
     music_prompt: str = "",
     progress_callback=None,
+    cancel_check=None,
 ) -> str:
     cfg = DURATION_CONFIG.get(duration, DURATION_CONFIG[30])
     num_scenes = cfg["scenes"]
@@ -336,6 +344,10 @@ def generate_faceless_video(
             except Exception:
                 pass
 
+    def _check_cancel():
+        if cancel_check and cancel_check():
+            raise CancelledError("Job cancelled by operator")
+
     _prog("Splitting script into scenes", 3)
     scenes = _split_scenes(script, num_scenes)
 
@@ -344,8 +356,9 @@ def generate_faceless_video(
 
     def _gen_image(args):
         idx, scene = args
+        _check_cancel()
         img_path = str(job_dir / f"img_{idx:02d}.jpg")
-        img_url = _kie_generate_image(kie_key, scene["visual_prompt"])
+        img_url = _kie_generate_image(kie_key, scene["visual_prompt"], cancel_check=cancel_check)
         _download(img_url, img_path)
         return idx, img_path
 
@@ -359,9 +372,11 @@ def generate_faceless_video(
             _prog(f"Images: {done}/{num_scenes} ready", 5 + done * 55 // num_scenes)
 
     # Step 2: Ken Burns animate each image + burn caption (FFmpeg, no API wait)
+    _check_cancel()
     _prog("Animating clips with Ken Burns motion + captions (FFmpeg)", 62)
     captioned_paths = []
     for i, scene in enumerate(scenes):
+        _check_cancel()
         cap_path = str(job_dir / f"cap_{i:02d}.mp4")
         _ffmpeg_ken_burns_and_caption(
             scene["image_path"],
@@ -375,6 +390,7 @@ def generate_faceless_video(
         _prog(f"Clips: {i+1}/{num_scenes} rendered", 62 + (i + 1) * 15 // num_scenes)
 
     # Step 3: voiceover
+    _check_cancel()
     _prog("Generating voiceover (ElevenLabs)", 80)
     audio_path = str(job_dir / "voiceover.mp3")
     _elevenlabs_tts(el_key, script, voice_id, audio_path)
