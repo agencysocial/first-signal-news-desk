@@ -3,8 +3,8 @@ AI Faceless Video Generator
 Pipeline:
   1. Script -> N scenes (word-split)
   2. Each scene -> 9:16 background image (Kie.ai gpt-image-2-text-to-image)
-  3. Each image -> 5s animated clip with dynamic motion (Kie.ai wan/2-6-flash-video-to-video)
-  4. Each clip -> trimmed to ~3.5s + burned-in caption (FFmpeg drawtext)
+  3. Each image -> animated clip with Ken Burns motion (FFmpeg zoompan/crop, no API wait)
+  4. Each clip -> burned-in caption (FFmpeg drawtext)
   5. Full script -> voiceover MP3 (ElevenLabs)
   6. Captioned clips + voiceover + optional music bed -> final MP4 (FFmpeg)
 """
@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 _KIE_CREATE = "https://api.kie.ai/api/v1/jobs/createTask"
 _KIE_RECORD = "https://api.kie.ai/api/v1/jobs/recordInfo"
 _KIE_IMAGE_MODEL = "gpt-image-2-text-to-image"
-_KIE_VIDEO_MODEL = "wan/2-6-flash-video-to-video"
 _EL_BASE = "https://api.elevenlabs.io/v1"
 
 VOICES: dict[str, str] = {
@@ -36,25 +35,35 @@ VOICES: dict[str, str] = {
     "Bella – Female, Warm": "EXAVITQu4vr4xnSDxMaL",
 }
 
-# Kie.ai only supports 5s or 10s clips. We generate 5s and trim each to TRIM_TO
-# seconds in FFmpeg — faster cuts = better retention.
-# scenes × TRIM_TO ≈ target duration.
+# Each clip is CLIP_DURATION seconds. scenes × CLIP_DURATION ≈ target video duration.
 DURATION_CONFIG: dict[int, dict] = {
-    30: {"scenes": 9,  "clip_seconds": 5, "trim_to": 3.5},
-    60: {"scenes": 18, "clip_seconds": 5, "trim_to": 3.5},
+    30: {"scenes": 9,  "clip_duration": 3.5},
+    60: {"scenes": 18, "clip_duration": 3.5},
 }
 
-# Rotating motion styles — applied round-robin across scenes for variety
-_MOTION_STYLES = [
-    "dramatic slow push-in zoom, camera slowly moving toward subject, cinematic",
-    "fast whip pan left revealing new scene, dynamic motion blur, energetic",
-    "upward tilt reveal, camera panning upward slowly, epic establishing shot",
-    "parallax drift, subtle sideways camera slide, atmospheric depth",
-    "slow pull-back zoom out reveal, expansive cinematic feel",
-    "fast zoom-in punch, sudden dramatic scale change, high-impact",
-    "smooth orbit around subject, subtle rotation, immersive",
-    "handheld subtle shake, documentary realism, grounded feel",
-    "diagonal wipe reveal, camera rolling slightly, dynamic angle change",
+# Ken Burns motion presets — FFmpeg zoompan filter expressions.
+# Each entry is (zoom_expr, x_expr, y_expr) for a 1080x1920 (9:16) clip.
+# zoompan input is assumed to be 1080x1920; output locked to 1080x1920.
+# z goes from 1.0 (full frame) to ~1.06 (slight crop = motion).
+_MOTION_PRESETS = [
+    # Slow push-in zoom toward center
+    ("1.0+0.012*on/25", "(iw-ow)/2", "(ih-oh)/2"),
+    # Slow pull-back zoom out
+    ("1.06-0.012*on/25", "(iw-ow)/2", "(ih-oh)/2"),
+    # Pan right while slightly zoomed
+    ("1.05", "min(iw-ow, 0.6*on/25*(iw-ow))", "(ih-oh)/2"),
+    # Pan left while slightly zoomed
+    ("1.05", "max(0, (iw-ow)-0.6*on/25*(iw-ow))", "(ih-oh)/2"),
+    # Pan upward
+    ("1.05", "(iw-ow)/2", "min(ih-oh, 0.6*on/25*(ih-oh))"),
+    # Pan downward
+    ("1.05", "(iw-ow)/2", "max(0, (ih-oh)-0.6*on/25*(ih-oh))"),
+    # Zoom-in punch from left side
+    ("1.0+0.012*on/25", "0", "(ih-oh)/2"),
+    # Zoom-in pull from right side
+    ("1.0+0.012*on/25", "iw-ow", "(ih-oh)/2"),
+    # Gentle diagonal drift
+    ("1.05", "0.4*on/25*(iw-ow)", "0.4*on/25*(ih-oh)"),
 ]
 
 
@@ -87,18 +96,6 @@ def _extract_image_url(data: dict) -> str:
     raise RuntimeError(f"No image URL in Kie response: {json.dumps(data)[:300]}")
 
 
-def _extract_video_url(data: dict) -> str:
-    for work in (data.get("works") or []):
-        for key in ("url", "videoUrl", "outputUrl", "coverUrl"):
-            v = work.get(key, "")
-            if v and (v.endswith(".mp4") or "mp4" in v or "video" in key.lower()):
-                return v
-        for key in ("url", "videoUrl", "outputUrl"):
-            if work.get(key):
-                return work[key]
-    raise RuntimeError(f"No video URL in Kie response: {json.dumps(data)[:300]}")
-
-
 def _kie_generate_image(kie_key: str, prompt: str) -> str:
     body = {
         "model": _KIE_IMAGE_MODEL,
@@ -110,26 +107,6 @@ def _kie_generate_image(kie_key: str, prompt: str) -> str:
     if payload.get("code") != 200:
         raise RuntimeError(f"Kie image: code={payload.get('code')} {payload.get('msg')}")
     return _extract_image_url(_kie_poll(kie_key, payload["data"]["taskId"], timeout=480))
-
-
-def _kie_animate_image(kie_key: str, image_url: str, motion_prompt: str, clip_seconds: int = 5) -> str:
-    body = {
-        "model": _KIE_VIDEO_MODEL,
-        "input": {
-            "video_urls": [image_url],
-            "prompt": motion_prompt,
-            "duration": clip_seconds,
-            "resolution": "720p",
-            "audio": False,
-            "multi_shots": False,
-        },
-    }
-    r = httpx.post(_KIE_CREATE, headers=_kie_headers(kie_key), json=body, timeout=30)
-    r.raise_for_status()
-    payload = r.json()
-    if payload.get("code") != 200:
-        raise RuntimeError(f"Kie video: code={payload.get('code')} {payload.get('msg')}")
-    return _extract_video_url(_kie_poll(kie_key, payload["data"]["taskId"], timeout=600))
 
 
 # ── ElevenLabs TTS + Sound Effects ─────────────────────────────────────────────
@@ -173,23 +150,42 @@ def _download(url: str, out_path: str) -> None:
     Path(out_path).write_bytes(r.content)
 
 
-def _ffmpeg_trim_and_caption(
-    input_path: str,
+def _ffmpeg_ken_burns_and_caption(
+    image_path: str,
     caption_text: str,
-    trim_to: float,
+    clip_duration: float,
     output_path: str,
+    motion_preset: tuple,
     font_path: str | None = None,
 ) -> None:
-    """Trim clip to trim_to seconds and burn in bold caption at lower center."""
-    # Wrap long captions at ~30 chars for vertical video
+    """
+    Animate a still image with a Ken Burns zoompan effect and burn in caption.
+    Output: H.264 MP4, 9:16, 30fps, ~clip_duration seconds.
+    """
+    fps = 30
+    num_frames = int(clip_duration * fps)
+    w, h = 1080, 1920
+
+    z_expr, x_expr, y_expr = motion_preset
+
+    # zoompan: input image is looped, output is w×h at fps
+    zoompan = (
+        f"scale={w*2}:{h*2},"   # upscale so zoompan has room to crop
+        f"zoompan="
+        f"z='{z_expr}':"
+        f"x='{x_expr}':"
+        f"y='{y_expr}':"
+        f"d={num_frames}:"
+        f"s={w}x{h}:"
+        f"fps={fps}"
+    )
+
+    # Wrap caption for vertical video (~28 chars per line)
     wrapped = "\n".join(textwrap.wrap(caption_text, width=28))
-    # Write to temp file to avoid shell escaping issues
-    txt_file = input_path + ".txt"
+    txt_file = image_path + ".cap.txt"
     Path(txt_file).write_text(wrapped, encoding="utf-8")
 
     font_args = f":fontfile='{font_path}'" if font_path else ""
-
-    # Bold white text, black semi-transparent box, lower third
     drawtext = (
         f"drawtext=textfile='{txt_file}'"
         f"{font_args}"
@@ -204,14 +200,17 @@ def _ffmpeg_trim_and_caption(
         ":expansion=none"
     )
 
+    vf = f"{zoompan},{drawtext}"
+
     subprocess.run(
         [
             "ffmpeg", "-y",
-            "-i", input_path,
-            "-t", str(trim_to),
-            "-vf", drawtext,
+            "-loop", "1", "-i", image_path,
+            "-t", str(clip_duration),
+            "-vf", vf,
             "-c:v", "libx264", "-preset", "fast", "-crf", "22",
-            "-an",  # drop original (silent) audio
+            "-pix_fmt", "yuv420p",
+            "-an",
             output_path,
         ],
         check=True, capture_output=True,
@@ -241,7 +240,6 @@ def _ffmpeg_compile(
     """Concatenate captioned clips, mix voiceover + optional music bed."""
     tmp_dir = Path(out_path).parent
 
-    # Concat silent captioned clips
     concat_file = str(tmp_dir / "concat.txt")
     with open(concat_file, "w") as f:
         for p in captioned_clip_paths:
@@ -255,7 +253,6 @@ def _ffmpeg_compile(
     )
 
     if music_path and Path(music_path).exists():
-        # Mix voiceover (full vol) + music bed (-18dB)
         subprocess.run(
             [
                 "ffmpeg", "-y",
@@ -295,19 +292,18 @@ def _split_scenes(script: str, num_scenes: int) -> list[dict]:
         start = i * size
         end = (start + size) if i < num_scenes - 1 else n
         chunk = " ".join(words[start:end])
-        motion_style = _MOTION_STYLES[i % len(_MOTION_STYLES)]
+        motion_preset = _MOTION_PRESETS[i % len(_MOTION_PRESETS)]
         visual = (
             "Cinematic vertical 9:16 background scene, photorealistic, "
             "no visible text, no logos, no watermarks, "
             f"dramatic professional lighting, subject: {chunk[:100]}. "
             "Rich color grading, high production quality, vertical portrait orientation."
         )
-        motion = (
-            f"{motion_style}, "
-            f"scene context: {chunk[:60]}. "
-            "High production quality, smooth motion, vertical 9:16 format."
-        )
-        scenes.append({"narration": chunk, "visual_prompt": visual, "motion_prompt": motion})
+        scenes.append({
+            "narration": chunk,
+            "visual_prompt": visual,
+            "motion_preset": motion_preset,
+        })
     return scenes
 
 
@@ -326,8 +322,7 @@ def generate_faceless_video(
 ) -> str:
     cfg = DURATION_CONFIG.get(duration, DURATION_CONFIG[30])
     num_scenes = cfg["scenes"]
-    clip_sec = cfg["clip_seconds"]
-    trim_to = cfg["trim_to"]
+    clip_duration = cfg["clip_duration"]
 
     job_dir = Path(f"/tmp/faceless_video/{job_id}")
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -345,48 +340,49 @@ def generate_faceless_video(
     scenes = _split_scenes(script, num_scenes)
 
     # Step 1: generate all background images in parallel
-    _prog(f"Generating {num_scenes} background images (parallel)", 5)
+    _prog(f"Generating {num_scenes} background images (parallel, ~5-10 min)", 5)
 
     def _gen_image(args):
         idx, scene = args
-        return idx, _kie_generate_image(kie_key, scene["visual_prompt"])
+        img_path = str(job_dir / f"img_{idx:02d}.jpg")
+        img_url = _kie_generate_image(kie_key, scene["visual_prompt"])
+        _download(img_url, img_path)
+        return idx, img_path
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = {pool.submit(_gen_image, (i, s)): i for i, s in enumerate(scenes)}
         done = 0
         for fut in as_completed(futures):
-            idx, img_url = fut.result()
-            scenes[idx]["image_url"] = img_url
+            idx, img_path = fut.result()
+            scenes[idx]["image_path"] = img_path
             done += 1
-            _prog(f"Images: {done}/{num_scenes} ready", 5 + done * 30 // num_scenes)
+            _prog(f"Images: {done}/{num_scenes} ready", 5 + done * 55 // num_scenes)
 
-    # Step 2: animate each image → 5s clip (sequential; Kie rate-limits concurrent video)
-    raw_clip_paths = []
-    for i, scene in enumerate(scenes):
-        _prog(f"Animating clip {i+1}/{num_scenes}", 37 + i * 28 // num_scenes)
-        vid_url = _kie_animate_image(kie_key, scene["image_url"], scene["motion_prompt"], clip_sec)
-        scene["video_url"] = vid_url
-        raw_path = str(job_dir / f"raw_{i:02d}.mp4")
-        _download(vid_url, raw_path)
-        raw_clip_paths.append(raw_path)
-
-    # Step 3: trim each clip to trim_to seconds + burn in caption
-    _prog("Burning captions & trimming clips", 67)
+    # Step 2: Ken Burns animate each image + burn caption (FFmpeg, no API wait)
+    _prog("Animating clips with Ken Burns motion + captions (FFmpeg)", 62)
     captioned_paths = []
-    for i, (raw_path, scene) in enumerate(zip(raw_clip_paths, scenes)):
+    for i, scene in enumerate(scenes):
         cap_path = str(job_dir / f"cap_{i:02d}.mp4")
-        _ffmpeg_trim_and_caption(raw_path, scene["narration"], trim_to, cap_path, font_path)
+        _ffmpeg_ken_burns_and_caption(
+            scene["image_path"],
+            scene["narration"],
+            clip_duration,
+            cap_path,
+            scene["motion_preset"],
+            font_path,
+        )
         captioned_paths.append(cap_path)
+        _prog(f"Clips: {i+1}/{num_scenes} rendered", 62 + (i + 1) * 15 // num_scenes)
 
-    # Step 4: voiceover
-    _prog("Generating voiceover", 80)
+    # Step 3: voiceover
+    _prog("Generating voiceover (ElevenLabs)", 80)
     audio_path = str(job_dir / "voiceover.mp3")
     _elevenlabs_tts(el_key, script, voice_id, audio_path)
 
-    # Step 5: optional music/sound bed
+    # Step 4: optional music/sound bed
     music_path: str | None = None
     if music_prompt and el_key:
-        _prog("Generating background music (ElevenLabs Sound Effects)", 86)
+        _prog("Generating background music (ElevenLabs Sound Effects)", 88)
         try:
             music_path = str(job_dir / "music.mp3")
             _elevenlabs_sound_effect(el_key, music_prompt, float(duration), music_path)
@@ -394,7 +390,7 @@ def generate_faceless_video(
             logger.warning("ElevenLabs sound effect failed, skipping: %s", exc)
             music_path = None
     elif music_url:
-        _prog("Downloading music track", 86)
+        _prog("Downloading music track", 88)
         try:
             music_path = str(job_dir / "music.mp3")
             _download(music_url, music_path)
@@ -402,13 +398,15 @@ def generate_faceless_video(
             logger.warning("Music download failed, skipping: %s", exc)
             music_path = None
 
-    # Step 6: compile
-    _prog("Compiling final video", 90)
+    # Step 5: compile final video
+    _prog("Compiling final video", 92)
     final_path = str(job_dir / "final.mp4")
     _ffmpeg_compile(captioned_paths, audio_path, final_path, music_path)
 
     (job_dir / "metadata.json").write_text(
-        json.dumps({"job_id": job_id, "duration": duration, "trim_to": trim_to, "scenes": scenes}, indent=2)
+        json.dumps({"job_id": job_id, "duration": duration, "clip_duration": clip_duration, "scenes": [
+            {k: v for k, v in s.items() if k != "motion_preset"} for s in scenes
+        ]}, indent=2)
     )
 
     _prog("Complete", 100)

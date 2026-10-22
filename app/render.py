@@ -6209,7 +6209,7 @@ def render_faceless_video_page(
     body = f"""
 {flash_html}
 <h1>&#127909; AI Faceless Video Generator</h1>
-<p class="sub">Script &rarr; scene images (Kie.ai, 9:16) &rarr; animated clips (Wan 2.6 Flash, vertical) &rarr; voiceover (ElevenLabs) &rarr; MP4 download &mdash; Reels/Shorts format</p>
+<p class="sub">Script &rarr; scene images (Kie.ai, 9:16) &rarr; Ken Burns motion + captions (FFmpeg) &rarr; voiceover (ElevenLabs) &rarr; MP4 download &mdash; Reels/Shorts format</p>
 <div style="background:#11151f;border:1px solid #1a1f2b;border-radius:8px;padding:20px;max-width:680px">
   <form method="post" action="/faceless-video/generate" id="gen-form">
     <div style="margin-bottom:14px">
