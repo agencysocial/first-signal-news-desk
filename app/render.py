@@ -6235,10 +6235,22 @@ def render_faceless_video_page(
         </select>
       </div>
     </div>
+    <div style="margin-bottom:14px">
+      <label style="display:block;font-size:12px;color:#8b93a3;margin-bottom:4px">
+        Background Music / Sound <span style="color:#4a5568">(optional)</span>
+      </label>
+      <input name="music_prompt" type="text" style="width:100%;padding:7px 8px;font-size:13px;box-sizing:border-box"
+        placeholder='e.g. "epic cinematic orchestral background music, intense and dramatic" or "upbeat motivational corporate music"'>
+      <div style="font-size:11px;color:#4a5568;margin-top:3px">
+        Describe the music and ElevenLabs will generate it. Or paste a direct MP3 URL in the field below.
+      </div>
+      <input name="music_url" type="url" style="width:100%;padding:7px 8px;font-size:13px;box-sizing:border-box;margin-top:5px"
+        placeholder="Direct MP3 URL (optional — leave blank if using the prompt above)">
+    </div>
     <div style="background:#0d1420;border:1px solid #1a2535;border-radius:4px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#8b93a3">
-      &#9432;&nbsp; Estimated cost: <strong style="color:#e6e8ec">30s ≈ $1.20</strong> (6 images + 6 clips at 720p) &nbsp;|&nbsp;
-      <strong style="color:#e6e8ec">60s ≈ $2.40</strong> (12 images + 12 clips).
-      Generation takes 10&ndash;20 min. Page auto-refreshes every 20s while running.
+      &#9432;&nbsp; <strong style="color:#e6e8ec">30s</strong>: 9 scenes, ~$1.80 &nbsp;|&nbsp;
+      <strong style="color:#e6e8ec">60s</strong>: 18 scenes, ~$3.60.
+      Each clip trimmed to 3.5s for fast-cut pacing. Captions burned in. Generates in ~15&ndash;25 min.
     </div>
     <button type="submit" class="primary" id="gen-btn"
       style="padding:8px 20px;font-size:13px">&#9654; Generate Video</button>

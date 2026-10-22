@@ -6861,7 +6861,7 @@ def _fv_update(job_id: str, **kwargs):
         logger.error("fv_update %s: %s", job_id, exc)
 
 
-def _fv_worker(job_id: str, script: str, duration: int, voice_id: str):
+def _fv_worker(job_id: str, script: str, duration: int, voice_id: str, music_url: str = "", music_prompt: str = ""):
     """Background thread — runs the full pipeline and updates DB."""
     kie_key = os.environ.get("KIE_AI_API_KEY", "")
     el_key  = os.environ.get("ELEVENLABS_API_KEY", "")
@@ -6877,6 +6877,8 @@ def _fv_worker(job_id: str, script: str, duration: int, voice_id: str):
             kie_key=kie_key,
             el_key=el_key,
             job_id=job_id,
+            music_url=music_url,
+            music_prompt=music_prompt,
             progress_callback=_progress,
         )
         _fv_update(job_id, status="done", progress_msg="Complete", progress_pct=100, final_path=final_path)
@@ -6906,6 +6908,8 @@ async def faceless_video_generate(
     script = str(form.get("script", "")).strip()
     duration = int(form.get("duration") or 30)
     voice_id = str(form.get("voice_id", "")).strip()
+    music_prompt = str(form.get("music_prompt", "")).strip()
+    music_url = str(form.get("music_url", "")).strip()
 
     if not script:
         return RedirectResponse("/faceless-video?msg=Script+is+required", status_code=303)
@@ -6935,7 +6939,7 @@ async def faceless_video_generate(
     session.close()
 
     import threading
-    t = threading.Thread(target=_fv_worker, args=(job_id, script, duration, voice_id), daemon=True)
+    t = threading.Thread(target=_fv_worker, args=(job_id, script, duration, voice_id, music_url, music_prompt), daemon=True)
     t.start()
 
     return RedirectResponse(f"/faceless-video?msg=Video+generation+started+%28job+{job_id[:8]}%29", status_code=303)
