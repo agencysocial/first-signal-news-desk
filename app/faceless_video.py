@@ -87,7 +87,7 @@ def _extract_video_url(data: dict) -> str:
 def _kie_generate_image(kie_key: str, prompt: str) -> str:
     body = {
         "model": _KIE_IMAGE_MODEL,
-        "input": {"prompt": prompt, "aspect_ratio": "16:9", "resolution": "1K"},
+        "input": {"prompt": prompt, "aspect_ratio": "9:16", "resolution": "1K"},
     }
     r = httpx.post(_KIE_CREATE, headers=_kie_headers(kie_key), json=body, timeout=30)
     r.raise_for_status()
@@ -177,9 +177,9 @@ def _split_scenes(script: str, num_scenes: int) -> list[dict]:
         end = (start + size) if i < num_scenes - 1 else n
         chunk = " ".join(words[start:end])
         visual = (
-            f"Cinematic wide-angle background scene, photorealistic, no visible text or logos, "
+            f"Cinematic vertical background scene, photorealistic, no visible text or logos, "
             f"no people in foreground, dramatic lighting, related to: {chunk[:120]}. "
-            "16:9 composition, professional documentary style."
+            "9:16 vertical portrait format, professional documentary style."
         )
         motion = (
             f"Slow cinematic camera movement, subtle zoom or pan, atmospheric, "
