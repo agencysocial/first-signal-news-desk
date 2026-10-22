@@ -226,6 +226,25 @@ class CoveredPost(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class FacelessVideoJob(Base):
+    """Tracks AI faceless video generation jobs. Final MP4 lives in /tmp (ephemeral)."""
+    __tablename__ = "faceless_video_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)  # UUID
+    status: Mapped[str] = mapped_column(String(30), default="pending")  # pending|running|done|error
+    progress_msg: Mapped[str] = mapped_column(String(200), default="")
+    progress_pct: Mapped[int] = mapped_column(Integer, default=0)
+    script: Mapped[str] = mapped_column(Text)
+    duration: Mapped[int] = mapped_column(Integer)  # 30 or 60
+    voice_id: Mapped[str] = mapped_column(String(100))
+    voice_label: Mapped[str] = mapped_column(String(100), default="")
+    scene_metadata: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    error_msg: Mapped[str | None] = mapped_column(Text, nullable=True)
+    final_path: Mapped[str | None] = mapped_column(Text, nullable=True)  # /tmp path
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class AppSetting(Base):
     """Persistent key/value store for operator-configured lists (Twitter handles,
     Reddit subs, etc.) that must survive Render restarts and deploys."""

@@ -32,10 +32,11 @@ from app.render import (
     render_wire_page, render_detail_page, render_sources_page,
     render_pipeline_queue_page, render_login_page,
     render_story_workspace_page, render_fb_scanner_page,
-    render_social_scanner_page,
+    render_social_scanner_page, render_faceless_video_page,
 )
 from app import fb_scanner as _fb
 from app import social_scanner as _social
+from app import faceless_video as _fv
 
 # ── First Signal pipeline paths ───────────────────────────────────────────────
 _FSN_ROOT = Path(
@@ -6808,4 +6809,161 @@ async def pipeline_queue_heygen_status(cid: str, user: dict = Depends(require_us
         return JSONResponse({"status": status, "video_url": video_url, "video_id": video_id})
     except Exception as exc:
         logger.error("heygen-status %s: %s", cid, exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+# ── Faceless Video Generator ───────────────────────────────────────────────────
+
+def _fv_get_db():
+    return SessionLocal()
+
+
+def _fv_ensure_table():
+    from app.models import FacelessVideoJob as _FVJ, Base as _Base
+    from app.db import engine as _engine
+    _Base.metadata.create_all(bind=_engine, checkfirst=True)
+
+
+def _fv_list_jobs(limit: int = 20) -> list[dict]:
+    from app.models import FacelessVideoJob as _FVJ
+    try:
+        session = _fv_get_db()
+        rows = session.execute(
+            __import__("sqlalchemy").select(_FVJ).order_by(_FVJ.created_at.desc()).limit(limit)
+        ).scalars().all()
+        session.close()
+        return [
+            {
+                "id": r.id, "status": r.status,
+                "progress_msg": r.progress_msg, "progress_pct": r.progress_pct,
+                "script": r.script[:120] + "..." if len(r.script) > 120 else r.script,
+                "duration": r.duration, "voice_id": r.voice_id, "voice_label": r.voice_label,
+                "error_msg": r.error_msg, "final_path": r.final_path,
+                "created_at": r.created_at.isoformat() if r.created_at else "",
+            }
+            for r in rows
+        ]
+    except Exception:
+        return []
+
+
+def _fv_update(job_id: str, **kwargs):
+    from app.models import FacelessVideoJob as _FVJ
+    try:
+        session = _fv_get_db()
+        row = session.get(_FVJ, job_id)
+        if row:
+            for k, v in kwargs.items():
+                setattr(row, k, v)
+            session.commit()
+        session.close()
+    except Exception as exc:
+        logger.error("fv_update %s: %s", job_id, exc)
+
+
+def _fv_worker(job_id: str, script: str, duration: int, voice_id: str):
+    """Background thread — runs the full pipeline and updates DB."""
+    kie_key = os.environ.get("KIE_AI_API_KEY", "")
+    el_key  = os.environ.get("ELEVENLABS_API_KEY", "")
+
+    def _progress(msg: str, pct: int):
+        _fv_update(job_id, progress_msg=msg, progress_pct=pct)
+
+    try:
+        final_path = _fv.generate_faceless_video(
+            script=script,
+            duration=duration,
+            voice_id=voice_id,
+            kie_key=kie_key,
+            el_key=el_key,
+            job_id=job_id,
+            progress_callback=_progress,
+        )
+        _fv_update(job_id, status="done", progress_msg="Complete", progress_pct=100, final_path=final_path)
+    except Exception as exc:
+        logger.error("fv_worker %s: %s", job_id, exc)
+        _fv_update(job_id, status="error", error_msg=str(exc)[:500])
+
+
+@app.get("/faceless-video", response_class=HTMLResponse)
+def faceless_video_page(msg: str = "", user: dict = Depends(require_user)):
+    _fv_ensure_table()
+    jobs = _fv_list_jobs()
+    return HTMLResponse(render_faceless_video_page(
+        jobs=jobs, msg=msg, voices=_fv.VOICES,
+    ))
+
+
+@app.post("/faceless-video/generate")
+async def faceless_video_generate(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(require_user),
+):
+    from app.models import FacelessVideoJob as _FVJ
+    _fv_ensure_table()
+    form = await request.form()
+    script = str(form.get("script", "")).strip()
+    duration = int(form.get("duration") or 30)
+    voice_id = str(form.get("voice_id", "")).strip()
+
+    if not script:
+        return RedirectResponse("/faceless-video?msg=Script+is+required", status_code=303)
+    if duration not in (30, 60):
+        duration = 30
+    if not voice_id:
+        voice_id = list(_fv.VOICES.values())[0]
+
+    kie_key = os.environ.get("KIE_AI_API_KEY", "")
+    el_key  = os.environ.get("ELEVENLABS_API_KEY", "")
+    if not kie_key or not el_key:
+        missing = []
+        if not kie_key: missing.append("KIE_AI_API_KEY")
+        if not el_key:  missing.append("ELEVENLABS_API_KEY")
+        return RedirectResponse(f"/faceless-video?msg=Missing+env+vars:+{'+'.join(missing)}", status_code=303)
+
+    voice_label = next((lbl for lbl, vid in _fv.VOICES.items() if vid == voice_id), voice_id)
+    job_id = str(__import__("uuid").uuid4())
+
+    session = _fv_get_db()
+    row = _FVJ(
+        id=job_id, status="running", progress_msg="Starting...", progress_pct=0,
+        script=script, duration=duration, voice_id=voice_id, voice_label=voice_label,
+    )
+    session.add(row)
+    session.commit()
+    session.close()
+
+    import threading
+    t = threading.Thread(target=_fv_worker, args=(job_id, script, duration, voice_id), daemon=True)
+    t.start()
+
+    return RedirectResponse(f"/faceless-video?msg=Video+generation+started+%28job+{job_id[:8]}%29", status_code=303)
+
+
+@app.get("/faceless-video/download/{job_id}")
+def faceless_video_download(job_id: str, user: dict = Depends(require_user)):
+    from app.models import FacelessVideoJob as _FVJ
+    import re
+    if not re.match(r'^[0-9a-f-]{36}$', job_id):
+        return JSONResponse({"error": "invalid job id"}, status_code=400)
+    try:
+        session = _fv_get_db()
+        row = session.get(_FVJ, job_id)
+        session.close()
+        if not row or row.status != "done":
+            return JSONResponse({"error": "job not done or not found"}, status_code=404)
+        path = row.final_path
+        if not path or not __import__("os").path.exists(path):
+            return JSONResponse({"error": "video file no longer available (server restarted)"}, status_code=410)
+        import mimetypes
+        data = __import__("pathlib").Path(path).read_bytes()
+        filename = f"faceless_video_{job_id[:8]}.mp4"
+        return Response(
+            content=data,
+            media_type="video/mp4",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as exc:
+        logger.error("fv_download %s: %s", job_id, exc)
         return JSONResponse({"error": str(exc)}, status_code=500)

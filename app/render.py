@@ -119,6 +119,7 @@ NAV = """
       <a href="/pipeline-queue">&#9654; Production Queue</a>
       <a href="/fb-scanner">&#128269; FB Scanner</a>
       <a href="/social-scanner">&#128038; Social</a>
+      <a href="/faceless-video">&#127909; Faceless Video</a>
     </div>
     <div style="display:flex;align-items:center;gap:12px">
       <span id="_qcounts" style="font-size:11px;color:#8b93a3;letter-spacing:.3px"></span>
@@ -6138,6 +6139,125 @@ document.addEventListener('click', function(e) {{
     }}
   }}).catch(function(e){{ btn.disabled=false; btn.textContent='&#43; Queue'; alert('Error: '+e.message); }});
 }});
+</script>
+"""
+    return PAGE_HEAD + body + PAGE_TAIL
+
+
+# ── Faceless Video Generator ───────────────────────────────────────────────────
+
+def render_faceless_video_page(
+    jobs: list[dict],
+    msg: str = "",
+    voices: dict | None = None,
+) -> str:
+    flash_html = f'<div class="flash">{escape(msg)}</div>' if msg else ""
+    voices = voices or {}
+
+    voice_options = "".join(
+        f'<option value="{escape(vid)}">{escape(label)}</option>'
+        for label, vid in voices.items()
+    )
+
+    jobs_html = ""
+    if jobs:
+        rows = []
+        for j in jobs:
+            status = j.get("status", "")
+            pct = j.get("progress_pct", 0)
+            msg_str = escape(j.get("progress_msg", ""))
+            err = escape(j.get("error_msg") or "")
+            created = (j.get("created_at") or "")[:16].replace("T", " ")
+            dur = j.get("duration", "")
+            voice_label = escape(j.get("voice_label") or "")
+            job_id = j.get("id", "")
+
+            if status == "done":
+                dl = (
+                    f'<a href="/faceless-video/download/{job_id}" '
+                    f'style="color:#4ade80;font-size:12px;padding:3px 10px;border:1px solid #245c33;'
+                    f'border-radius:4px;background:#0a1800;text-decoration:none">&#11015; Download MP4</a>'
+                )
+                status_cell = f'<span style="color:#4ade80">&#10003; Done</span> {dl}'
+                bar = ""
+            elif status == "running":
+                status_cell = f'<span style="color:#facc15">&#9203; Running</span>'
+                bar = (
+                    f'<div style="margin-top:4px;height:4px;background:#1a1f2b;border-radius:2px;width:100%">'
+                    f'<div style="height:4px;background:#2563eb;border-radius:2px;width:{pct}%"></div></div>'
+                    f'<div style="font-size:11px;color:#8b93a3;margin-top:2px">{msg_str} ({pct}%)</div>'
+                )
+            elif status == "error":
+                status_cell = f'<span style="color:#f87171">&#9888; Error</span>'
+                bar = f'<div style="font-size:11px;color:#f87171;margin-top:2px">{err[:120]}</div>'
+            else:
+                status_cell = f'<span style="color:#8b93a3">{escape(status)}</span>'
+                bar = ""
+
+            rows.append(
+                f'<tr><td>{created}</td><td>{dur}s</td><td>{voice_label}</td>'
+                f'<td>{status_cell}{bar}</td></tr>'
+            )
+
+        jobs_html = f"""
+<h2 style="margin-top:28px">Recent Jobs</h2>
+<table>
+  <thead><tr><th>Created</th><th>Duration</th><th>Voice</th><th>Status</th></tr></thead>
+  <tbody>{"".join(rows)}</tbody>
+</table>"""
+
+    body = f"""
+{flash_html}
+<h1>&#127909; AI Faceless Video Generator</h1>
+<p class="sub">Script &rarr; scene images (Kie.ai) &rarr; animated clips (Wan 2.6 Flash) &rarr; voiceover (ElevenLabs) &rarr; MP4 download</p>
+<div style="background:#11151f;border:1px solid #1a1f2b;border-radius:8px;padding:20px;max-width:680px">
+  <form method="post" action="/faceless-video/generate" id="gen-form">
+    <div style="margin-bottom:14px">
+      <label style="display:block;font-size:12px;color:#8b93a3;margin-bottom:4px">Script / Narration</label>
+      <textarea name="script" rows="7" required
+        style="width:100%;background:#0b0e14;color:#e6e8ec;border:1px solid #2a3040;border-radius:4px;
+               padding:8px 10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"
+        placeholder="Type or paste your video script here. Be descriptive — the AI will generate matching scenes."
+      ></textarea>
+    </div>
+    <div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap">
+      <div style="flex:1;min-width:140px">
+        <label style="display:block;font-size:12px;color:#8b93a3;margin-bottom:4px">Duration</label>
+        <select name="duration" style="width:100%;padding:7px 8px;font-size:13px">
+          <option value="30">30 seconds (6 scenes)</option>
+          <option value="60">60 seconds (12 scenes)</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <label style="display:block;font-size:12px;color:#8b93a3;margin-bottom:4px">Voice</label>
+        <select name="voice_id" style="width:100%;padding:7px 8px;font-size:13px">
+          {voice_options}
+        </select>
+      </div>
+    </div>
+    <div style="background:#0d1420;border:1px solid #1a2535;border-radius:4px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#8b93a3">
+      &#9432;&nbsp; Estimated cost: <strong style="color:#e6e8ec">30s ≈ $1.20</strong> (6 images + 6 clips at 720p) &nbsp;|&nbsp;
+      <strong style="color:#e6e8ec">60s ≈ $2.40</strong> (12 images + 12 clips).
+      Generation takes 10&ndash;20 min. Page auto-refreshes every 20s while running.
+    </div>
+    <button type="submit" class="primary" id="gen-btn"
+      style="padding:8px 20px;font-size:13px">&#9654; Generate Video</button>
+  </form>
+</div>
+{jobs_html}
+<script>
+document.getElementById('gen-form').addEventListener('submit', function() {{
+  var btn = document.getElementById('gen-btn');
+  btn.disabled = true;
+  btn.textContent = 'Starting…';
+}});
+// Auto-refresh while any job is running
+(function() {{
+  var rows = document.querySelectorAll('td');
+  var running = false;
+  rows.forEach(function(td) {{ if(td.textContent.indexOf('Running') >= 0) running = true; }});
+  if(running) setTimeout(function(){{ window.location.reload(); }}, 20000);
+}})();
 </script>
 """
     return PAGE_HEAD + body + PAGE_TAIL
