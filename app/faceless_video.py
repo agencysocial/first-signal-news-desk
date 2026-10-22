@@ -95,7 +95,7 @@ def _kie_generate_image(kie_key: str, prompt: str) -> str:
     if payload.get("code") != 200:
         raise RuntimeError(f"Kie image create: code={payload.get('code')} {payload.get('msg')}")
     task_id = payload["data"]["taskId"]
-    return _extract_image_url(_kie_poll(kie_key, task_id, timeout=180))
+    return _extract_image_url(_kie_poll(kie_key, task_id, timeout=480))
 
 
 def _kie_animate_image(kie_key: str, image_url: str, motion_prompt: str, clip_seconds: int = 5) -> str:
@@ -116,7 +116,7 @@ def _kie_animate_image(kie_key: str, image_url: str, motion_prompt: str, clip_se
     if payload.get("code") != 200:
         raise RuntimeError(f"Kie video create: code={payload.get('code')} {payload.get('msg')}")
     task_id = payload["data"]["taskId"]
-    return _extract_video_url(_kie_poll(kie_key, task_id, timeout=360))
+    return _extract_video_url(_kie_poll(kie_key, task_id, timeout=600))
 
 
 # ── ElevenLabs TTS ─────────────────────────────────────────────────────────────
@@ -219,13 +219,23 @@ def generate_faceless_video(
     _prog("Splitting script into scenes", 3)
     scenes = _split_scenes(script, num_scenes)
 
-    # Step 1: generate images
-    for i, scene in enumerate(scenes):
-        _prog(f"Generating background image {i+1}/{num_scenes}", 5 + i * 35 // num_scenes)
-        img_url = _kie_generate_image(kie_key, scene["visual_prompt"])
-        scene["image_url"] = img_url
+    # Step 1: generate all images in parallel
+    _prog(f"Generating {num_scenes} background images (parallel)", 5)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    def _gen_image(args):
+        idx, scene = args
+        return idx, _kie_generate_image(kie_key, scene["visual_prompt"])
 
-    # Step 2: animate each image
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {pool.submit(_gen_image, (i, scene)): i for i, scene in enumerate(scenes)}
+        done_count = 0
+        for fut in as_completed(futures):
+            idx, img_url = fut.result()
+            scenes[idx]["image_url"] = img_url
+            done_count += 1
+            _prog(f"Images: {done_count}/{num_scenes} done", 5 + done_count * 35 // num_scenes)
+
+    # Step 2: animate each image (sequential — Kie.ai rate limits concurrent video jobs)
     clip_paths = []
     for i, scene in enumerate(scenes):
         _prog(f"Animating clip {i+1}/{num_scenes}", 42 + i * 35 // num_scenes)
