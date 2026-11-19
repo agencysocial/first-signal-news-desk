@@ -6876,6 +6876,7 @@ def _fv_worker(job_id: str, script: str, duration: int, voice_id: str, music_url
     """Background thread — runs the full pipeline and updates DB."""
     kie_key = os.environ.get("KIE_AI_API_KEY", "")
     el_key  = os.environ.get("ELEVENLABS_API_KEY", "")
+    fal_key = os.environ.get("FAL_AI_API_KEY", "")
 
     def _progress(msg: str, pct: int):
         _fv_update(job_id, progress_msg=msg, progress_pct=pct)
@@ -6895,6 +6896,7 @@ def _fv_worker(job_id: str, script: str, duration: int, voice_id: str, music_url
             music_prompt=music_prompt,
             progress_callback=_progress,
             cancel_check=_cancel_check,
+            fal_key=fal_key,
         )
         if _fv_is_cancelled(job_id):
             return

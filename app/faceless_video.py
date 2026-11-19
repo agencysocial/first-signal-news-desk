@@ -27,9 +27,7 @@ class CancelledError(Exception):
     """Raised inside the pipeline when the operator cancels the job."""
 
 
-_KIE_CREATE = "https://api.kie.ai/api/v1/jobs/createTask"
-_KIE_RECORD = "https://api.kie.ai/api/v1/jobs/recordInfo"
-_KIE_IMAGE_MODEL = "gpt-image-2-text-to-image"
+_FAL_IMAGE_URL = "https://fal.run/fal-ai/flux/schnell"
 _EL_BASE = "https://api.elevenlabs.io/v1"
 
 VOICES: dict[str, str] = {
@@ -72,48 +70,30 @@ _MOTION_PRESETS = [
 ]
 
 
-# ── Kie.ai helpers ─────────────────────────────────────────────────────────────
+# ── fal.ai helpers ─────────────────────────────────────────────────────────────
 
-def _kie_headers(key: str) -> dict:
-    return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-
-
-def _kie_poll(key: str, task_id: str, timeout: int = 480, cancel_check=None) -> dict:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if cancel_check and cancel_check():
-            raise CancelledError("Job cancelled during Kie poll")
-        r = httpx.get(f"{_KIE_RECORD}?taskId={task_id}", headers=_kie_headers(key), timeout=15)
-        r.raise_for_status()
-        data = r.json().get("data", {})
-        status = (data.get("status") or "").lower()
-        if status in ("succeed", "success", "completed", "finished"):
-            return data
-        if status in ("failed", "error", "cancelled"):
-            raise RuntimeError(f"Kie task {task_id} failed: {data}")
-        time.sleep(6)
-    raise TimeoutError(f"Kie task {task_id} timed out after {timeout}s")
-
-
-def _extract_image_url(data: dict) -> str:
-    for work in (data.get("works") or []):
-        for key in ("coverUrl", "imageUrl", "url", "outputUrl"):
-            if work.get(key):
-                return work[key]
-    raise RuntimeError(f"No image URL in Kie response: {json.dumps(data)[:300]}")
-
-
-def _kie_generate_image(kie_key: str, prompt: str, cancel_check=None) -> str:
-    body = {
-        "model": _KIE_IMAGE_MODEL,
-        "input": {"prompt": prompt, "aspect_ratio": "9:16", "resolution": "1K"},
-    }
-    r = httpx.post(_KIE_CREATE, headers=_kie_headers(kie_key), json=body, timeout=30)
+def _fal_generate_image(fal_key: str, prompt: str, cancel_check=None) -> str:
+    """Generate a 9:16 image via fal.ai FLUX Schnell (~3s, synchronous)."""
+    if cancel_check and cancel_check():
+        raise CancelledError("Job cancelled before image generation")
+    r = httpx.post(
+        _FAL_IMAGE_URL,
+        headers={"Authorization": f"Key {fal_key}", "Content-Type": "application/json"},
+        json={
+            "prompt": prompt,
+            "image_size": "portrait_9_16",
+            "num_images": 1,
+            "num_inference_steps": 4,
+            "enable_safety_checker": False,
+        },
+        timeout=60,
+    )
     r.raise_for_status()
-    payload = r.json()
-    if payload.get("code") != 200:
-        raise RuntimeError(f"Kie image: code={payload.get('code')} {payload.get('msg')}")
-    return _extract_image_url(_kie_poll(kie_key, payload["data"]["taskId"], timeout=480, cancel_check=cancel_check))
+    data = r.json()
+    images = data.get("images") or []
+    if not images or not images[0].get("url"):
+        raise RuntimeError(f"No image URL in fal.ai response: {json.dumps(data)[:300]}")
+    return images[0]["url"]
 
 
 # ── ElevenLabs TTS + Sound Effects ─────────────────────────────────────────────
@@ -327,6 +307,7 @@ def generate_faceless_video(
     music_prompt: str = "",
     progress_callback=None,
     cancel_check=None,
+    fal_key: str = "",
 ) -> str:
     cfg = DURATION_CONFIG.get(duration, DURATION_CONFIG[30])
     num_scenes = cfg["scenes"]
@@ -352,17 +333,18 @@ def generate_faceless_video(
     scenes = _split_scenes(script, num_scenes)
 
     # Step 1: generate all background images in parallel
-    _prog(f"Generating {num_scenes} background images (parallel, ~5-10 min)", 5)
+    # fal.ai FLUX Schnell: ~3s/image synchronous — all 9 images done in ~15s with 6 workers
+    _prog(f"Generating {num_scenes} background images (fal.ai FLUX Schnell)", 5)
 
     def _gen_image(args):
         idx, scene = args
         _check_cancel()
         img_path = str(job_dir / f"img_{idx:02d}.jpg")
-        img_url = _kie_generate_image(kie_key, scene["visual_prompt"], cancel_check=cancel_check)
+        img_url = _fal_generate_image(fal_key, scene["visual_prompt"], cancel_check=cancel_check)
         _download(img_url, img_path)
         return idx, img_path
 
-    with ThreadPoolExecutor(max_workers=4) as pool:
+    with ThreadPoolExecutor(max_workers=6) as pool:
         futures = {pool.submit(_gen_image, (i, s)): i for i, s in enumerate(scenes)}
         done = 0
         for fut in as_completed(futures):
