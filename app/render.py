@@ -6247,10 +6247,9 @@ def render_faceless_video_page(
     <div style="{sec_style}">
       <div style="font-size:11px;font-weight:600;color:#4a90d9;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">&#127775; Visual Style</div>
       <div style="margin-bottom:10px">
-        <label style="{lbl_style}">Scene Style Prompt <span style="color:#4a5568">(applied to every image)</span></label>
-        <input name="scene_style" type="text" style="{inp_style}"
-          placeholder='e.g. "dark cinematic, dramatic lighting, US government buildings, somber mood, 4K photorealistic"'
-          value="photorealistic, dramatic lighting, cinematic, American political news setting, 4K sharp">
+        <label style="{lbl_style}">Scene Style Prompt <span style="color:#4a5568">(applied to every image — describe mood, lighting, setting)</span></label>
+        <textarea name="scene_style" rows="4" style="{inp_style}font-family:inherit;resize:vertical;line-height:1.5"
+          placeholder='e.g. "dark cinematic, dramatic lighting, US government buildings, somber mood, 4K photorealistic. Each scene should feel like a high-budget news documentary with strong visual contrast and deep shadows."'>photorealistic, dramatic lighting, cinematic, American political news setting, 4K sharp</textarea>
       </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap">
         <div style="flex:1;min-width:140px">
