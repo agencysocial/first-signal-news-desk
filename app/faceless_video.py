@@ -104,7 +104,7 @@ def _elevenlabs_tts(el_key: str, text: str, voice_id: str, out_path: str) -> Non
         headers={"xi-api-key": el_key, "Content-Type": "application/json"},
         json={
             "text": text,
-            "model_id": "eleven_monolingual_v1",
+            "model_id": "eleven_turbo_v2_5",
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
         },
         timeout=60,
