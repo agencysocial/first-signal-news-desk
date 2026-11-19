@@ -6877,7 +6877,8 @@ def _fv_worker(job_id: str, script: str, duration: int, voice_id: str,
                scene_style: str = "", intro_text: str = "",
                aspect_ratio: str = "9:16", cut_pace: float = 3.5,
                captions: str = "on", caption_position: str = "lower",
-               caption_size: int = 52):
+               caption_size: int = 52, num_scenes: int = 9,
+               voice_volume: float = 1.5):
     """Background thread — runs the full pipeline and updates DB."""
     kie_key = os.environ.get("KIE_AI_API_KEY", "")
     el_key  = os.environ.get("ELEVENLABS_API_KEY", "")
@@ -6909,6 +6910,8 @@ def _fv_worker(job_id: str, script: str, duration: int, voice_id: str,
             captions=captions,
             caption_position=caption_position,
             caption_size=caption_size,
+            num_scenes=num_scenes,
+            voice_volume=voice_volume,
         )
         if _fv_is_cancelled(job_id):
             return
@@ -6940,7 +6943,7 @@ async def faceless_video_generate(
     _fv_ensure_table()
     form = await request.form()
     script = str(form.get("script", "")).strip()
-    duration = int(form.get("duration") or 30)
+    num_scenes = int(form.get("num_scenes") or 9)
     voice_id = str(form.get("voice_id", "")).strip()
     music_prompt = str(form.get("music_prompt", "")).strip()
     music_url = str(form.get("music_url", "")).strip()
@@ -6951,6 +6954,8 @@ async def faceless_video_generate(
     captions = str(form.get("captions", "on")).strip()
     caption_position = str(form.get("caption_position", "lower")).strip()
     caption_size = int(form.get("caption_size") or 52)
+    voice_volume = float(form.get("voice_volume") or 1.5)
+    duration = round(num_scenes * cut_pace)  # computed for DB display
 
     if not script:
         return RedirectResponse("/faceless-video?msg=Script+is+required", status_code=303)
@@ -6982,7 +6987,8 @@ async def faceless_video_generate(
     import threading
     t = threading.Thread(target=_fv_worker, args=(job_id, script, duration, voice_id, music_url, music_prompt,
                                                    scene_style, intro_text, aspect_ratio, cut_pace,
-                                                   captions, caption_position, caption_size), daemon=True)
+                                                   captions, caption_position, caption_size,
+                                                   num_scenes, voice_volume), daemon=True)
     t.start()
 
     return RedirectResponse(f"/faceless-video?msg=Video+generation+started+%28job+{job_id[:8]}%29", status_code=303)

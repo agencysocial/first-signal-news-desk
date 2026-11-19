@@ -6305,17 +6305,32 @@ def render_faceless_video_page(
     <div style="{sec_style}">
       <div style="font-size:11px;font-weight:600;color:#4a90d9;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">&#127908; Voiceover &amp; Music</div>
       <div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap">
-        <div style="flex:1;min-width:160px">
-          <label style="{lbl_style}">Duration</label>
-          <select name="duration" style="{sel_style}">
-            <option value="30">30 seconds</option>
-            <option value="60">60 seconds</option>
+        <div style="flex:1;min-width:140px">
+          <label style="{lbl_style}">Scenes</label>
+          <select name="num_scenes" style="{sel_style}">
+            <option value="5">5 scenes (~18s)</option>
+            <option value="6">6 scenes (~21s)</option>
+            <option value="7">7 scenes (~24s)</option>
+            <option value="8">8 scenes (~28s)</option>
+            <option value="9" selected>9 scenes (~32s)</option>
+            <option value="10">10 scenes (~35s)</option>
+            <option value="11">11 scenes (~38s)</option>
+            <option value="12">12 scenes (~42s)</option>
           </select>
         </div>
-        <div style="flex:1;min-width:200px">
+        <div style="flex:1;min-width:160px">
           <label style="{lbl_style}">Voice</label>
           <select name="voice_id" style="{sel_style}">
             {voice_options}
+          </select>
+        </div>
+        <div style="flex:1;min-width:130px">
+          <label style="{lbl_style}">Voiceover Volume</label>
+          <select name="voice_volume" style="{sel_style}">
+            <option value="1.0">Normal (100%)</option>
+            <option value="1.5" selected>Loud (150%)</option>
+            <option value="2.0">Very Loud (200%)</option>
+            <option value="2.5">Max (250%)</option>
           </select>
         </div>
       </div>
@@ -6331,10 +6346,9 @@ def render_faceless_video_page(
     </div>
 
     <div style="background:#0d1420;border:1px solid #1a2535;border-radius:4px;padding:9px 12px;margin-bottom:16px;font-size:12px;color:#8b93a3">
-      &#9432;&nbsp; <strong style="color:#e6e8ec">30s</strong>: 9 scenes &nbsp;|&nbsp;
-      <strong style="color:#e6e8ec">60s</strong>: 18 scenes.
-      Images via fal.ai FLUX (~3s each). Est. total: <strong style="color:#e6e8ec">~1&ndash;3 min</strong>.
-      Cost: ~$0.26 per 30s video (images + voiceover).
+      &#9432;&nbsp; Images via fal.ai FLUX (~3s each, 6 parallel).
+      Est. total: <strong style="color:#e6e8ec">~1&ndash;3 min</strong>.
+      Cost: ~$0.03 images + ~$0.23 voiceover per video.
     </div>
     <button type="submit" class="primary" id="gen-btn"
       style="padding:9px 24px;font-size:14px">&#9654; Generate Video</button>

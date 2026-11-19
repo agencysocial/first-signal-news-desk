@@ -38,11 +38,7 @@ VOICES: dict[str, str] = {
     "Bella – Female, Warm": "EXAVITQu4vr4xnSDxMaL",
 }
 
-# Each clip is CLIP_DURATION seconds. scenes × CLIP_DURATION ≈ target video duration.
-DURATION_CONFIG: dict[int, dict] = {
-    30: {"scenes": 9,  "clip_duration": 3.5},
-    60: {"scenes": 18, "clip_duration": 3.5},
-}
+VALID_SCENE_COUNTS = list(range(5, 13))  # 5–12
 
 # Ken Burns motion presets — FFmpeg zoompan filter expressions.
 # Each entry is (zoom_expr, x_expr, y_expr) for a 1080x1920 (9:16) clip.
@@ -246,6 +242,7 @@ def _ffmpeg_compile(
     audio_path: str,
     out_path: str,
     music_path: str | None = None,
+    voice_volume: float = 1.5,
 ) -> None:
     """Concatenate captioned clips, mix voiceover + optional music bed."""
     tmp_dir = Path(out_path).parent
@@ -270,8 +267,9 @@ def _ffmpeg_compile(
                 "-i", audio_path,
                 "-i", music_path,
                 "-filter_complex",
+                f"[1:a]volume={voice_volume}[vo];"
                 "[2:a]volume=0.12,aloop=loop=-1:size=2e+09[music];"
-                "[1:a][music]amix=inputs=2:duration=first:dropout_transition=2[audio]",
+                "[vo][music]amix=inputs=2:duration=first:dropout_transition=2[audio]",
                 "-map", "0:v",
                 "-map", "[audio]",
                 "-c:v", "copy",
@@ -285,6 +283,8 @@ def _ffmpeg_compile(
         subprocess.run(
             ["ffmpeg", "-y",
              "-i", silent_mp4, "-i", audio_path,
+             "-filter_complex", f"[1:a]volume={voice_volume}[audio]",
+             "-map", "0:v", "-map", "[audio]",
              "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-shortest",
              out_path],
             check=True, capture_output=True,
@@ -324,7 +324,7 @@ def _split_scenes(script: str, num_scenes: int, scene_style: str = "", aspect_ra
 
 def generate_faceless_video(
     script: str,
-    duration: int,
+    duration: int,  # kept for DB compat; computed from num_scenes × cut_pace
     voice_id: str,
     kie_key: str,
     el_key: str,
@@ -341,10 +341,11 @@ def generate_faceless_video(
     captions: str = "on",
     caption_position: str = "lower",
     caption_size: int = 52,
+    num_scenes: int = 9,
+    voice_volume: float = 1.5,
 ) -> str:
-    cfg = DURATION_CONFIG.get(duration, DURATION_CONFIG[30])
-    num_scenes = cfg["scenes"]
-    clip_duration = cut_pace  # operator-chosen cut pace overrides default
+    num_scenes = max(5, min(12, num_scenes))
+    clip_duration = cut_pace
 
     job_dir = Path(f"/tmp/faceless_video/{job_id}")
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -443,7 +444,7 @@ def generate_faceless_video(
     # Step 5: compile final video
     _prog("Compiling final video", 92)
     final_path = str(job_dir / "final.mp4")
-    _ffmpeg_compile(captioned_paths, audio_path, final_path, music_path)
+    _ffmpeg_compile(captioned_paths, audio_path, final_path, music_path, voice_volume=voice_volume)
 
     (job_dir / "metadata.json").write_text(
         json.dumps({"job_id": job_id, "duration": duration, "clip_duration": clip_duration, "scenes": [
