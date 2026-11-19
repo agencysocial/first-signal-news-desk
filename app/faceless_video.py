@@ -81,9 +81,10 @@ def _fal_generate_image(fal_key: str, prompt: str, cancel_check=None) -> str:
         headers={"Authorization": f"Key {fal_key}", "Content-Type": "application/json"},
         json={
             "prompt": prompt,
-            "image_size": "portrait_9_16",
+            "image_size": {"width": 576, "height": 1024},
             "num_images": 1,
             "num_inference_steps": 4,
+            "output_format": "jpeg",
         },
         timeout=60,
     )
