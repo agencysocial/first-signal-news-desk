@@ -72,8 +72,8 @@ _MOTION_PRESETS = [
 
 # ── fal.ai helpers ─────────────────────────────────────────────────────────────
 
-def _fal_generate_image(fal_key: str, prompt: str, cancel_check=None) -> str:
-    """Generate a 9:16 image via fal.ai FLUX Schnell (~3s, synchronous)."""
+def _fal_generate_image(fal_key: str, prompt: str, cancel_check=None, width: int = 576, height: int = 1024) -> str:
+    """Generate an image via fal.ai FLUX Schnell (~3s, synchronous)."""
     if cancel_check and cancel_check():
         raise CancelledError("Job cancelled before image generation")
     r = httpx.post(
@@ -81,7 +81,7 @@ def _fal_generate_image(fal_key: str, prompt: str, cancel_check=None) -> str:
         headers={"Authorization": f"Key {fal_key}", "Content-Type": "application/json"},
         json={
             "prompt": prompt,
-            "image_size": {"width": 576, "height": 1024},
+            "image_size": {"width": width, "height": height},
             "num_images": 1,
             "num_inference_steps": 4,
             "output_format": "jpeg",
@@ -144,20 +144,25 @@ def _ffmpeg_ken_burns_and_caption(
     output_path: str,
     motion_preset: tuple,
     font_path: str | None = None,
+    aspect_ratio: str = "9:16",
+    show_captions: bool = True,
+    caption_y_frac: float = 0.72,
+    caption_size: int = 52,
+    intro_text: str = "",
 ) -> None:
     """
     Animate a still image with a Ken Burns zoompan effect and burn in caption.
-    Output: H.264 MP4, 9:16, 30fps, ~clip_duration seconds.
+    Output: H.264 MP4, 30fps, ~clip_duration seconds.
     """
     fps = 30
     num_frames = int(clip_duration * fps)
-    w, h = 1080, 1920
+    w, h = (1080, 1920) if aspect_ratio == "9:16" else (1920, 1080)
+    wrap_width = 28 if aspect_ratio == "9:16" else 50
 
     z_expr, x_expr, y_expr = motion_preset
 
-    # zoompan: input image is looped, output is w×h at fps
     zoompan = (
-        f"scale={w*2}:{h*2},"   # upscale so zoompan has room to crop
+        f"scale={w*2}:{h*2},"
         f"zoompan="
         f"z='{z_expr}':"
         f"x='{x_expr}':"
@@ -167,27 +172,45 @@ def _ffmpeg_ken_burns_and_caption(
         f"fps={fps}"
     )
 
-    # Wrap caption for vertical video (~28 chars per line)
-    wrapped = "\n".join(textwrap.wrap(caption_text, width=28))
-    txt_file = image_path + ".cap.txt"
-    Path(txt_file).write_text(wrapped, encoding="utf-8")
+    filters = [zoompan]
 
-    font_args = f":fontfile='{font_path}'" if font_path else ""
-    drawtext = (
-        f"drawtext=textfile='{txt_file}'"
-        f"{font_args}"
-        ":fontsize=52"
-        ":fontcolor=white"
-        ":x=(w-tw)/2"
-        ":y=h*0.72"
-        ":box=1"
-        ":boxcolor=black@0.55"
-        ":boxborderw=18"
-        ":line_spacing=10"
-        ":expansion=none"
-    )
+    if show_captions and caption_text.strip():
+        wrapped = "\n".join(textwrap.wrap(caption_text, width=wrap_width))
+        txt_file = image_path + ".cap.txt"
+        Path(txt_file).write_text(wrapped, encoding="utf-8")
+        font_args = f":fontfile='{font_path}'" if font_path else ""
+        filters.append(
+            f"drawtext=textfile='{txt_file}'"
+            f"{font_args}"
+            f":fontsize={caption_size}"
+            ":fontcolor=white"
+            ":x=(w-tw)/2"
+            f":y=h*{caption_y_frac}"
+            ":box=1"
+            ":boxcolor=black@0.55"
+            ":boxborderw=18"
+            ":line_spacing=10"
+            ":expansion=none"
+        )
 
-    vf = f"{zoompan},{drawtext}"
+    if intro_text.strip():
+        intro_txt_file = image_path + ".intro.txt"
+        Path(intro_txt_file).write_text(intro_text.strip().upper(), encoding="utf-8")
+        font_args = f":fontfile='{font_path}'" if font_path else ""
+        filters.append(
+            f"drawtext=textfile='{intro_txt_file}'"
+            f"{font_args}"
+            ":fontsize=80"
+            ":fontcolor=white"
+            ":x=(w-tw)/2"
+            ":y=h*0.12"
+            ":box=1"
+            ":boxcolor=0x00000088"
+            ":boxborderw=24"
+            ":expansion=none"
+        )
+
+    vf = ",".join(filters)
 
     subprocess.run(
         [
@@ -270,10 +293,12 @@ def _ffmpeg_compile(
 
 # ── Scene splitting ─────────────────────────────────────────────────────────────
 
-def _split_scenes(script: str, num_scenes: int) -> list[dict]:
+def _split_scenes(script: str, num_scenes: int, scene_style: str = "", aspect_ratio: str = "9:16") -> list[dict]:
     words = script.split()
     n = len(words)
     size = max(1, n // num_scenes)
+    orientation = "vertical portrait" if aspect_ratio == "9:16" else "horizontal landscape"
+    style_suffix = f" {scene_style.strip()}." if scene_style.strip() else ""
     scenes = []
     for i in range(num_scenes):
         start = i * size
@@ -281,10 +306,11 @@ def _split_scenes(script: str, num_scenes: int) -> list[dict]:
         chunk = " ".join(words[start:end])
         motion_preset = _MOTION_PRESETS[i % len(_MOTION_PRESETS)]
         visual = (
-            "Cinematic vertical 9:16 background scene, photorealistic, "
+            f"Cinematic {orientation} background scene, photorealistic, "
             "no visible text, no logos, no watermarks, "
-            f"dramatic professional lighting, subject: {chunk[:100]}. "
-            "Rich color grading, high production quality, vertical portrait orientation."
+            f"dramatic professional lighting, subject: {chunk[:100]}."
+            f"{style_suffix} "
+            "Rich color grading, high production quality."
         )
         scenes.append({
             "narration": chunk,
@@ -308,10 +334,17 @@ def generate_faceless_video(
     progress_callback=None,
     cancel_check=None,
     fal_key: str = "",
+    scene_style: str = "",
+    intro_text: str = "",
+    aspect_ratio: str = "9:16",
+    cut_pace: float = 3.5,
+    captions: str = "on",
+    caption_position: str = "lower",
+    caption_size: int = 52,
 ) -> str:
     cfg = DURATION_CONFIG.get(duration, DURATION_CONFIG[30])
     num_scenes = cfg["scenes"]
-    clip_duration = cfg["clip_duration"]
+    clip_duration = cut_pace  # operator-chosen cut pace overrides default
 
     job_dir = Path(f"/tmp/faceless_video/{job_id}")
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -330,7 +363,12 @@ def generate_faceless_video(
             raise CancelledError("Job cancelled by operator")
 
     _prog("Splitting script into scenes", 3)
-    scenes = _split_scenes(script, num_scenes)
+    scenes = _split_scenes(script, num_scenes, scene_style=scene_style, aspect_ratio=aspect_ratio)
+
+    # Resolve caption position fraction
+    _cap_y = {"lower": 0.72, "center": 0.50, "bottom": 0.85}.get(caption_position, 0.72)
+    # Resolve image dimensions for fal.ai
+    _img_w, _img_h = (576, 1024) if aspect_ratio == "9:16" else (1024, 576)
 
     # Step 1: generate all background images in parallel
     # fal.ai FLUX Schnell: ~3s/image synchronous — all 9 images done in ~15s with 6 workers
@@ -340,7 +378,8 @@ def generate_faceless_video(
         idx, scene = args
         _check_cancel()
         img_path = str(job_dir / f"img_{idx:02d}.jpg")
-        img_url = _fal_generate_image(fal_key, scene["visual_prompt"], cancel_check=cancel_check)
+        img_url = _fal_generate_image(fal_key, scene["visual_prompt"], cancel_check=cancel_check,
+                                      width=_img_w, height=_img_h)
         _download(img_url, img_path)
         return idx, img_path
 
@@ -367,6 +406,11 @@ def generate_faceless_video(
             cap_path,
             scene["motion_preset"],
             font_path,
+            aspect_ratio=aspect_ratio,
+            show_captions=(captions == "on"),
+            caption_y_frac=_cap_y,
+            caption_size=caption_size,
+            intro_text=intro_text if i == 0 else "",
         )
         captioned_paths.append(cap_path)
         _prog(f"Clips: {i+1}/{num_scenes} rendered", 62 + (i + 1) * 15 // num_scenes)

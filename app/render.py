@@ -6214,54 +6214,130 @@ def render_faceless_video_page(
   <tbody>{"".join(rows)}</tbody>
 </table>"""
 
+    sel_style = "width:100%;padding:7px 8px;font-size:13px;background:#0b0e14;color:#e6e8ec;border:1px solid #2a3040;border-radius:4px"
+    inp_style = "width:100%;padding:7px 8px;font-size:13px;background:#0b0e14;color:#e6e8ec;border:1px solid #2a3040;border-radius:4px;box-sizing:border-box"
+    lbl_style = "display:block;font-size:12px;color:#8b93a3;margin-bottom:4px"
+    sec_style = "background:#0d1117;border:1px solid #1e2638;border-radius:6px;padding:14px 16px;margin-bottom:14px"
+
     body = f"""
 {flash_html}
 <h1>&#127909; AI Faceless Video Generator</h1>
-<p class="sub">Script &rarr; scene images (Kie.ai, 9:16) &rarr; Ken Burns motion + captions (FFmpeg) &rarr; voiceover (ElevenLabs) &rarr; MP4 download &mdash; Reels/Shorts format</p>
-<div style="background:#11151f;border:1px solid #1a1f2b;border-radius:8px;padding:20px;max-width:680px">
+<p class="sub">Script &rarr; scene images (fal.ai FLUX) &rarr; Ken Burns motion (FFmpeg) &rarr; captions &rarr; voiceover (ElevenLabs) &rarr; MP4</p>
+<div style="background:#11151f;border:1px solid #1a1f2b;border-radius:8px;padding:22px;max-width:720px">
   <form method="post" action="/faceless-video/generate" id="gen-form">
-    <div style="margin-bottom:14px">
-      <label style="display:block;font-size:12px;color:#8b93a3;margin-bottom:4px">Script / Narration</label>
-      <textarea name="script" rows="7" required
-        style="width:100%;background:#0b0e14;color:#e6e8ec;border:1px solid #2a3040;border-radius:4px;
-               padding:8px 10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"
-        placeholder="Type or paste your video script here. Be descriptive — the AI will generate matching scenes."
-      ></textarea>
-    </div>
-    <div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap">
-      <div style="flex:1;min-width:140px">
-        <label style="display:block;font-size:12px;color:#8b93a3;margin-bottom:4px">Duration</label>
-        <select name="duration" style="width:100%;padding:7px 8px;font-size:13px">
-          <option value="30">30 seconds (6 scenes)</option>
-          <option value="60">60 seconds (12 scenes)</option>
-        </select>
+
+    <!-- ── Script ── -->
+    <div style="{sec_style}">
+      <div style="font-size:11px;font-weight:600;color:#4a90d9;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">&#9654; Script</div>
+      <div style="margin-bottom:10px">
+        <label style="{lbl_style}">Narration / Script <span style="color:#f87171">*</span></label>
+        <textarea name="script" rows="7" required
+          style="width:100%;background:#0b0e14;color:#e6e8ec;border:1px solid #2a3040;border-radius:4px;
+                 padding:8px 10px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box"
+          placeholder="Write your full video script here. This becomes the voiceover and drives the scene visuals."
+        ></textarea>
       </div>
-      <div style="flex:1;min-width:180px">
-        <label style="display:block;font-size:12px;color:#8b93a3;margin-bottom:4px">Voice</label>
-        <select name="voice_id" style="width:100%;padding:7px 8px;font-size:13px">
-          {voice_options}
-        </select>
+      <div>
+        <label style="{lbl_style}">Intro Text <span style="color:#4a5568">(optional — large overlay on first scene)</span></label>
+        <input name="intro_text" type="text" style="{inp_style}" placeholder='e.g. "BREAKING NEWS" or "EXCLUSIVE REPORT"'>
       </div>
     </div>
-    <div style="margin-bottom:14px">
-      <label style="display:block;font-size:12px;color:#8b93a3;margin-bottom:4px">
-        Background Music / Sound <span style="color:#4a5568">(optional)</span>
-      </label>
-      <input name="music_prompt" type="text" style="width:100%;padding:7px 8px;font-size:13px;box-sizing:border-box"
-        placeholder='e.g. "epic cinematic orchestral background music, intense and dramatic" or "upbeat motivational corporate music"'>
-      <div style="font-size:11px;color:#4a5568;margin-top:3px">
-        Describe the music and ElevenLabs will generate it. Or paste a direct MP3 URL in the field below.
+
+    <!-- ── Visual Style ── -->
+    <div style="{sec_style}">
+      <div style="font-size:11px;font-weight:600;color:#4a90d9;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">&#127775; Visual Style</div>
+      <div style="margin-bottom:10px">
+        <label style="{lbl_style}">Scene Style Prompt <span style="color:#4a5568">(applied to every image)</span></label>
+        <input name="scene_style" type="text" style="{inp_style}"
+          placeholder='e.g. "dark cinematic, dramatic lighting, US government buildings, somber mood, 4K photorealistic"'
+          value="photorealistic, dramatic lighting, cinematic, American political news setting, 4K sharp">
       </div>
-      <input name="music_url" type="url" style="width:100%;padding:7px 8px;font-size:13px;box-sizing:border-box;margin-top:5px"
-        placeholder="Direct MP3 URL (optional — leave blank if using the prompt above)">
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:140px">
+          <label style="{lbl_style}">Aspect Ratio</label>
+          <select name="aspect_ratio" style="{sel_style}">
+            <option value="9:16">9:16 Vertical (Reels / Shorts)</option>
+            <option value="16:9">16:9 Landscape (YouTube)</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label style="{lbl_style}">Cut Pace</label>
+          <select name="cut_pace" style="{sel_style}">
+            <option value="3.0">Fast (3s cuts)</option>
+            <option value="3.5" selected>Normal (3.5s cuts)</option>
+            <option value="5.0">Slow (5s cuts)</option>
+          </select>
+        </div>
+      </div>
     </div>
-    <div style="background:#0d1420;border:1px solid #1a2535;border-radius:4px;padding:10px 12px;margin-bottom:16px;font-size:12px;color:#8b93a3">
-      &#9432;&nbsp; <strong style="color:#e6e8ec">30s</strong>: 9 scenes, ~$1.80 &nbsp;|&nbsp;
-      <strong style="color:#e6e8ec">60s</strong>: 18 scenes, ~$3.60.
-      Each clip trimmed to 3.5s for fast-cut pacing. Captions burned in. Generates in ~15&ndash;25 min.
+
+    <!-- ── Captions ── -->
+    <div style="{sec_style}">
+      <div style="font-size:11px;font-weight:600;color:#4a90d9;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">&#128250; Captions</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:120px">
+          <label style="{lbl_style}">Captions</label>
+          <select name="captions" style="{sel_style}">
+            <option value="on">On</option>
+            <option value="off">Off</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:140px">
+          <label style="{lbl_style}">Caption Position</label>
+          <select name="caption_position" style="{sel_style}">
+            <option value="lower">Lower third (72%)</option>
+            <option value="center">Center (50%)</option>
+            <option value="bottom">Bottom (85%)</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:120px">
+          <label style="{lbl_style}">Caption Size</label>
+          <select name="caption_size" style="{sel_style}">
+            <option value="40">Small (40px)</option>
+            <option value="52" selected>Medium (52px)</option>
+            <option value="64">Large (64px)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Voiceover & Music ── -->
+    <div style="{sec_style}">
+      <div style="font-size:11px;font-weight:600;color:#4a90d9;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">&#127908; Voiceover &amp; Music</div>
+      <div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:160px">
+          <label style="{lbl_style}">Duration</label>
+          <select name="duration" style="{sel_style}">
+            <option value="30">30 seconds</option>
+            <option value="60">60 seconds</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label style="{lbl_style}">Voice</label>
+          <select name="voice_id" style="{sel_style}">
+            {voice_options}
+          </select>
+        </div>
+      </div>
+      <div style="margin-bottom:8px">
+        <label style="{lbl_style}">Background Music Prompt <span style="color:#4a5568">(ElevenLabs generates it)</span></label>
+        <input name="music_prompt" type="text" style="{inp_style}"
+          placeholder='e.g. "intense cinematic orchestral, dramatic news score, building tension"'>
+      </div>
+      <div>
+        <label style="{lbl_style}">Music URL <span style="color:#4a5568">(direct MP3 link, overrides prompt)</span></label>
+        <input name="music_url" type="url" style="{inp_style}" placeholder="https://example.com/music.mp3">
+      </div>
+    </div>
+
+    <div style="background:#0d1420;border:1px solid #1a2535;border-radius:4px;padding:9px 12px;margin-bottom:16px;font-size:12px;color:#8b93a3">
+      &#9432;&nbsp; <strong style="color:#e6e8ec">30s</strong>: 9 scenes &nbsp;|&nbsp;
+      <strong style="color:#e6e8ec">60s</strong>: 18 scenes.
+      Images via fal.ai FLUX (~3s each). Est. total: <strong style="color:#e6e8ec">~1&ndash;3 min</strong>.
+      Cost: ~$0.26 per 30s video (images + voiceover).
     </div>
     <button type="submit" class="primary" id="gen-btn"
-      style="padding:8px 20px;font-size:13px">&#9654; Generate Video</button>
+      style="padding:9px 24px;font-size:14px">&#9654; Generate Video</button>
   </form>
 </div>
 {jobs_html}
@@ -6271,12 +6347,11 @@ document.getElementById('gen-form').addEventListener('submit', function() {{
   btn.disabled = true;
   btn.textContent = 'Starting…';
 }});
-// Auto-refresh while any job is running
 (function() {{
-  var rows = document.querySelectorAll('td');
-  var running = false;
-  rows.forEach(function(td) {{ if(td.textContent.indexOf('Running') >= 0) running = true; }});
-  if(running) setTimeout(function(){{ window.location.reload(); }}, 20000);
+  var running = Array.from(document.querySelectorAll('td')).some(function(td) {{
+    return td.textContent.indexOf('Running') >= 0;
+  }});
+  if(running) setTimeout(function(){{ window.location.reload(); }}, 15000);
 }})();
 </script>
 """
