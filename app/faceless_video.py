@@ -84,7 +84,6 @@ def _fal_generate_image(fal_key: str, prompt: str, cancel_check=None) -> str:
             "image_size": "portrait_9_16",
             "num_images": 1,
             "num_inference_steps": 4,
-            "enable_safety_checker": False,
         },
         timeout=60,
     )
